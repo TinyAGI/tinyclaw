@@ -1,5 +1,5 @@
 #!/bin/bash
-# TinyClaw Simple - Main daemon using tmux + claude -c -p + WhatsApp
+# TinyClaw Simple - Main daemon using tmux + claude -c -p + WhatsApp + Discord
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMUX_SESSION="tinyclaw"
@@ -39,152 +39,319 @@ start_daemon() {
     fi
 
     # Build TypeScript if needed
-    if [ ! -d "$SCRIPT_DIR/dist" ] || [ "$SCRIPT_DIR/src/whatsapp-client.ts" -nt "$SCRIPT_DIR/dist/whatsapp-client.js" ] || [ "$SCRIPT_DIR/src/queue-processor.ts" -nt "$SCRIPT_DIR/dist/queue-processor.js" ]; then
+    if [ ! -d "$SCRIPT_DIR/dist" ] || [ "$SCRIPT_DIR/src/whatsapp-client.ts" -nt "$SCRIPT_DIR/dist/whatsapp-client.js" ] || [ "$SCRIPT_DIR/src/queue-processor.ts" -nt "$SCRIPT_DIR/dist/queue-processor.js" ] || [ "$SCRIPT_DIR/src/discord-client.ts" -nt "$SCRIPT_DIR/dist/discord-client.js" ]; then
         echo -e "${YELLOW}Building TypeScript...${NC}"
         cd "$SCRIPT_DIR"
         npm run build
     fi
 
-    # Check if WhatsApp session already exists
-    SESSION_EXISTS=false
-    if [ -d "$SCRIPT_DIR/.tinyclaw/whatsapp-session" ] && [ "$(ls -A $SCRIPT_DIR/.tinyclaw/whatsapp-session 2>/dev/null)" ]; then
-        SESSION_EXISTS=true
-        echo -e "${GREEN}✓ WhatsApp session found, skipping QR code${NC}"
+    # Configuration
+    CHANNEL_CONFIG="$SCRIPT_DIR/.tinyclaw/channel"
+    MODEL_CONFIG="$SCRIPT_DIR/.tinyclaw/model"
+    HAS_DISCORD=false
+    HAS_WHATSAPP=false
+
+    # First-run setup
+    if [ ! -f "$CHANNEL_CONFIG" ] || [ ! -f "$MODEL_CONFIG" ]; then
+        echo ""
+        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${GREEN}  TinyClaw - First Time Setup${NC}"
+        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+
+        if [ ! -f "$CHANNEL_CONFIG" ]; then
+            echo "Which messaging channel do you want to use?"
+            echo ""
+            echo "  1) Discord"
+            echo "  2) WhatsApp"
+            echo "  3) Both"
+            echo ""
+            read -rp "Choose [1-3]: " CHANNEL_CHOICE
+
+            case "$CHANNEL_CHOICE" in
+                1) echo "discord" > "$CHANNEL_CONFIG" ;;
+                2) echo "whatsapp" > "$CHANNEL_CONFIG" ;;
+                3) echo "both" > "$CHANNEL_CONFIG" ;;
+                *)
+                    echo -e "${RED}Invalid choice${NC}"
+                    return 1
+                    ;;
+            esac
+            echo -e "${GREEN}✓ Channel: $(cat "$CHANNEL_CONFIG")${NC}"
+            echo ""
+        fi
+
+        if [ ! -f "$MODEL_CONFIG" ]; then
+            echo "Which Claude model?"
+            echo ""
+            echo "  1) Sonnet  (fast, recommended)"
+            echo "  2) Opus    (smartest)"
+            echo ""
+            read -rp "Choose [1-2]: " MODEL_CHOICE
+
+            case "$MODEL_CHOICE" in
+                1) echo "sonnet" > "$MODEL_CONFIG" ;;
+                2) echo "opus" > "$MODEL_CONFIG" ;;
+                *)
+                    echo -e "${RED}Invalid choice${NC}"
+                    return 1
+                    ;;
+            esac
+            echo -e "${GREEN}✓ Model: $(cat "$MODEL_CONFIG")${NC}"
+            echo ""
+        fi
+
+        echo -e "  (Run './tinyclaw.sh setup' to change later)"
+        echo ""
     fi
 
-    # Create detached tmux session with 4 panes
+    CHANNEL=$(cat "$CHANNEL_CONFIG")
+
+    # Set flags from config
+    case "$CHANNEL" in
+        discord) HAS_DISCORD=true ;;
+        whatsapp) HAS_WHATSAPP=true ;;
+        both) HAS_DISCORD=true; HAS_WHATSAPP=true ;;
+        *)
+            echo -e "${RED}Invalid channel config: $CHANNEL${NC}"
+            echo "Run './tinyclaw.sh setup' to reconfigure"
+            return 1
+            ;;
+    esac
+
+    # Validate: Discord needs a token in .env
+    if [ "$HAS_DISCORD" = true ]; then
+        DISCORD_TOKEN=""
+        if [ -f "$SCRIPT_DIR/.env" ]; then
+            DISCORD_TOKEN=$(grep -s '^DISCORD_BOT_TOKEN=' "$SCRIPT_DIR/.env" | cut -d'=' -f2)
+        fi
+        if [ -z "$DISCORD_TOKEN" ] || [ "$DISCORD_TOKEN" = "your_token_here" ]; then
+            echo -e "${RED}Discord is configured but DISCORD_BOT_TOKEN is missing from .env${NC}"
+            echo "  Add your bot token to .env and try again"
+            return 1
+        fi
+    fi
+
+    # Report channels
+    echo -e "${BLUE}Channels:${NC}"
+    [ "$HAS_DISCORD" = true ] && echo -e "  ${GREEN}✓${NC} Discord"
+    [ "$HAS_WHATSAPP" = true ] && echo -e "  ${GREEN}✓${NC} WhatsApp"
+    echo ""
+
+    # Check if WhatsApp has an existing session (for QR code flow)
+    SESSION_EXISTS=false
+    if [ "$HAS_WHATSAPP" = true ] && grep -q "client connected and ready" "$LOG_DIR/whatsapp.log" 2>/dev/null; then
+        SESSION_EXISTS=true
+    fi
+
+    # Build log tail command based on available channels
+    LOG_TAIL_CMD="tail -f .tinyclaw/logs/queue.log"
+    if [ "$HAS_DISCORD" = true ]; then
+        LOG_TAIL_CMD="$LOG_TAIL_CMD .tinyclaw/logs/discord.log"
+    fi
+    if [ "$HAS_WHATSAPP" = true ]; then
+        LOG_TAIL_CMD="$LOG_TAIL_CMD .tinyclaw/logs/whatsapp.log"
+    fi
+
     tmux new-session -d -s "$TMUX_SESSION" -n "tinyclaw" -c "$SCRIPT_DIR"
 
-    # Split into 4 panes: 2 rows, 2 columns
-    tmux split-window -v -t "$TMUX_SESSION" -c "$SCRIPT_DIR"
-    tmux split-window -h -t "$TMUX_SESSION:0.0" -c "$SCRIPT_DIR"
-    tmux split-window -h -t "$TMUX_SESSION:0.2" -c "$SCRIPT_DIR"
+    if [ "$HAS_WHATSAPP" = true ] && [ "$HAS_DISCORD" = true ]; then
+        # Both channels: 5 panes
+        # ┌──────────┬──────────┬──────────┐
+        # │ WhatsApp │ Discord  │  Queue   │
+        # ├──────────┴──────────┼──────────┤
+        # │     Heartbeat       │   Logs   │
+        # └─────────────────────┴──────────┘
+        tmux split-window -v -t "$TMUX_SESSION" -c "$SCRIPT_DIR"
+        tmux split-window -h -t "$TMUX_SESSION:0.0" -c "$SCRIPT_DIR"
+        tmux split-window -h -t "$TMUX_SESSION:0.1" -c "$SCRIPT_DIR"
+        tmux split-window -h -t "$TMUX_SESSION:0.3" -c "$SCRIPT_DIR"
 
-    # Pane 0 (top-left): WhatsApp client
-    tmux send-keys -t "$TMUX_SESSION:0.0" "cd '$SCRIPT_DIR' && node dist/whatsapp-client.js" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.0" "cd '$SCRIPT_DIR' && node dist/whatsapp-client.js" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.1" "cd '$SCRIPT_DIR' && node dist/discord-client.js" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.2" "cd '$SCRIPT_DIR' && node dist/queue-processor.js" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.3" "cd '$SCRIPT_DIR' && ./heartbeat-cron.sh" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.4" "cd '$SCRIPT_DIR' && $LOG_TAIL_CMD" C-m
 
-    # Pane 1 (top-right): Queue processor
-    tmux send-keys -t "$TMUX_SESSION:0.1" "cd '$SCRIPT_DIR' && node dist/queue-processor.js" C-m
+        tmux select-pane -t "$TMUX_SESSION:0.0" -T "WhatsApp"
+        tmux select-pane -t "$TMUX_SESSION:0.1" -T "Discord"
+        tmux select-pane -t "$TMUX_SESSION:0.2" -T "Queue"
+        tmux select-pane -t "$TMUX_SESSION:0.3" -T "Heartbeat"
+        tmux select-pane -t "$TMUX_SESSION:0.4" -T "Logs"
 
-    # Pane 2 (bottom-left): Heartbeat
-    tmux send-keys -t "$TMUX_SESSION:0.2" "cd '$SCRIPT_DIR' && ./heartbeat-cron.sh" C-m
+        PANE_COUNT=5
+        WHATSAPP_PANE=0
 
-    # Pane 3 (bottom-right): Logs
-    tmux send-keys -t "$TMUX_SESSION:0.3" "cd '$SCRIPT_DIR' && tail -f .tinyclaw/logs/queue.log" C-m
+    elif [ "$HAS_DISCORD" = true ]; then
+        # Discord only: 4 panes (2x2 grid)
+        # ┌──────────┬──────────┐
+        # │ Discord  │  Queue   │
+        # ├──────────┼──────────┤
+        # │Heartbeat │   Logs   │
+        # └──────────┴──────────┘
+        tmux split-window -v -t "$TMUX_SESSION" -c "$SCRIPT_DIR"
+        tmux split-window -h -t "$TMUX_SESSION:0.0" -c "$SCRIPT_DIR"
+        tmux split-window -h -t "$TMUX_SESSION:0.2" -c "$SCRIPT_DIR"
 
-    # Set pane titles
-    tmux select-pane -t "$TMUX_SESSION:0.0" -T "WhatsApp"
-    tmux select-pane -t "$TMUX_SESSION:0.1" -T "Queue"
-    tmux select-pane -t "$TMUX_SESSION:0.2" -T "Heartbeat"
-    tmux select-pane -t "$TMUX_SESSION:0.3" -T "Logs"
+        tmux send-keys -t "$TMUX_SESSION:0.0" "cd '$SCRIPT_DIR' && node dist/discord-client.js" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.1" "cd '$SCRIPT_DIR' && node dist/queue-processor.js" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.2" "cd '$SCRIPT_DIR' && ./heartbeat-cron.sh" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.3" "cd '$SCRIPT_DIR' && $LOG_TAIL_CMD" C-m
+
+        tmux select-pane -t "$TMUX_SESSION:0.0" -T "Discord"
+        tmux select-pane -t "$TMUX_SESSION:0.1" -T "Queue"
+        tmux select-pane -t "$TMUX_SESSION:0.2" -T "Heartbeat"
+        tmux select-pane -t "$TMUX_SESSION:0.3" -T "Logs"
+
+        PANE_COUNT=4
+        WHATSAPP_PANE=-1
+
+    else
+        # WhatsApp only: 4 panes (2x2 grid)
+        # ┌──────────┬──────────┐
+        # │ WhatsApp │  Queue   │
+        # ├──────────┼──────────┤
+        # │Heartbeat │   Logs   │
+        # └──────────┴──────────┘
+        tmux split-window -v -t "$TMUX_SESSION" -c "$SCRIPT_DIR"
+        tmux split-window -h -t "$TMUX_SESSION:0.0" -c "$SCRIPT_DIR"
+        tmux split-window -h -t "$TMUX_SESSION:0.2" -c "$SCRIPT_DIR"
+
+        tmux send-keys -t "$TMUX_SESSION:0.0" "cd '$SCRIPT_DIR' && node dist/whatsapp-client.js" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.1" "cd '$SCRIPT_DIR' && node dist/queue-processor.js" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.2" "cd '$SCRIPT_DIR' && ./heartbeat-cron.sh" C-m
+        tmux send-keys -t "$TMUX_SESSION:0.3" "cd '$SCRIPT_DIR' && $LOG_TAIL_CMD" C-m
+
+        tmux select-pane -t "$TMUX_SESSION:0.0" -T "WhatsApp"
+        tmux select-pane -t "$TMUX_SESSION:0.1" -T "Queue"
+        tmux select-pane -t "$TMUX_SESSION:0.2" -T "Heartbeat"
+        tmux select-pane -t "$TMUX_SESSION:0.3" -T "Logs"
+
+        PANE_COUNT=4
+        WHATSAPP_PANE=0
+    fi
 
     echo ""
     echo -e "${GREEN}✓ TinyClaw started${NC}"
     echo ""
 
-    # If no existing session, wait for QR code and display it
-    if [ "$SESSION_EXISTS" = false ]; then
-        echo -e "${YELLOW}📱 Waiting for QR code...${NC}"
-        echo ""
+    # WhatsApp QR code flow — only when WhatsApp is being started
+    if [ "$WHATSAPP_PANE" -ge 0 ]; then
+        if [ "$SESSION_EXISTS" = false ]; then
+            echo -e "${YELLOW}📱 Waiting for QR code...${NC}"
+            echo ""
 
-        # Wait for QR code to appear (up to 20 seconds)
-        for i in {1..20}; do
-            sleep 1
-            # Capture the WhatsApp pane with more lines (-S for scrollback, large number for full capture)
-            QR_OUTPUT=$(tmux capture-pane -t "$TMUX_SESSION:0.0" -p -S -50 2>/dev/null)
+            # Wait for QR code to appear (up to 20 seconds)
+            for i in {1..20}; do
+                sleep 1
+                QR_OUTPUT=$(tmux capture-pane -t "$TMUX_SESSION:0.$WHATSAPP_PANE" -p -S -50 2>/dev/null)
 
-            # Check if QR code is present (looks for QR pattern characters)
-            if echo "$QR_OUTPUT" | grep -q "█"; then
-                # Wait a bit more to ensure full QR code is rendered
-                sleep 2
+                if echo "$QR_OUTPUT" | grep -q "█"; then
+                    sleep 2
+                    QR_OUTPUT=$(tmux capture-pane -t "$TMUX_SESSION:0.$WHATSAPP_PANE" -p -S -50 2>/dev/null)
 
-                # Capture again to get the complete QR code
-                QR_OUTPUT=$(tmux capture-pane -t "$TMUX_SESSION:0.0" -p -S -50 2>/dev/null)
+                    clear
+                    echo ""
+                    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                    echo -e "${GREEN}                    WhatsApp QR Code${NC}"
+                    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                    echo ""
+                    echo "$QR_OUTPUT" | grep -A 100 "Scan" | head -60
+                    echo ""
+                    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                    echo ""
+                    echo -e "${YELLOW}📱 Scan this QR code with WhatsApp:${NC}"
+                    echo ""
+                    echo "   1. Open WhatsApp on your phone"
+                    echo "   2. Go to Settings → Linked Devices"
+                    echo "   3. Tap 'Link a Device'"
+                    echo "   4. Scan the QR code above"
+                    echo ""
+                    echo -e "${BLUE}Waiting for authentication...${NC}"
 
-                clear
-                echo ""
-                echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-                echo -e "${GREEN}                    WhatsApp QR Code${NC}"
-                echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-                echo ""
-                # Filter to show only the QR code and relevant messages
-                echo "$QR_OUTPUT" | grep -A 100 "Scan" | head -60
-                echo ""
-                echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-                echo ""
-                echo -e "${YELLOW}📱 Scan this QR code with WhatsApp:${NC}"
-                echo ""
-                echo "   1. Open WhatsApp on your phone"
-                echo "   2. Go to Settings → Linked Devices"
-                echo "   3. Tap 'Link a Device'"
-                echo "   4. Scan the QR code above"
-                echo ""
-                echo -e "${BLUE}Waiting for authentication...${NC}"
+                    for j in {1..30}; do
+                        sleep 1
+                        LOG_OUTPUT=$(tail -5 "$LOG_DIR/whatsapp.log" 2>/dev/null)
+                        if echo "$LOG_OUTPUT" | grep -q "authenticated\|ready"; then
+                            echo ""
+                            echo -e "${GREEN}✅ WhatsApp connected successfully!${NC}"
+                            break
+                        fi
+                        echo -n "."
+                    done
+                    echo ""
+                    break
+                fi
+            done
 
-                # Wait for authentication (watch logs)
-                for j in {1..30}; do
-                    sleep 1
-                    LOG_OUTPUT=$(tail -5 "$LOG_DIR/whatsapp.log" 2>/dev/null)
-                    if echo "$LOG_OUTPUT" | grep -q "authenticated\|ready"; then
-                        echo ""
-                        echo -e "${GREEN}✅ WhatsApp connected successfully!${NC}"
-                        break
-                    fi
-                    echo -n "."
-                done
+            if [ $i -eq 20 ]; then
                 echo ""
-                break
+                echo -e "${YELLOW}⚠️  QR code not captured in terminal${NC}"
+                echo ""
+                echo "To see the QR code, use one of these options:"
+                echo ""
+                echo -e "  ${GREEN}Option 1:${NC} ./show-qr.sh"
+                echo -e "  ${GREEN}Option 2:${NC} tmux attach -t $TMUX_SESSION"
+                echo ""
+                echo "The QR code is in the top pane."
+                echo ""
             fi
-        done
+        else
+            echo -e "${GREEN}✓ WhatsApp should connect automatically${NC}"
+            sleep 2
 
-        # If QR didn't show in terminal, give instructions
-        if [ $i -eq 20 ]; then
-            echo ""
-            echo -e "${YELLOW}⚠️  QR code not captured in terminal${NC}"
-            echo ""
-            echo "To see the QR code, use one of these options:"
-            echo ""
-            echo -e "  ${GREEN}Option 1:${NC} ./show-qr.sh"
-            echo -e "  ${GREEN}Option 2:${NC} tmux attach -t $TMUX_SESSION"
-            echo ""
-            echo "The QR code is in the top pane."
+            for i in {1..10}; do
+                sleep 1
+                LOG_OUTPUT=$(tail -5 "$LOG_DIR/whatsapp.log" 2>/dev/null)
+                if echo "$LOG_OUTPUT" | grep -q "ready"; then
+                    echo -e "${GREEN}✅ WhatsApp connected!${NC}"
+                    break
+                fi
+                echo -n "."
+            done
             echo ""
         fi
-    else
-        echo -e "${GREEN}✓ WhatsApp should connect automatically${NC}"
-        sleep 2
-
-        # Check if connected
-        for i in {1..10}; do
-            sleep 1
-            LOG_OUTPUT=$(tail -5 "$LOG_DIR/whatsapp.log" 2>/dev/null)
-            if echo "$LOG_OUTPUT" | grep -q "ready"; then
-                echo -e "${GREEN}✅ WhatsApp connected!${NC}"
-                break
-            fi
-            echo -n "."
-        done
-        echo ""
     fi
 
+    # Dynamic layout display
     echo ""
     echo -e "${BLUE}Tmux Session Layout:${NC}"
-    echo "  ┌──────────────┬──────────────┐"
-    echo "  │  WhatsApp    │    Queue     │"
-    echo "  ├──────────────┼──────────────┤"
-    echo "  │  Heartbeat   │    Logs      │"
-    echo "  └──────────────┴──────────────┘"
+    if [ "$HAS_WHATSAPP" = true ] && [ "$HAS_DISCORD" = true ]; then
+        echo "  ┌──────────┬──────────┬──────────┐"
+        echo "  │ WhatsApp │ Discord  │  Queue   │"
+        echo "  ├──────────┴──────────┼──────────┤"
+        echo "  │     Heartbeat       │   Logs   │"
+        echo "  └─────────────────────┴──────────┘"
+    elif [ "$HAS_DISCORD" = true ]; then
+        echo "  ┌──────────┬──────────┐"
+        echo "  │ Discord  │  Queue   │"
+        echo "  ├──────────┼──────────┤"
+        echo "  │Heartbeat │   Logs   │"
+        echo "  └──────────┴──────────┘"
+    else
+        echo "  ┌──────────┬──────────┐"
+        echo "  │ WhatsApp │  Queue   │"
+        echo "  ├──────────┼──────────┤"
+        echo "  │Heartbeat │   Logs   │"
+        echo "  └──────────┴──────────┘"
+    fi
     echo ""
     echo -e "${GREEN}Commands:${NC}"
     echo "  Status:  ./tinyclaw.sh status"
-    echo "  Logs:    ./tinyclaw.sh logs whatsapp"
+    echo "  Logs:    ./tinyclaw.sh logs [whatsapp|discord|queue]"
     echo "  Attach:  tmux attach -t $TMUX_SESSION"
     echo "  Stop:    ./tinyclaw.sh stop"
     echo ""
-    echo -e "${YELLOW}💬 Send a WhatsApp message to test!${NC}"
+    if [ "$HAS_WHATSAPP" = true ] && [ "$HAS_DISCORD" = true ]; then
+        echo -e "${YELLOW}Send a WhatsApp or Discord DM to test!${NC}"
+    elif [ "$HAS_DISCORD" = true ]; then
+        echo -e "${YELLOW}Send a Discord DM to test!${NC}"
+    else
+        echo -e "${YELLOW}Send a WhatsApp message to test!${NC}"
+    fi
     echo ""
 
-    log "Daemon started with 3 panes"
+    log "Daemon started with $PANE_COUNT panes (discord=$HAS_DISCORD, whatsapp=$HAS_WHATSAPP)"
 }
 
 # Stop daemon
@@ -197,6 +364,7 @@ stop_daemon() {
 
     # Kill any remaining processes
     pkill -f "dist/whatsapp-client.js" || true
+    pkill -f "dist/discord-client.js" || true
     pkill -f "dist/queue-processor.js" || true
     pkill -f "heartbeat-cron.sh" || true
 
@@ -242,6 +410,12 @@ status_daemon() {
         echo -e "WhatsApp Client: ${RED}Not Running${NC}"
     fi
 
+    if pgrep -f "dist/discord-client.js" > /dev/null; then
+        echo -e "Discord Client:  ${GREEN}Running${NC}"
+    else
+        echo -e "Discord Client:  ${RED}Not Running${NC}"
+    fi
+
     if pgrep -f "dist/queue-processor.js" > /dev/null; then
         echo -e "Queue Processor: ${GREEN}Running${NC}"
     else
@@ -255,9 +429,14 @@ status_daemon() {
     fi
 
     echo ""
-    echo "Recent Activity:"
-    echo "───────────────"
+    echo "Recent WhatsApp Activity:"
+    echo "────────────────────────"
     tail -n 5 "$LOG_DIR/whatsapp.log" 2>/dev/null || echo "  No WhatsApp activity yet"
+
+    echo ""
+    echo "Recent Discord Activity:"
+    echo "───────────────────────"
+    tail -n 5 "$LOG_DIR/discord.log" 2>/dev/null || echo "  No Discord activity yet"
 
     echo ""
     echo "Recent Heartbeats:"
@@ -267,6 +446,7 @@ status_daemon() {
     echo ""
     echo "Logs:"
     echo "  WhatsApp: tail -f $LOG_DIR/whatsapp.log"
+    echo "  Discord:  tail -f $LOG_DIR/discord.log"
     echo "  Heartbeat: tail -f $LOG_DIR/heartbeat.log"
     echo "  Daemon: tail -f $LOG_DIR/daemon.log"
 }
@@ -277,6 +457,9 @@ logs() {
         whatsapp|wa)
             tail -f "$LOG_DIR/whatsapp.log"
             ;;
+        discord|dc)
+            tail -f "$LOG_DIR/discord.log"
+            ;;
         heartbeat|hb)
             tail -f "$LOG_DIR/heartbeat.log"
             ;;
@@ -284,7 +467,7 @@ logs() {
             tail -f "$LOG_DIR/daemon.log"
             ;;
         *)
-            echo "Usage: $0 logs [whatsapp|heartbeat|daemon]"
+            echo "Usage: $0 logs [whatsapp|discord|heartbeat|daemon]"
             ;;
     esac
 }
@@ -325,18 +508,70 @@ case "${1:-}" in
     attach)
         tmux attach -t "$TMUX_SESSION"
         ;;
-    *)
-        echo -e "${BLUE}TinyClaw Simple - Claude Code + WhatsApp${NC}"
+    setup)
+        CHANNEL_CONFIG="$SCRIPT_DIR/.tinyclaw/channel"
+        MODEL_CONFIG="$SCRIPT_DIR/.tinyclaw/model"
+
         echo ""
-        echo "Usage: $0 {start|stop|restart|status|send|logs|reset|attach}"
+        echo "Which messaging channel do you want to use?"
+        echo ""
+        echo "  1) Discord"
+        echo "  2) WhatsApp"
+        echo "  3) Both"
+        echo ""
+        if [ -f "$CHANNEL_CONFIG" ]; then
+            echo -e "  ${YELLOW}Current: $(cat "$CHANNEL_CONFIG")${NC}"
+            echo ""
+        fi
+        read -rp "Choose [1-3]: " CHANNEL_CHOICE
+        case "$CHANNEL_CHOICE" in
+            1) echo "discord" > "$CHANNEL_CONFIG" ;;
+            2) echo "whatsapp" > "$CHANNEL_CONFIG" ;;
+            3) echo "both" > "$CHANNEL_CONFIG" ;;
+            *)
+                echo -e "${RED}Invalid choice${NC}"
+                exit 1
+                ;;
+        esac
+        echo -e "${GREEN}✓ Channel: $(cat "$CHANNEL_CONFIG")${NC}"
+
+        echo ""
+        echo "Which Claude model?"
+        echo ""
+        echo "  1) Sonnet  (fast, recommended)"
+        echo "  2) Opus    (smartest)"
+        echo ""
+        if [ -f "$MODEL_CONFIG" ]; then
+            echo -e "  ${YELLOW}Current: $(cat "$MODEL_CONFIG")${NC}"
+            echo ""
+        fi
+        read -rp "Choose [1-2]: " MODEL_CHOICE
+        case "$MODEL_CHOICE" in
+            1) echo "sonnet" > "$MODEL_CONFIG" ;;
+            2) echo "opus" > "$MODEL_CONFIG" ;;
+            *)
+                echo -e "${RED}Invalid choice${NC}"
+                exit 1
+                ;;
+        esac
+        echo -e "${GREEN}✓ Model: $(cat "$MODEL_CONFIG")${NC}"
+
+        echo ""
+        echo "Restart to apply: ./tinyclaw.sh restart"
+        ;;
+    *)
+        echo -e "${BLUE}TinyClaw Simple - Claude Code + WhatsApp + Discord${NC}"
+        echo ""
+        echo "Usage: $0 {start|stop|restart|status|setup|send|logs|reset|attach}"
         echo ""
         echo "Commands:"
-        echo "  start          Start TinyClaw (shows QR code for WhatsApp)"
+        echo "  start          Start TinyClaw"
         echo "  stop           Stop all processes"
         echo "  restart        Restart TinyClaw"
         echo "  status         Show current status"
+        echo "  setup          Change messaging channel (Discord/WhatsApp/Both)"
         echo "  send <msg>     Send message to Claude manually"
-        echo "  logs [type]    View logs (whatsapp|heartbeat|daemon|queue)"
+        echo "  logs [type]    View logs (whatsapp|discord|heartbeat|daemon|queue)"
         echo "  reset          Reset conversation (next message starts fresh)"
         echo "  attach         Attach to tmux session"
         echo ""
@@ -345,7 +580,7 @@ case "${1:-}" in
         echo "  $0 status"
         echo "  $0 send 'What time is it?'"
         echo "  $0 reset"
-        echo "  $0 logs queue"
+        echo "  $0 logs discord"
         echo ""
         exit 1
         ;;
