@@ -35,7 +35,14 @@ start_daemon() {
     if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
         echo -e "${YELLOW}Installing Node.js dependencies...${NC}"
         cd "$SCRIPT_DIR"
-        npm install
+        PUPPETEER_SKIP_DOWNLOAD=true npm install
+    fi
+
+    # Build TypeScript if needed
+    if [ ! -d "$SCRIPT_DIR/dist" ] || [ "$SCRIPT_DIR/src/whatsapp-client.ts" -nt "$SCRIPT_DIR/dist/whatsapp-client.js" ] || [ "$SCRIPT_DIR/src/queue-processor.ts" -nt "$SCRIPT_DIR/dist/queue-processor.js" ]; then
+        echo -e "${YELLOW}Building TypeScript...${NC}"
+        cd "$SCRIPT_DIR"
+        npm run build
     fi
 
     # Check if WhatsApp session already exists
@@ -54,10 +61,10 @@ start_daemon() {
     tmux split-window -h -t "$TMUX_SESSION:0.2" -c "$SCRIPT_DIR"
 
     # Pane 0 (top-left): WhatsApp client
-    tmux send-keys -t "$TMUX_SESSION:0.0" "cd '$SCRIPT_DIR' && node whatsapp-client.js" C-m
+    tmux send-keys -t "$TMUX_SESSION:0.0" "cd '$SCRIPT_DIR' && node dist/whatsapp-client.js" C-m
 
     # Pane 1 (top-right): Queue processor
-    tmux send-keys -t "$TMUX_SESSION:0.1" "cd '$SCRIPT_DIR' && node queue-processor.js" C-m
+    tmux send-keys -t "$TMUX_SESSION:0.1" "cd '$SCRIPT_DIR' && node dist/queue-processor.js" C-m
 
     # Pane 2 (bottom-left): Heartbeat
     tmux send-keys -t "$TMUX_SESSION:0.2" "cd '$SCRIPT_DIR' && ./heartbeat-cron.sh" C-m
@@ -189,8 +196,8 @@ stop_daemon() {
     fi
 
     # Kill any remaining processes
-    pkill -f "whatsapp-client.js" || true
-    pkill -f "queue-processor.js" || true
+    pkill -f "dist/whatsapp-client.js" || true
+    pkill -f "dist/queue-processor.js" || true
     pkill -f "heartbeat-cron.sh" || true
 
     echo -e "${GREEN}✓ TinyClaw stopped${NC}"
@@ -229,13 +236,13 @@ status_daemon() {
 
     echo ""
 
-    if pgrep -f "whatsapp-client.js" > /dev/null; then
+    if pgrep -f "dist/whatsapp-client.js" > /dev/null; then
         echo -e "WhatsApp Client: ${GREEN}Running${NC}"
     else
         echo -e "WhatsApp Client: ${RED}Not Running${NC}"
     fi
 
-    if pgrep -f "queue-processor.js" > /dev/null; then
+    if pgrep -f "dist/queue-processor.js" > /dev/null; then
         echo -e "Queue Processor: ${GREEN}Running${NC}"
     else
         echo -e "Queue Processor: ${RED}Not Running${NC}"

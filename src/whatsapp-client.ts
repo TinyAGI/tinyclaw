@@ -5,12 +5,12 @@
  * Does NOT call Claude directly - that's handled by queue-processor
  */
 
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
-const fs = require('fs');
-const path = require('path');
+import { Client, LocalAuth, Message, Chat } from 'whatsapp-web.js';
+import qrcode from 'qrcode-terminal';
+import fs from 'fs';
+import path from 'path';
 
-const SCRIPT_DIR = __dirname;
+const SCRIPT_DIR = path.resolve(__dirname, '..');
 const QUEUE_INCOMING = path.join(SCRIPT_DIR, '.tinyclaw/queue/incoming');
 const QUEUE_OUTGOING = path.join(SCRIPT_DIR, '.tinyclaw/queue/outgoing');
 const LOG_FILE = path.join(SCRIPT_DIR, '.tinyclaw/logs/whatsapp.log');
@@ -23,11 +23,35 @@ const SESSION_DIR = path.join(SCRIPT_DIR, '.tinyclaw/whatsapp-session');
     }
 });
 
+interface PendingMessage {
+    message: Message;
+    chat: Chat;
+    timestamp: number;
+}
+
+interface QueueData {
+    channel: string;
+    sender: string;
+    senderId: string;
+    message: string;
+    timestamp: number;
+    messageId: string;
+}
+
+interface ResponseData {
+    channel: string;
+    sender: string;
+    message: string;
+    originalMessage: string;
+    timestamp: number;
+    messageId: string;
+}
+
 // Track pending messages (waiting for response)
-const pendingMessages = new Map(); // messageId -> {message, chat, timestamp}
+const pendingMessages = new Map<string, PendingMessage>();
 
 // Logger
-function log(level, message) {
+function log(level: string, message: string): void {
     const timestamp = new Date().toISOString();
     const logMessage = `[${timestamp}] [${level}] ${message}\n`;
     console.log(logMessage.trim());
@@ -54,7 +78,7 @@ const client = new Client({
 });
 
 // QR Code for authentication
-client.on('qr', (qr) => {
+client.on('qr', (qr: string) => {
     log('INFO', 'Scan this QR code with WhatsApp:');
     console.log('\n');
     qrcode.generate(qr, { small: true });
@@ -74,7 +98,7 @@ client.on('ready', () => {
 });
 
 // Message received - Write to queue
-client.on('message_create', async (message) => {
+client.on('message_create', async (message: Message) => {
     try {
         // Skip outgoing messages
         if (message.fromMe) {
@@ -122,7 +146,7 @@ client.on('message_create', async (message) => {
         const messageId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
         // Write to incoming queue
-        const queueData = {
+        const queueData: QueueData = {
             channel: 'whatsapp',
             sender: sender,
             senderId: message.from,
@@ -152,12 +176,12 @@ client.on('message_create', async (message) => {
         }
 
     } catch (error) {
-        log('ERROR', `Message handling error: ${error.message}`);
+        log('ERROR', `Message handling error: ${(error as Error).message}`);
     }
 });
 
 // Watch for responses in outgoing queue
-function checkOutgoingQueue() {
+function checkOutgoingQueue(): void {
     try {
         const files = fs.readdirSync(QUEUE_OUTGOING)
             .filter(f => f.startsWith('whatsapp_') && f.endsWith('.json'));
@@ -166,7 +190,7 @@ function checkOutgoingQueue() {
             const filePath = path.join(QUEUE_OUTGOING, file);
 
             try {
-                const responseData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                const responseData: ResponseData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
                 const { messageId, message: responseText, sender } = responseData;
 
                 // Find pending message
@@ -185,12 +209,12 @@ function checkOutgoingQueue() {
                     fs.unlinkSync(filePath);
                 }
             } catch (error) {
-                log('ERROR', `Error processing response file ${file}: ${error.message}`);
+                log('ERROR', `Error processing response file ${file}: ${(error as Error).message}`);
                 // Don't delete file on error, might retry
             }
         }
     } catch (error) {
-        log('ERROR', `Outgoing queue error: ${error.message}`);
+        log('ERROR', `Outgoing queue error: ${(error as Error).message}`);
     }
 }
 
@@ -198,12 +222,12 @@ function checkOutgoingQueue() {
 setInterval(checkOutgoingQueue, 1000);
 
 // Error handlers
-client.on('auth_failure', (msg) => {
+client.on('auth_failure', (msg: string) => {
     log('ERROR', `Authentication failure: ${msg}`);
     process.exit(1);
 });
 
-client.on('disconnected', (reason) => {
+client.on('disconnected', (reason: string) => {
     log('WARN', `WhatsApp disconnected: ${reason}`);
 });
 

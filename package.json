@@ -2,12 +2,19 @@
   "name": "tinyclaw",
   "version": "1.0.0",
   "description": "TinyClaw with WhatsApp integration",
-  "main": "whatsapp-client.js",
+  "main": "dist/whatsapp-client.js",
   "scripts": {
-    "whatsapp": "node whatsapp-client.js"
+    "build": "tsc",
+    "whatsapp": "node dist/whatsapp-client.js",
+    "queue": "node dist/queue-processor.js"
   },
   "dependencies": {
-    "whatsapp-web.js": "^1.23.0",
-    "qrcode-terminal": "^0.12.0"
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.2",
+    "@types/qrcode-terminal": "^0.12.2",
+    "typescript": "^5.9.3"
   }
 }

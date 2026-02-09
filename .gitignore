@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# TypeScript build output
+dist/
+
 # TinyClaw runtime files
 .tinyclaw/logs/
 .tinyclaw/whatsapp-session/

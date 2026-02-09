@@ -4,11 +4,11 @@
  * Processes one message at a time to avoid race conditions
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
-const SCRIPT_DIR = __dirname;
+const SCRIPT_DIR = path.resolve(__dirname, '..');
 const QUEUE_INCOMING = path.join(SCRIPT_DIR, '.tinyclaw/queue/incoming');
 const QUEUE_OUTGOING = path.join(SCRIPT_DIR, '.tinyclaw/queue/outgoing');
 const QUEUE_PROCESSING = path.join(SCRIPT_DIR, '.tinyclaw/queue/processing');
@@ -22,8 +22,26 @@ const RESET_FLAG = path.join(SCRIPT_DIR, '.tinyclaw/reset_flag');
     }
 });
 
+interface MessageData {
+    channel: string;
+    sender: string;
+    senderId?: string;
+    message: string;
+    timestamp: number;
+    messageId: string;
+}
+
+interface ResponseData {
+    channel: string;
+    sender: string;
+    message: string;
+    originalMessage: string;
+    timestamp: number;
+    messageId: string;
+}
+
 // Logger
-function log(level, message) {
+function log(level: string, message: string): void {
     const timestamp = new Date().toISOString();
     const logMessage = `[${timestamp}] [${level}] ${message}\n`;
     console.log(logMessage.trim());
@@ -31,7 +49,7 @@ function log(level, message) {
 }
 
 // Process a single message
-async function processMessage(messageFile) {
+async function processMessage(messageFile: string): Promise<void> {
     const processingFile = path.join(QUEUE_PROCESSING, path.basename(messageFile));
 
     try {
@@ -39,7 +57,7 @@ async function processMessage(messageFile) {
         fs.renameSync(messageFile, processingFile);
 
         // Read message
-        const messageData = JSON.parse(fs.readFileSync(processingFile, 'utf8'));
+        const messageData: MessageData = JSON.parse(fs.readFileSync(processingFile, 'utf8'));
         const { channel, sender, message, timestamp, messageId } = messageData;
 
         log('INFO', `Processing [${channel}] from ${sender}: ${message.substring(0, 50)}...`);
@@ -54,7 +72,7 @@ async function processMessage(messageFile) {
         }
 
         // Call Claude
-        let response;
+        let response: string;
         try {
             response = execSync(
               `cd "${SCRIPT_DIR}" && claude --dangerously-skip-permissions ${continueFlag}-p "${message.replace(/"/g, '\\"')}"`,
@@ -65,7 +83,7 @@ async function processMessage(messageFile) {
               },
             );
         } catch (error) {
-            log('ERROR', `Claude error: ${error.message}`);
+            log('ERROR', `Claude error: ${(error as Error).message}`);
             response = "Sorry, I encountered an error processing your request.";
         }
 
@@ -78,7 +96,7 @@ async function processMessage(messageFile) {
         }
 
         // Write response to outgoing queue
-        const responseData = {
+        const responseData: ResponseData = {
             channel,
             sender,
             message: response,
@@ -100,24 +118,30 @@ async function processMessage(messageFile) {
         fs.unlinkSync(processingFile);
 
     } catch (error) {
-        log('ERROR', `Processing error: ${error.message}`);
+        log('ERROR', `Processing error: ${(error as Error).message}`);
 
         // Move back to incoming for retry
         if (fs.existsSync(processingFile)) {
             try {
                 fs.renameSync(processingFile, messageFile);
             } catch (e) {
-                log('ERROR', `Failed to move file back: ${e.message}`);
+                log('ERROR', `Failed to move file back: ${(e as Error).message}`);
             }
         }
     }
 }
 
+interface QueueFile {
+    name: string;
+    path: string;
+    time: number;
+}
+
 // Main processing loop
-async function processQueue() {
+async function processQueue(): Promise<void> {
     try {
         // Get all files from incoming queue, sorted by timestamp
-        const files = fs.readdirSync(QUEUE_INCOMING)
+        const files: QueueFile[] = fs.readdirSync(QUEUE_INCOMING)
             .filter(f => f.endsWith('.json'))
             .map(f => ({
                 name: f,
@@ -135,7 +159,7 @@ async function processQueue() {
             }
         }
     } catch (error) {
-        log('ERROR', `Queue processing error: ${error.message}`);
+        log('ERROR', `Queue processing error: ${(error as Error).message}`);
     }
 }
 
