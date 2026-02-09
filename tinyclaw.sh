@@ -38,11 +38,9 @@ start_daemon() {
         npm install
     fi
 
-    # Check if WhatsApp session already exists
-    SESSION_EXISTS=false
+    # Check if WhatsApp session already exists (folder check is unreliable, just informational)
     if [ -d "$SCRIPT_DIR/.tinyclaw/whatsapp-session" ] && [ "$(ls -A $SCRIPT_DIR/.tinyclaw/whatsapp-session 2>/dev/null)" ]; then
-        SESSION_EXISTS=true
-        echo -e "${GREEN}✓ WhatsApp session found, skipping QR code${NC}"
+        echo -e "${GREEN}✓ WhatsApp session found${NC}"
     fi
 
     # Create detached tmux session with 4 panes
@@ -75,88 +73,74 @@ start_daemon() {
     echo -e "${GREEN}✓ TinyClaw started${NC}"
     echo ""
 
-    # If no existing session, wait for QR code and display it
-    if [ "$SESSION_EXISTS" = false ]; then
-        echo -e "${YELLOW}📱 Waiting for QR code...${NC}"
-        echo ""
+    # Wait for WhatsApp to be ready (check ready flag, not session folder)
+    echo -e "${YELLOW}📱 Starting WhatsApp client...${NC}"
+    echo ""
 
-        # Wait for QR code to appear (up to 20 seconds)
-        for i in {1..20}; do
-            sleep 1
-            # Capture the WhatsApp pane with more lines (-S for scrollback, large number for full capture)
-            QR_OUTPUT=$(tmux capture-pane -t "$TMUX_SESSION:0.0" -p -S -50 2>/dev/null)
+    QR_FILE="$SCRIPT_DIR/.tinyclaw/channels/whatsapp_qr.txt"
+    READY_FILE="$SCRIPT_DIR/.tinyclaw/channels/whatsapp_ready"
+    QR_DISPLAYED=false
 
-            # Check if QR code is present (looks for QR pattern characters)
-            if echo "$QR_OUTPUT" | grep -q "█"; then
-                # Wait a bit more to ensure full QR code is rendered
-                sleep 2
+    # Poll for ready flag (up to 60 seconds)
+    for i in {1..60}; do
+        sleep 1
 
-                # Capture again to get the complete QR code
-                QR_OUTPUT=$(tmux capture-pane -t "$TMUX_SESSION:0.0" -p -S -50 2>/dev/null)
-
-                clear
-                echo ""
-                echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-                echo -e "${GREEN}                    WhatsApp QR Code${NC}"
-                echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-                echo ""
-                # Filter to show only the QR code and relevant messages
-                echo "$QR_OUTPUT" | grep -A 100 "Scan" | head -60
-                echo ""
-                echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-                echo ""
-                echo -e "${YELLOW}📱 Scan this QR code with WhatsApp:${NC}"
-                echo ""
-                echo "   1. Open WhatsApp on your phone"
-                echo "   2. Go to Settings → Linked Devices"
-                echo "   3. Tap 'Link a Device'"
-                echo "   4. Scan the QR code above"
-                echo ""
-                echo -e "${BLUE}Waiting for authentication...${NC}"
-
-                # Wait for authentication (watch logs)
-                for j in {1..30}; do
-                    sleep 1
-                    LOG_OUTPUT=$(tail -5 "$LOG_DIR/whatsapp.log" 2>/dev/null)
-                    if echo "$LOG_OUTPUT" | grep -q "authenticated\|ready"; then
-                        echo ""
-                        echo -e "${GREEN}✅ WhatsApp connected successfully!${NC}"
-                        break
-                    fi
-                    echo -n "."
-                done
-                echo ""
-                break
-            fi
-        done
-
-        # If QR didn't show in terminal, give instructions
-        if [ $i -eq 20 ]; then
+        # Check if ready flag exists (WhatsApp is fully connected)
+        if [ -f "$READY_FILE" ]; then
             echo ""
-            echo -e "${YELLOW}⚠️  QR code not captured in terminal${NC}"
-            echo ""
-            echo "To see the QR code, use one of these options:"
-            echo ""
-            echo -e "  ${GREEN}Option 1:${NC} ./show-qr.sh"
-            echo -e "  ${GREEN}Option 2:${NC} tmux attach -t $TMUX_SESSION"
-            echo ""
-            echo "The QR code is in the top pane."
-            echo ""
+            echo -e "${GREEN}✅ WhatsApp connected and ready!${NC}"
+            # Clean up QR code file if it exists
+            rm -f "$QR_FILE"
+            break
         fi
-    else
-        echo -e "${GREEN}✓ WhatsApp should connect automatically${NC}"
-        sleep 2
 
-        # Check if connected
-        for i in {1..10}; do
+        # Check if QR code needs to be displayed
+        if [ -f "$QR_FILE" ] && [ "$QR_DISPLAYED" = false ]; then
+            # Wait a bit more to ensure file is fully written
             sleep 1
-            LOG_OUTPUT=$(tail -5 "$LOG_DIR/whatsapp.log" 2>/dev/null)
-            if echo "$LOG_OUTPUT" | grep -q "ready"; then
-                echo -e "${GREEN}✅ WhatsApp connected!${NC}"
-                break
-            fi
+
+            clear
+            echo ""
+            echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${GREEN}                    WhatsApp QR Code${NC}"
+            echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            # Display QR code from file (no tmux distortion!)
+            cat "$QR_FILE"
+            echo ""
+            echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            echo -e "${YELLOW}📱 Scan this QR code with WhatsApp:${NC}"
+            echo ""
+            echo "   1. Open WhatsApp on your phone"
+            echo "   2. Go to Settings → Linked Devices"
+            echo "   3. Tap 'Link a Device'"
+            echo "   4. Scan the QR code above"
+            echo ""
+            echo -e "${BLUE}Waiting for connection...${NC}"
+            QR_DISPLAYED=true
+        fi
+
+        # Show progress dots (only if QR was displayed or after 10 seconds)
+        if [ "$QR_DISPLAYED" = true ] || [ $i -gt 10 ]; then
             echo -n "."
-        done
+        fi
+    done
+    echo ""
+
+    # Timeout warning
+    if [ $i -eq 60 ] && [ ! -f "$READY_FILE" ]; then
+        echo ""
+        echo -e "${RED}⚠️  WhatsApp didn't connect within 60 seconds${NC}"
+        echo ""
+        echo -e "${YELLOW}Try restarting TinyClaw:${NC}"
+        echo -e "  ${GREEN}./tinyclaw.sh restart${NC}"
+        echo ""
+        echo "Or check WhatsApp client status:"
+        echo -e "  ${GREEN}tmux attach -t $TMUX_SESSION${NC}"
+        echo ""
+        echo "Or check logs:"
+        echo -e "  ${GREEN}./tinyclaw.sh logs whatsapp${NC}"
         echo ""
     fi
 
@@ -177,7 +161,7 @@ start_daemon() {
     echo -e "${YELLOW}💬 Send a WhatsApp message to test!${NC}"
     echo ""
 
-    log "Daemon started with 3 panes"
+    log "Daemon started with 4 panes"
 }
 
 # Stop daemon
@@ -229,8 +213,14 @@ status_daemon() {
 
     echo ""
 
+    READY_FILE="$SCRIPT_DIR/.tinyclaw/channels/whatsapp_ready"
+
     if pgrep -f "whatsapp-client.js" > /dev/null; then
-        echo -e "WhatsApp Client: ${GREEN}Running${NC}"
+        if [ -f "$READY_FILE" ]; then
+            echo -e "WhatsApp Client: ${GREEN}Running & Ready${NC}"
+        else
+            echo -e "WhatsApp Client: ${YELLOW}Running (not ready yet)${NC}"
+        fi
     else
         echo -e "WhatsApp Client: ${RED}Not Running${NC}"
     fi

@@ -346,10 +346,7 @@ ls -la .tinyclaw/queue/incoming/
 ### QR code not showing
 
 ```bash
-# Use helper script
-./show-qr.sh
-
-# Or attach to tmux
+# Attach to tmux to see the QR code
 tmux attach -t tinyclaw
 ```
 

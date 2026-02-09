@@ -57,7 +57,21 @@ const client = new Client({
 client.on('qr', (qr) => {
     log('INFO', 'Scan this QR code with WhatsApp:');
     console.log('\n');
+
+    // Display in tmux pane
     qrcode.generate(qr, { small: true });
+
+    // Save to file for tinyclaw.sh to display (avoids tmux capture distortion)
+    const channelsDir = path.join(SCRIPT_DIR, '.tinyclaw/channels');
+    if (!fs.existsSync(channelsDir)) {
+        fs.mkdirSync(channelsDir, { recursive: true });
+    }
+    const qrFile = path.join(channelsDir, 'whatsapp_qr.txt');
+    qrcode.generate(qr, { small: true }, (code) => {
+        fs.writeFileSync(qrFile, code);
+        log('INFO', 'QR code saved to .tinyclaw/channels/whatsapp_qr.txt');
+    });
+
     console.log('\n');
     log('INFO', 'Open WhatsApp → Settings → Linked Devices → Link a Device');
 });
@@ -71,6 +85,10 @@ client.on('authenticated', () => {
 client.on('ready', () => {
     log('INFO', '✓ WhatsApp client connected and ready!');
     log('INFO', 'Listening for messages...');
+
+    // Create ready flag for tinyclaw.sh
+    const readyFile = path.join(SCRIPT_DIR, '.tinyclaw/channels/whatsapp_ready');
+    fs.writeFileSync(readyFile, Date.now().toString());
 });
 
 // Message received - Write to queue
@@ -205,17 +223,37 @@ client.on('auth_failure', (msg) => {
 
 client.on('disconnected', (reason) => {
     log('WARN', `WhatsApp disconnected: ${reason}`);
+
+    // Remove ready flag
+    const readyFile = path.join(SCRIPT_DIR, '.tinyclaw/channels/whatsapp_ready');
+    if (fs.existsSync(readyFile)) {
+        fs.unlinkSync(readyFile);
+    }
 });
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
     log('INFO', 'Shutting down WhatsApp client...');
+
+    // Remove ready flag
+    const readyFile = path.join(SCRIPT_DIR, '.tinyclaw/channels/whatsapp_ready');
+    if (fs.existsSync(readyFile)) {
+        fs.unlinkSync(readyFile);
+    }
+
     await client.destroy();
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
     log('INFO', 'Shutting down WhatsApp client...');
+
+    // Remove ready flag
+    const readyFile = path.join(SCRIPT_DIR, '.tinyclaw/channels/whatsapp_ready');
+    if (fs.existsSync(readyFile)) {
+        fs.unlinkSync(readyFile);
+    }
+
     await client.destroy();
     process.exit(0);
 });

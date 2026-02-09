@@ -2,7 +2,7 @@
 # Session start - Just load TinyClaw context
 
 cat << 'EOF'
-🤖 TinyClaw Lite Active
+🤖 TinyClaw Active
 
 Running in persistent mode with:
 - WhatsApp message integration
