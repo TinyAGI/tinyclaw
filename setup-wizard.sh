@@ -124,13 +124,26 @@ else
     echo "  1) GPT-4         (recommended)"
     echo "  2) GPT-4 Turbo"
     echo "  3) GPT-3.5 Turbo"
+    echo "  4) Custom (enter model name manually)"
     echo ""
-    read -rp "Choose [1-3]: " MODEL_CHOICE
+    read -rp "Choose [1-4]: " MODEL_CHOICE
 
     case "$MODEL_CHOICE" in
         1) MODEL="gpt-4" ;;
         2) MODEL="gpt-4-turbo" ;;
         3) MODEL="gpt-3.5-turbo" ;;
+        4)
+            echo ""
+            echo "Enter the OpenAI model name:"
+            echo -e "${YELLOW}(e.g., gpt-5.3-codex, gpt-4-turbo-preview, etc.)${NC}"
+            echo ""
+            read -rp "Model name: " CUSTOM_MODEL
+            if [ -z "$CUSTOM_MODEL" ]; then
+                echo -e "${RED}Model name is required${NC}"
+                exit 1
+            fi
+            MODEL="$CUSTOM_MODEL"
+            ;;
         *)
             echo -e "${RED}Invalid choice${NC}"
             exit 1

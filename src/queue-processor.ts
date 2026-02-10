@@ -55,7 +55,20 @@ interface Settings {
 function getSettings(): Settings {
     try {
         const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
-        return JSON.parse(settingsData);
+        const settings: Settings = JSON.parse(settingsData);
+
+        // Auto-detect provider if not specified
+        if (!settings?.models?.provider) {
+            if (settings?.models?.openai) {
+                if (!settings.models) settings.models = {};
+                settings.models.provider = 'openai';
+            } else if (settings?.models?.anthropic) {
+                if (!settings.models) settings.models = {};
+                settings.models.provider = 'anthropic';
+            }
+        }
+
+        return settings;
     } catch {
         return {};
     }
@@ -86,6 +99,8 @@ async function callOpenAI(message: string): Promise<string> {
 
     const openai = new OpenAI({ apiKey: openaiApiKey });
     const model = settings?.models?.openai?.model || 'gpt-4';
+
+    // Use predefined mapping if available, otherwise use the model name as-is
     const modelId = OPENAI_MODEL_IDS[model] || model;
 
     const completion = await openai.chat.completions.create({

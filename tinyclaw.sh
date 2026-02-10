@@ -597,7 +597,7 @@ case "${1:-}" in
                     echo ""
                     echo "Note: This affects the queue processor. Changes take effect on next message."
                     ;;
-                gpt-4|gpt-4-turbo|gpt-3.5-turbo)
+                gpt-*|o1-*|o3-*)
                     if [ ! -f "$SETTINGS_FILE" ]; then
                         echo -e "${RED}No settings file found. Run setup first.${NC}"
                         exit 1
@@ -619,15 +619,17 @@ case "${1:-}" in
                     echo "Note: This affects the queue processor. Changes take effect on next message."
                     ;;
                 *)
-                    echo "Usage: $0 model {sonnet|opus|gpt-4|gpt-4-turbo|gpt-3.5-turbo}"
+                    echo "Usage: $0 model {sonnet|opus|gpt-*|o1-*|o3-*}"
                     echo ""
                     echo "Examples:"
-                    echo "  $0 model                 # Show current provider and model"
-                    echo "  $0 model sonnet          # Switch to Claude Sonnet"
-                    echo "  $0 model opus            # Switch to Claude Opus"
-                    echo "  $0 model gpt-4           # Switch to OpenAI GPT-4"
-                    echo "  $0 model gpt-4-turbo     # Switch to OpenAI GPT-4 Turbo"
-                    echo "  $0 model gpt-3.5-turbo   # Switch to OpenAI GPT-3.5 Turbo"
+                    echo "  $0 model                   # Show current provider and model"
+                    echo "  $0 model sonnet            # Switch to Claude Sonnet"
+                    echo "  $0 model opus              # Switch to Claude Opus"
+                    echo "  $0 model gpt-4             # Switch to OpenAI GPT-4"
+                    echo "  $0 model gpt-4-turbo       # Switch to OpenAI GPT-4 Turbo"
+                    echo "  $0 model gpt-3.5-turbo     # Switch to OpenAI GPT-3.5 Turbo"
+                    echo "  $0 model gpt-5.3-codex     # Switch to custom OpenAI model"
+                    echo "  $0 model o1-preview        # Switch to OpenAI O1"
                     exit 1
                     ;;
             esac
