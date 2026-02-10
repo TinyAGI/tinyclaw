@@ -52,12 +52,44 @@ TinyClaw is a lightweight wrapper around [Claude Code](https://claude.com/claude
 
 ### Installation
 
-#### Option 1: CLI Tool (Recommended)
+#### Option 1: Quick Install (Recommended)
 
-Install TinyClaw as a global CLI tool that works from any directory:
+One-line install with all dependencies bundled:
 
 ```bash
-cd /path/to/tinyclaw
+curl -fsSL https://raw.githubusercontent.com/jlia0/tinyclaw/main/scripts/remote-install.sh | bash
+```
+
+This automatically:
+- Downloads pre-built bundle (no npm install needed)
+- Installs to `/opt/tinyclaw` or `~/.tinyclaw-install`
+- Creates global `tinyclaw` command
+- Falls back to source install if bundle unavailable
+
+#### Option 2: Manual from Release
+
+Download the latest release bundle:
+
+```bash
+# Download from GitHub releases
+wget https://github.com/jlia0/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
+
+# Extract
+tar -xzf tinyclaw-bundle.tar.gz
+cd tinyclaw
+
+# Install CLI globally
+./install.sh
+```
+
+#### Option 3: From Source
+
+Clone and build from source:
+
+```bash
+# Clone repository
+git clone https://github.com/jlia0/tinyclaw.git
+cd tinyclaw
 
 # Install dependencies
 npm install
@@ -66,17 +98,9 @@ npm install
 ./install.sh
 ```
 
-This creates a `tinyclaw` command you can use anywhere:
+#### Option 4: Direct Script (No CLI Install)
 
-```bash
-tinyclaw start
-tinyclaw status
-tinyclaw logs
-```
-
-#### Option 2: Direct Script
-
-Run TinyClaw from its installation directory:
+Run TinyClaw from its directory without global CLI:
 
 ```bash
 cd /path/to/tinyclaw
@@ -594,6 +618,63 @@ pm2 save
 command=/path/to/tinyclaw/tinyclaw.sh start
 autostart=true
 autorestart=true
+```
+
+## 🛠️ Development & Releases
+
+### Creating a Release Bundle
+
+For maintainers creating releases:
+
+```bash
+# Build a distributable bundle with all dependencies
+./scripts/bundle.sh
+```
+
+This creates `tinyclaw-bundle-{version}.tar.gz` with:
+- All source code
+- Pre-installed `node_modules/` (production only)
+- Compiled TypeScript (dist/)
+- All scripts and configurations
+
+Upload this bundle to GitHub Releases, and the remote installer will automatically use it!
+
+### Automated Releases
+
+The project includes a GitHub Actions workflow that automatically:
+1. Builds the bundle when you push a version tag
+2. Creates a GitHub Release
+3. Uploads the bundle as a release asset
+
+To create a new release:
+
+```bash
+# Tag a new version
+git tag v1.0.0
+git push origin v1.0.0
+
+# GitHub Actions will automatically:
+# - Build the bundle
+# - Create the release
+# - Upload the bundle
+```
+
+### Manual Bundle Testing
+
+Test a bundle locally before releasing:
+
+```bash
+# Create bundle
+./scripts/bundle.sh
+
+# Test installation
+mkdir test-install
+tar -xzf tinyclaw-bundle-*.tar.gz -C test-install --strip-components=1
+cd test-install
+./install.sh
+
+# Test the CLI
+tinyclaw status
 ```
 
 ## 🎯 Use Cases
