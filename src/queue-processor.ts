@@ -7,8 +7,6 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import OpenAI from 'openai';
-import 'dotenv/config';
 
 const SCRIPT_DIR = path.resolve(__dirname, '..');
 const QUEUE_INCOMING = path.join(SCRIPT_DIR, '.tinyclaw/queue/incoming');
@@ -24,7 +22,7 @@ const CLAUDE_MODEL_IDS: Record<string, string> = {
     'opus': 'claude-opus-4-6',
 };
 
-const OPENAI_MODEL_IDS: Record<string, string> = {
+const CODEX_MODEL_IDS: Record<string, string> = {
     'gpt-5.2': 'gpt-5.2',
     'gpt-5.3-codex': 'gpt-5.3-codex',
 };
@@ -43,7 +41,6 @@ interface Settings {
         };
         openai?: {
             model?: string;
-            api_key?: string;
         };
     };
     monitoring?: {
@@ -87,38 +84,16 @@ function getModelFlag(): string {
     return '';
 }
 
-// Call OpenAI API
-async function callOpenAI(message: string): Promise<string> {
-    const settings = getSettings();
-    const openaiApiKey = settings?.models?.openai?.api_key || process.env.OPENAI_API_KEY;
-
-    if (!openaiApiKey) {
-        throw new Error('OpenAI API key not configured');
-    }
-
-    const openai = new OpenAI({ apiKey: openaiApiKey });
-    const model = settings?.models?.openai?.model || 'gpt-5.3-codex';
-
-    // Use predefined mapping if available, otherwise use the model name as-is
-    const modelId = OPENAI_MODEL_IDS[model] || model;
-
-    const completion = await openai.chat.completions.create({
-        model: modelId,
-        messages: [
-            {
-                role: 'system',
-                content: 'You are a helpful AI assistant. Provide clear, concise, and accurate responses.'
-            },
-            {
-                role: 'user',
-                content: message
-            }
-        ],
-        temperature: 0.7,
-        max_tokens: 4000,
-    });
-
-    return completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
+function getCodexModelFlag(): string {
+    try {
+        const settings = getSettings();
+        const model = settings?.models?.openai?.model;
+        if (model) {
+            const modelId = CODEX_MODEL_IDS[model] || model;
+            return `--model ${modelId} `;
+        }
+    } catch { }
+    return '';
 }
 
 // Ensure directories exist
@@ -176,8 +151,18 @@ async function processMessage(messageFile: string): Promise<void> {
         let response: string;
         try {
             if (provider === 'openai') {
-                log('INFO', `Using OpenAI provider`);
-                response = await callOpenAI(message);
+                // Use Codex CLI
+                log('INFO', `Using Codex CLI`);
+
+                const modelFlag = getCodexModelFlag();
+                response = execSync(
+                    `cd "${SCRIPT_DIR}" && codex ${modelFlag}"${message.replace(/"/g, '\\"')}"`,
+                    {
+                        encoding: "utf-8",
+                        timeout: 0, // No timeout - wait for Codex to finish
+                        maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+                    },
+                );
             } else {
                 // Default to Claude (Anthropic)
                 log('INFO', `Using Claude provider`);
@@ -202,7 +187,7 @@ async function processMessage(messageFile: string): Promise<void> {
                 );
             }
         } catch (error) {
-            log('ERROR', `${provider === 'openai' ? 'OpenAI' : 'Claude'} error: ${(error as Error).message}`);
+            log('ERROR', `${provider === 'openai' ? 'Codex' : 'Claude'} error: ${(error as Error).message}`);
             response = "Sorry, I encountered an error processing your request.";
         }
 

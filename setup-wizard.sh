@@ -136,19 +136,6 @@ else
     esac
     echo -e "${GREEN}✓ Model: $MODEL${NC}"
     echo ""
-
-    # Get OpenAI API key
-    echo "Enter your OpenAI API key:"
-    echo -e "${YELLOW}(Get one at: https://platform.openai.com/api-keys)${NC}"
-    echo ""
-    read -rp "API Key: " OPENAI_API_KEY
-
-    if [ -z "$OPENAI_API_KEY" ]; then
-        echo -e "${RED}OpenAI API key is required${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}✓ OpenAI API key saved${NC}"
-    echo ""
 fi
 
 # Heartbeat interval
@@ -220,8 +207,7 @@ cat > "$SETTINGS_FILE" <<EOF
   "models": {
     "provider": "openai",
     "openai": {
-      "model": "${MODEL}",
-      "api_key": "${OPENAI_API_KEY}"
+      "model": "${MODEL}"
     }
   },
   "monitoring": {

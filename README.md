@@ -47,7 +47,8 @@ TinyClaw is a lightweight multi-provider AI assistant that:
 ### Prerequisites
 
 - macOS or Linux
-- [Claude Code](https://claude.com/claude-code) installed
+- [Claude Code](https://claude.com/claude-code) installed (for Anthropic provider)
+- **[Codex CLI](https://docs.openai.com/codex)** installed and authenticated (for OpenAI provider)
 - Node.js v14+
 - tmux
 - Bash 4.0+ (macOS users: `brew install bash` - system bash 3.2 won't work)
@@ -259,7 +260,7 @@ You'll get a response! 🤖
 - Processes **ONE message at a time**
 - Routes to configured AI provider:
   - **Anthropic:** Calls `claude -c -p` (supports long-running agent tasks)
-  - **OpenAI:** Calls OpenAI API with configured model
+  - **OpenAI:** Calls `codex` CLI with configured model
 - Waits indefinitely for response
 - Writes responses to outgoing queue
 
@@ -372,7 +373,7 @@ All configuration is stored in `.tinyclaw/settings.json`:
 }
 ```
 
-**OpenAI example:**
+**OpenAI (Codex CLI) example:**
 ```json
 {
   "channels": {
@@ -388,8 +389,7 @@ All configuration is stored in `.tinyclaw/settings.json`:
   "models": {
     "provider": "openai",
     "openai": {
-      "model": "gpt-5.3-codex",
-      "api_key": "YOUR_OPENAI_API_KEY"
+      "model": "gpt-5.3-codex"
     }
   },
   "monitoring": {
@@ -397,6 +397,8 @@ All configuration is stored in `.tinyclaw/settings.json`:
   }
 }
 ```
+
+**Note:** Authentication is handled by the `codex` CLI. Make sure to run `codex` and authenticate before using the OpenAI provider.
 
 To reconfigure, run:
 
@@ -497,12 +499,13 @@ Queue processor handles all channels automatically!
 **Anthropic Claude:**
 - Sonnet (fast, recommended)
 - Opus (smartest)
-- Uses `claude -c -p` for conversation continuity
+- Uses `claude -c -p` CLI for conversation continuity
 
-**OpenAI:**
+**OpenAI Codex:**
 - GPT-5.3 Codex (recommended)
 - GPT-5.2
-- Uses OpenAI API for responses
+- Uses `codex` CLI for responses
+- Requires Codex CLI to be installed and authenticated
 
 Switch providers and models in one command:
 ```bash

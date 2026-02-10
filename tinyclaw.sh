@@ -200,13 +200,6 @@ start_daemon() {
         fi
     done
 
-    # Add OpenAI API key if configured
-    local openai_key
-    openai_key=$(jq -r '.models.openai.api_key // empty' "$SETTINGS_FILE" 2>/dev/null)
-    if [ -n "$openai_key" ]; then
-        echo "OPENAI_API_KEY=${openai_key}" >> "$env_file"
-    fi
-
     # Report channels
     echo -e "${BLUE}Channels:${NC}"
     for ch in "${ACTIVE_CHANNELS[@]}"; do
@@ -613,25 +606,21 @@ case "${1:-}" in
                         exit 1
                     fi
 
-                    # Check if OpenAI API key is configured
-                    OPENAI_KEY=$(jq -r '.models.openai.api_key // empty' "$SETTINGS_FILE" 2>/dev/null)
-                    if [ -z "$OPENAI_KEY" ]; then
-                        echo -e "${RED}OpenAI API key not configured. Run './tinyclaw.sh setup' to configure.${NC}"
-                        exit 1
-                    fi
-
-                    # Switch to OpenAI provider
+                    # Switch to OpenAI provider (using Codex CLI)
                     local tmp_file="$SETTINGS_FILE.tmp"
                     if [ -n "$MODEL_ARG" ]; then
                         # Set both provider and model (supports any model name)
                         jq ".models.provider = \"openai\" | .models.openai.model = \"$MODEL_ARG\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
-                        echo -e "${GREEN}✓ Switched to OpenAI provider with model: $MODEL_ARG${NC}"
+                        echo -e "${GREEN}✓ Switched to OpenAI/Codex provider with model: $MODEL_ARG${NC}"
+                        echo ""
+                        echo "Note: Make sure you have the 'codex' CLI installed and authenticated."
                     else
                         # Set provider only
                         jq ".models.provider = \"openai\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
-                        echo -e "${GREEN}✓ Switched to OpenAI provider${NC}"
+                        echo -e "${GREEN}✓ Switched to OpenAI/Codex provider${NC}"
                         echo ""
                         echo "Use './tinyclaw.sh model {gpt-5.3-codex|gpt-5.2}' to set the model."
+                        echo "Note: Make sure you have the 'codex' CLI installed and authenticated."
                     fi
                     ;;
                 *)
@@ -688,13 +677,6 @@ case "${1:-}" in
                 gpt-5.2|gpt-5.3-codex)
                     if [ ! -f "$SETTINGS_FILE" ]; then
                         echo -e "${RED}No settings file found. Run setup first.${NC}"
-                        exit 1
-                    fi
-
-                    # Check if OpenAI API key is configured
-                    OPENAI_KEY=$(jq -r '.models.openai.api_key // empty' "$SETTINGS_FILE" 2>/dev/null)
-                    if [ -z "$OPENAI_KEY" ]; then
-                        echo -e "${RED}OpenAI API key not configured. Run './tinyclaw.sh setup' to configure.${NC}"
                         exit 1
                     fi
 
