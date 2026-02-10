@@ -1,5 +1,5 @@
 #!/bin/bash
-# Heartbeat - Periodically prompts Claude via queue system
+# Heartbeat - Periodically prompts active provider via queue system
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HEARTBEAT_FILE="$SCRIPT_DIR/.tinyclaw/heartbeat.md"

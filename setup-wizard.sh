@@ -55,28 +55,71 @@ if [[ "$CHANNEL" == "discord" ]] || [[ "$CHANNEL" == "both" ]]; then
     echo ""
 fi
 
-# Model selection
-echo "Which Claude model?"
+# CLI provider selection
+echo "Which AI CLI provider?"
 echo ""
-echo "  1) Sonnet  (fast, recommended)"
-echo "  2) Opus    (smartest)"
+echo "  1) Claude CLI"
+echo "  2) Codex CLI"
 echo ""
-read -rp "Choose [1-2]: " MODEL_CHOICE
+read -rp "Choose [1-2]: " PROVIDER_CHOICE
 
-case "$MODEL_CHOICE" in
-    1) MODEL="sonnet" ;;
-    2) MODEL="opus" ;;
+case "$PROVIDER_CHOICE" in
+    1) CLI_PROVIDER="claude" ;;
+    2) CLI_PROVIDER="codex" ;;
     *)
         echo -e "${RED}Invalid choice${NC}"
         exit 1
         ;;
 esac
-echo -e "${GREEN}✓ Model: $MODEL${NC}"
+echo -e "${GREEN}✓ Provider: $CLI_PROVIDER${NC}"
+echo ""
+
+# Model selection (provider-specific)
+CLAUDE_MODEL="sonnet"
+CODEX_MODEL="gpt5codex"
+
+if [ "$CLI_PROVIDER" = "claude" ]; then
+    echo "Which Claude model?"
+    echo ""
+    echo "  1) Sonnet  (fast, recommended)"
+    echo "  2) Opus    (smartest)"
+    echo ""
+    read -rp "Choose [1-2]: " MODEL_CHOICE
+
+    case "$MODEL_CHOICE" in
+        1) CLAUDE_MODEL="sonnet" ;;
+        2) CLAUDE_MODEL="opus" ;;
+        *)
+            echo -e "${RED}Invalid choice${NC}"
+            exit 1
+            ;;
+    esac
+    echo -e "${GREEN}✓ Claude model: $CLAUDE_MODEL${NC}"
+else
+    echo "Which Codex model?"
+    echo ""
+    echo "  1) GPT-5.3-Codex      (recommended)"
+    echo "  2) GPT-5.2"
+    echo "  3) GPT-5.1-Codex-Mini"
+    echo ""
+    read -rp "Choose [1-3]: " MODEL_CHOICE
+
+    case "$MODEL_CHOICE" in
+        1) CODEX_MODEL="gpt5codex" ;;
+        2) CODEX_MODEL="gpt5" ;;
+        3) CODEX_MODEL="gpt5mini" ;;
+        *)
+            echo -e "${RED}Invalid choice${NC}"
+            exit 1
+            ;;
+    esac
+    echo -e "${GREEN}✓ Codex model: $CODEX_MODEL${NC}"
+fi
 echo ""
 
 # Heartbeat interval
 echo "Heartbeat interval (seconds)?"
-echo -e "${YELLOW}(How often Claude checks in proactively)${NC}"
+echo -e "${YELLOW}(How often TinyClaw checks in proactively)${NC}"
 echo ""
 read -rp "Interval [default: 500]: " HEARTBEAT_INPUT
 HEARTBEAT_INTERVAL=${HEARTBEAT_INPUT:-500}
@@ -90,14 +133,16 @@ echo -e "${GREEN}✓ Heartbeat interval: ${HEARTBEAT_INTERVAL}s${NC}"
 echo ""
 
 # Write settings.json
-cat > "$SETTINGS_FILE" <<EOF
+cat > "$SETTINGS_FILE" <<EOF2
 {
   "channel": "$CHANNEL",
-  "model": "$MODEL",
+  "cli_provider": "$CLI_PROVIDER",
+  "claude_model": "$CLAUDE_MODEL",
+  "codex_model": "$CODEX_MODEL",
   "discord_bot_token": "$DISCORD_TOKEN",
   "heartbeat_interval": $HEARTBEAT_INTERVAL
 }
-EOF
+EOF2
 
 echo -e "${GREEN}✓ Configuration saved to .tinyclaw/settings.json${NC}"
 echo ""

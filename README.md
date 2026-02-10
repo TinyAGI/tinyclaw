@@ -4,7 +4,7 @@ Minimal multi-channel AI assistant with Discord and WhatsApp integration.
 
 ## 🎯 What is TinyClaw?
 
-TinyClaw is a lightweight wrapper around [Claude Code](https://claude.com/claude-code) that:
+TinyClaw is a lightweight wrapper around Claude CLI and Codex CLI that:
 
 - ✅ Connects Discord (via bot token) and WhatsApp (via QR code)
 - ✅ Processes messages sequentially (no race conditions)
@@ -32,7 +32,7 @@ TinyClaw is a lightweight wrapper around [Claude Code](https://claude.com/claude
 │  (future)       │  │   │  Processor   │
 └─────────────────┘  │   └──────────────┘
                      │        ↓
-                     │   claude -c -p
+                     │   Provider runtime (claude/codex)
                      │        ↓
                      │   Queue (outgoing/)
                      │        ↓
@@ -45,7 +45,9 @@ TinyClaw is a lightweight wrapper around [Claude Code](https://claude.com/claude
 ### Prerequisites
 
 - macOS or Linux
-- [Claude Code](https://claude.com/claude-code) installed
+- One or both of:
+  - Claude CLI
+  - [Codex CLI](https://developers.openai.com/codex/cli/)
 - Node.js v14+
 - tmux
 
@@ -87,17 +89,27 @@ Token: YOUR_DISCORD_BOT_TOKEN_HERE
 
 ✓ Discord token saved
 
-Which Claude model?
+Which AI CLI provider?
 
-  1) Sonnet  (fast, recommended)
-  2) Opus    (smartest)
+  1) Claude CLI
+  2) Codex CLI
 
-Choose [1-2]: 1
+Choose [1-2]: 2
 
-✓ Model: sonnet
+✓ Provider: codex
+
+Which Codex model?
+
+  1) GPT-5.3-Codex      (recommended)
+  2) GPT-5.2
+  3) GPT-5.1-Codex-Mini
+
+Choose [1-3]: 1
+
+✓ Codex model: gpt5codex
 
 Heartbeat interval (seconds)?
-(How often Claude checks in proactively)
+(How often TinyClaw checks in proactively)
 
 Interval [default: 500]: 500
 
@@ -146,7 +158,7 @@ You'll get a response! 🤖
 # Start TinyClaw
 ./tinyclaw.sh start
 
-# Run setup wizard (change channels/model/heartbeat)
+# Run setup wizard (change channels/provider/model/heartbeat)
 ./tinyclaw.sh setup
 
 # Check status
@@ -162,10 +174,18 @@ You'll get a response! 🤖
 ./tinyclaw.sh channels reset whatsapp  # Clear WhatsApp session
 ./tinyclaw.sh channels reset discord   # Shows Discord reset instructions
 
-# Switch Claude model
-./tinyclaw.sh model           # Show current model
-./tinyclaw.sh model sonnet    # Switch to Sonnet (fast)
-./tinyclaw.sh model opus      # Switch to Opus (smartest)
+# Show or switch CLI provider
+./tinyclaw.sh cli             # Show current provider
+./tinyclaw.sh cli claude
+./tinyclaw.sh cli codex
+
+# Switch provider-specific models
+./tinyclaw.sh model                           # Show active provider/model
+./tinyclaw.sh model claude sonnet            # Claude Sonnet
+./tinyclaw.sh model claude opus              # Claude Opus
+./tinyclaw.sh model codex gpt5codex          # GPT-5.3-Codex
+./tinyclaw.sh model codex gpt5               # GPT-5.2
+./tinyclaw.sh model codex gpt5mini           # GPT-5.1-Codex-Mini
 
 # View logs
 ./tinyclaw.sh logs whatsapp   # WhatsApp activity
@@ -190,7 +210,7 @@ You'll get a response! 🤖
 - Interactive setup on first run
 - Configures channels (Discord/WhatsApp/Both)
 - Collects Discord bot token
-- Selects Claude model
+- Selects provider and provider-specific model
 - Writes to `.tinyclaw/settings.json`
 
 ### 2. discord-client.ts
@@ -212,7 +232,7 @@ You'll get a response! 🤖
 
 - Polls incoming queue
 - Processes **ONE message at a time**
-- Calls `claude -c -p`
+- Calls selected provider (`claude` or `codex`)
 - Writes responses to outgoing queue
 
 ### 5. heartbeat-cron.sh
@@ -237,7 +257,7 @@ Client writes to:
        ↓
 queue-processor.ts picks it up
        ↓
-Runs: claude -c -p "message"
+Runs: provider-specific command ("claude ... -c -p" or "codex exec/resume --json")
        ↓
 Writes to:
   .tinyclaw/queue/outgoing/{discord|whatsapp}_<id>.json
@@ -251,11 +271,9 @@ User receives reply
 
 ```
 tinyclaw/
-├── .claude/              # Claude Code config
-│   ├── settings.json     # Hooks config
-│   └── hooks/            # Hook scripts
 ├── .tinyclaw/            # TinyClaw data
-│   ├── settings.json     # Configuration (channel, model, tokens)
+│   ├── settings.json     # Configuration (channel, provider, models, tokens)
+│   ├── codex_thread_id   # Codex shared thread state
 │   ├── queue/
 │   │   ├── incoming/     # New messages
 │   │   ├── processing/   # Being processed
@@ -301,7 +319,9 @@ All configuration is stored in `.tinyclaw/settings.json`:
 ```json
 {
   "channel": "both",
-  "model": "sonnet",
+  "cli_provider": "codex",
+  "claude_model": "sonnet",
+  "codex_model": "gpt5codex",
   "discord_bot_token": "YOUR_TOKEN_HERE",
   "heartbeat_interval": 500
 }
@@ -313,7 +333,7 @@ To reconfigure, run:
 ```
 
 The heartbeat interval is in seconds (default: 500s = ~8 minutes).
-This controls how often Claude proactively checks in.
+This controls how often TinyClaw proactively checks in.
 
 ### Heartbeat Prompt
 
@@ -396,11 +416,11 @@ Queue processor handles all channels automatically!
 
 ### ✅ Clean Responses
 
-Uses `claude -c -p`:
+Uses provider-specific execution:
 
-- `-c` = continue conversation
-- `-p` = print mode (clean output)
-- No tmux capture needed
+- Claude provider: `claude ... -c -p`
+- Codex provider: `codex exec resume --json ...` with fallback to `codex exec --json ...`
+- Codex thread state is stored in `.tinyclaw/codex_thread_id`
 
 ### ✅ Persistent Sessions
 
@@ -419,7 +439,7 @@ WhatsApp session persists across restarts:
 - WhatsApp session stored locally in `.tinyclaw/whatsapp-session/`
 - Queue files are local (no network exposure)
 - Each channel handles its own authentication
-- Claude runs with your user permissions
+- Selected provider CLI runs with your user permissions
 
 ## 🐛 Troubleshooting
 
@@ -495,18 +515,18 @@ autorestart=true
 
 ```
 You: "Remind me to call mom"
-Claude: "I'll remind you!"
+Assistant: "I'll remind you!"
 [5 minutes later via heartbeat]
-Claude: "Don't forget to call mom!"
+Assistant: "Don't forget to call mom!"
 ```
 
 ### Code Helper
 
 ```
 You: "Review my code"
-Claude: [reads files, provides feedback]
+Assistant: [reads files, provides feedback]
 You: "Fix the bug"
-Claude: [fixes and commits]
+Assistant: [fixes and commits]
 ```
 
 ### Multi-Device
@@ -515,12 +535,12 @@ Claude: [fixes and commits]
 - Discord on desktop/mobile
 - CLI for scripts
 
-All channels share the same Claude conversation!
+All channels share the same active provider conversation context!
 
 ## 🙏 Credits
 
 - Inspired by [OpenClaw](https://openclaw.ai/) by Peter Steinberger
-- Built on [Claude Code](https://claude.com/claude-code)
+- Built around Claude CLI and [Codex CLI](https://developers.openai.com/codex/cli/)
 - Uses [discord.js](https://discord.js.org/)
 - Uses [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js)
 

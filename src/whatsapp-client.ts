@@ -2,7 +2,7 @@
 /**
  * WhatsApp Client for TinyClaw Simple
  * Writes messages to queue and reads responses
- * Does NOT call Claude directly - that's handled by queue-processor
+ * Does NOT call AI CLI directly - that's handled by queue-processor
  */
 
 import { Client, LocalAuth, Message, Chat } from 'whatsapp-web.js';

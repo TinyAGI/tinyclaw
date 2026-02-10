@@ -2,7 +2,7 @@
 /**
  * Discord Client for TinyClaw Simple
  * Writes DM messages to queue and reads responses
- * Does NOT call Claude directly - that's handled by queue-processor
+ * Does NOT call AI CLI directly - that's handled by queue-processor
  */
 
 import { Client, Events, GatewayIntentBits, Partials, Message, DMChannel } from 'discord.js';
