@@ -565,13 +565,28 @@ case "${1:-}" in
         if [ -z "$2" ]; then
             if [ -f "$SETTINGS_FILE" ]; then
                 CURRENT_PROVIDER=$(jq -r '.models.provider // "anthropic"' "$SETTINGS_FILE" 2>/dev/null)
+                if [ "$CURRENT_PROVIDER" = "openai" ]; then
+                    CURRENT_MODEL=$(jq -r '.models.openai.model // empty' "$SETTINGS_FILE" 2>/dev/null)
+                else
+                    CURRENT_MODEL=$(jq -r '.models.anthropic.model // empty' "$SETTINGS_FILE" 2>/dev/null)
+                fi
                 echo -e "${BLUE}Current provider: ${GREEN}$CURRENT_PROVIDER${NC}"
+                if [ -n "$CURRENT_MODEL" ]; then
+                    echo -e "${BLUE}Current model: ${GREEN}$CURRENT_MODEL${NC}"
+                fi
             else
                 echo -e "${RED}No settings file found${NC}"
                 exit 1
             fi
         else
-            case "$2" in
+            # Parse optional --model flag
+            PROVIDER_ARG="$2"
+            MODEL_ARG=""
+            if [ "$3" = "--model" ] && [ -n "$4" ]; then
+                MODEL_ARG="$4"
+            fi
+
+            case "$PROVIDER_ARG" in
                 anthropic)
                     if [ ! -f "$SETTINGS_FILE" ]; then
                         echo -e "${RED}No settings file found. Run setup first.${NC}"
@@ -580,12 +595,17 @@ case "${1:-}" in
 
                     # Switch to Anthropic provider
                     local tmp_file="$SETTINGS_FILE.tmp"
-                    jq ".models.provider = \"anthropic\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
-
-                    echo -e "${GREEN}✓ Switched to Anthropic provider${NC}"
-                    echo ""
-                    echo "Note: Make sure you have an Anthropic model configured."
-                    echo "Use './tinyclaw.sh model {sonnet|opus}' to set the model."
+                    if [ -n "$MODEL_ARG" ]; then
+                        # Set both provider and model
+                        jq ".models.provider = \"anthropic\" | .models.anthropic.model = \"$MODEL_ARG\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                        echo -e "${GREEN}✓ Switched to Anthropic provider with model: $MODEL_ARG${NC}"
+                    else
+                        # Set provider only
+                        jq ".models.provider = \"anthropic\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                        echo -e "${GREEN}✓ Switched to Anthropic provider${NC}"
+                        echo ""
+                        echo "Use './tinyclaw.sh model {sonnet|opus}' to set the model."
+                    fi
                     ;;
                 openai)
                     if [ ! -f "$SETTINGS_FILE" ]; then
@@ -602,20 +622,28 @@ case "${1:-}" in
 
                     # Switch to OpenAI provider
                     local tmp_file="$SETTINGS_FILE.tmp"
-                    jq ".models.provider = \"openai\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
-
-                    echo -e "${GREEN}✓ Switched to OpenAI provider${NC}"
-                    echo ""
-                    echo "Note: Make sure you have an OpenAI model configured."
-                    echo "Use './tinyclaw.sh model {gpt-5.3-codex|gpt-5.2}' to set the model."
+                    if [ -n "$MODEL_ARG" ]; then
+                        # Set both provider and model (supports any model name)
+                        jq ".models.provider = \"openai\" | .models.openai.model = \"$MODEL_ARG\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                        echo -e "${GREEN}✓ Switched to OpenAI provider with model: $MODEL_ARG${NC}"
+                    else
+                        # Set provider only
+                        jq ".models.provider = \"openai\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                        echo -e "${GREEN}✓ Switched to OpenAI provider${NC}"
+                        echo ""
+                        echo "Use './tinyclaw.sh model {gpt-5.3-codex|gpt-5.2}' to set the model."
+                    fi
                     ;;
                 *)
-                    echo "Usage: $0 provider {anthropic|openai}"
+                    echo "Usage: $0 provider {anthropic|openai} [--model MODEL_NAME]"
                     echo ""
                     echo "Examples:"
-                    echo "  $0 provider              # Show current provider"
-                    echo "  $0 provider anthropic    # Switch to Anthropic (Claude)"
-                    echo "  $0 provider openai       # Switch to OpenAI"
+                    echo "  $0 provider                                    # Show current provider and model"
+                    echo "  $0 provider anthropic                          # Switch to Anthropic"
+                    echo "  $0 provider openai                             # Switch to OpenAI"
+                    echo "  $0 provider anthropic --model sonnet           # Switch to Anthropic with Sonnet"
+                    echo "  $0 provider openai --model gpt-5.3-codex       # Switch to OpenAI with GPT-5.3 Codex"
+                    echo "  $0 provider openai --model gpt-4o              # Switch to OpenAI with custom model"
                     exit 1
                     ;;
             esac
@@ -720,15 +748,15 @@ case "${1:-}" in
         echo "  logs [type]              View logs ($local_names|heartbeat|daemon|queue|all)"
         echo "  reset                    Reset conversation (next message starts fresh)"
         echo "  channels reset <channel> Reset channel auth ($local_names)"
-        echo "  provider [name]          Show or switch AI provider (anthropic|openai)"
+        echo "  provider [name] [--model model]  Show or switch AI provider"
         echo "  model [name]             Show or switch AI model"
         echo "  attach                   Attach to tmux session"
         echo ""
         echo "Examples:"
         echo "  $0 start"
         echo "  $0 status"
-        echo "  $0 provider openai"
-        echo "  $0 model gpt-5.3-codex"
+        echo "  $0 provider openai --model gpt-5.3-codex"
+        echo "  $0 model opus"
         echo "  $0 send 'What time is it?'"
         echo "  $0 channels reset whatsapp"
         echo "  $0 logs telegram"

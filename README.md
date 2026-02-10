@@ -191,16 +191,16 @@ You'll get a response! 🤖
 ./tinyclaw.sh channels reset discord   # Shows Discord reset instructions
 ./tinyclaw.sh channels reset telegram  # Shows Telegram reset instructions
 
-# Switch AI provider
-./tinyclaw.sh provider              # Show current provider
-./tinyclaw.sh provider anthropic    # Switch to Anthropic (Claude)
-./tinyclaw.sh provider openai       # Switch to OpenAI
+# Switch AI provider (one-step command)
+./tinyclaw.sh provider                                   # Show current provider and model
+./tinyclaw.sh provider anthropic --model sonnet          # Switch to Anthropic with Sonnet
+./tinyclaw.sh provider openai --model gpt-5.3-codex      # Switch to OpenAI with GPT-5.3 Codex
+./tinyclaw.sh provider openai --model gpt-4o             # Switch to OpenAI with custom model
 
-# Switch AI model
-./tinyclaw.sh model                 # Show current model
-./tinyclaw.sh model sonnet          # Switch to Claude Sonnet (fast)
-./tinyclaw.sh model opus            # Switch to Claude Opus (smartest)
-./tinyclaw.sh model gpt-5.3-codex   # Switch to OpenAI GPT-5.3 Codex
+# Or switch provider/model separately
+./tinyclaw.sh provider anthropic    # Switch to Anthropic only
+./tinyclaw.sh model sonnet          # Then switch model
+./tinyclaw.sh model opus            # Switch to Claude Opus
 ./tinyclaw.sh model gpt-5.2         # Switch to OpenAI GPT-5.2
 
 # View logs
@@ -504,10 +504,17 @@ Queue processor handles all channels automatically!
 - GPT-5.2
 - Uses OpenAI API for responses
 
-Switch providers anytime:
+Switch providers and models in one command:
 ```bash
+# One-step command (recommended)
+./tinyclaw.sh provider openai --model gpt-5.3-codex
+
+# Or two-step
 ./tinyclaw.sh provider openai
 ./tinyclaw.sh model gpt-5.3-codex
+
+# Custom OpenAI model
+./tinyclaw.sh provider openai --model gpt-4o
 ```
 
 ### ✅ Persistent Sessions
