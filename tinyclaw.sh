@@ -200,6 +200,13 @@ start_daemon() {
         fi
     done
 
+    # Add OpenAI API key if configured
+    local openai_key
+    openai_key=$(jq -r '.models.openai.api_key // empty' "$SETTINGS_FILE" 2>/dev/null)
+    if [ -n "$openai_key" ]; then
+        echo "OPENAI_API_KEY=${openai_key}" >> "$env_file"
+    fi
+
     # Report channels
     echo -e "${BLUE}Channels:${NC}"
     for ch in "${ACTIVE_CHANNELS[@]}"; do
@@ -557,8 +564,14 @@ case "${1:-}" in
     model)
         if [ -z "$2" ]; then
             if [ -f "$SETTINGS_FILE" ]; then
-                CURRENT_MODEL=$(jq -r '.models.anthropic.model // empty' "$SETTINGS_FILE" 2>/dev/null)
+                CURRENT_PROVIDER=$(jq -r '.models.provider // "anthropic"' "$SETTINGS_FILE" 2>/dev/null)
+                if [ "$CURRENT_PROVIDER" = "openai" ]; then
+                    CURRENT_MODEL=$(jq -r '.models.openai.model // empty' "$SETTINGS_FILE" 2>/dev/null)
+                else
+                    CURRENT_MODEL=$(jq -r '.models.anthropic.model // empty' "$SETTINGS_FILE" 2>/dev/null)
+                fi
                 if [ -n "$CURRENT_MODEL" ]; then
+                    echo -e "${BLUE}Current provider: ${GREEN}$CURRENT_PROVIDER${NC}"
                     echo -e "${BLUE}Current model: ${GREEN}$CURRENT_MODEL${NC}"
                 else
                     echo -e "${RED}No model configured${NC}"
@@ -576,21 +589,45 @@ case "${1:-}" in
                         exit 1
                     fi
 
-                    # Update model using jq
+                    # Update provider and model using jq
                     local tmp_file="$SETTINGS_FILE.tmp"
-                    jq ".models.anthropic.model = \"$2\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                    jq ".models.provider = \"anthropic\" | .models.anthropic.model = \"$2\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
 
-                    echo -e "${GREEN}✓ Model switched to: $2${NC}"
+                    echo -e "${GREEN}✓ Switched to Anthropic Claude $2${NC}"
+                    echo ""
+                    echo "Note: This affects the queue processor. Changes take effect on next message."
+                    ;;
+                gpt-4|gpt-4-turbo|gpt-3.5-turbo)
+                    if [ ! -f "$SETTINGS_FILE" ]; then
+                        echo -e "${RED}No settings file found. Run setup first.${NC}"
+                        exit 1
+                    fi
+
+                    # Check if OpenAI API key is configured
+                    OPENAI_KEY=$(jq -r '.models.openai.api_key // empty' "$SETTINGS_FILE" 2>/dev/null)
+                    if [ -z "$OPENAI_KEY" ]; then
+                        echo -e "${RED}OpenAI API key not configured. Run './tinyclaw.sh setup' to configure.${NC}"
+                        exit 1
+                    fi
+
+                    # Update provider and model using jq
+                    local tmp_file="$SETTINGS_FILE.tmp"
+                    jq ".models.provider = \"openai\" | .models.openai.model = \"$2\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+
+                    echo -e "${GREEN}✓ Switched to OpenAI $2${NC}"
                     echo ""
                     echo "Note: This affects the queue processor. Changes take effect on next message."
                     ;;
                 *)
-                    echo "Usage: $0 model {sonnet|opus}"
+                    echo "Usage: $0 model {sonnet|opus|gpt-4|gpt-4-turbo|gpt-3.5-turbo}"
                     echo ""
                     echo "Examples:"
-                    echo "  $0 model          # Show current model"
-                    echo "  $0 model sonnet   # Switch to Sonnet"
-                    echo "  $0 model opus     # Switch to Opus"
+                    echo "  $0 model                 # Show current provider and model"
+                    echo "  $0 model sonnet          # Switch to Claude Sonnet"
+                    echo "  $0 model opus            # Switch to Claude Opus"
+                    echo "  $0 model gpt-4           # Switch to OpenAI GPT-4"
+                    echo "  $0 model gpt-4-turbo     # Switch to OpenAI GPT-4 Turbo"
+                    echo "  $0 model gpt-3.5-turbo   # Switch to OpenAI GPT-3.5 Turbo"
                     exit 1
                     ;;
             esac
@@ -618,13 +655,14 @@ case "${1:-}" in
         echo "  logs [type]              View logs ($local_names|heartbeat|daemon|queue|all)"
         echo "  reset                    Reset conversation (next message starts fresh)"
         echo "  channels reset <channel> Reset channel auth ($local_names)"
-        echo "  model [sonnet|opus]      Show or switch Claude model"
+        echo "  model [model]            Show or switch AI provider/model"
         echo "  attach                   Attach to tmux session"
         echo ""
         echo "Examples:"
         echo "  $0 start"
         echo "  $0 status"
         echo "  $0 model opus"
+        echo "  $0 model gpt-4"
         echo "  $0 send 'What time is it?'"
         echo "  $0 channels reset whatsapp"
         echo "  $0 logs telegram"

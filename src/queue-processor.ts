@@ -7,6 +7,8 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import OpenAI from 'openai';
+import 'dotenv/config';
 
 const SCRIPT_DIR = path.resolve(__dirname, '..');
 const QUEUE_INCOMING = path.join(SCRIPT_DIR, '.tinyclaw/queue/incoming');
@@ -17,9 +19,15 @@ const RESET_FLAG = path.join(SCRIPT_DIR, '.tinyclaw/reset_flag');
 const SETTINGS_FILE = path.join(SCRIPT_DIR, '.tinyclaw/settings.json');
 
 // Model name mapping
-const MODEL_IDS: Record<string, string> = {
+const CLAUDE_MODEL_IDS: Record<string, string> = {
     'sonnet': 'claude-sonnet-4-5',
     'opus': 'claude-opus-4-6',
+};
+
+const OPENAI_MODEL_IDS: Record<string, string> = {
+    'gpt-4': 'gpt-4',
+    'gpt-4-turbo': 'gpt-4-turbo-preview',
+    'gpt-3.5-turbo': 'gpt-3.5-turbo',
 };
 
 interface Settings {
@@ -30,8 +38,13 @@ interface Settings {
         whatsapp?: {};
     };
     models?: {
+        provider?: string; // 'anthropic' or 'openai'
         anthropic?: {
             model?: string;
+        };
+        openai?: {
+            model?: string;
+            api_key?: string;
         };
     };
     monitoring?: {
@@ -39,19 +52,59 @@ interface Settings {
     };
 }
 
-function getModelFlag(): string {
+function getSettings(): Settings {
     try {
         const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
-        const settings: Settings = JSON.parse(settingsData);
+        return JSON.parse(settingsData);
+    } catch {
+        return {};
+    }
+}
+
+function getModelFlag(): string {
+    try {
+        const settings = getSettings();
         const model = settings?.models?.anthropic?.model;
         if (model) {
-            const modelId = MODEL_IDS[model];
+            const modelId = CLAUDE_MODEL_IDS[model];
             if (modelId) {
                 return `--model ${modelId} `;
             }
         }
     } catch { }
     return '';
+}
+
+// Call OpenAI API
+async function callOpenAI(message: string): Promise<string> {
+    const settings = getSettings();
+    const openaiApiKey = settings?.models?.openai?.api_key || process.env.OPENAI_API_KEY;
+
+    if (!openaiApiKey) {
+        throw new Error('OpenAI API key not configured');
+    }
+
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+    const model = settings?.models?.openai?.model || 'gpt-4';
+    const modelId = OPENAI_MODEL_IDS[model] || model;
+
+    const completion = await openai.chat.completions.create({
+        model: modelId,
+        messages: [
+            {
+                role: 'system',
+                content: 'You are a helpful AI assistant. Provide clear, concise, and accurate responses.'
+            },
+            {
+                role: 'user',
+                content: message
+            }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000,
+    });
+
+    return completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
 }
 
 // Ensure directories exist
@@ -101,29 +154,41 @@ async function processMessage(messageFile: string): Promise<void> {
 
         log('INFO', `Processing [${channel}] from ${sender}: ${message.substring(0, 50)}...`);
 
-        // Check if we should reset conversation (start fresh without -c)
-        const shouldReset = fs.existsSync(RESET_FLAG);
-        const continueFlag = shouldReset ? '' : '-c ';
+        // Get provider setting
+        const settings = getSettings();
+        const provider = settings?.models?.provider || 'anthropic';
 
-        if (shouldReset) {
-            log('INFO', '🔄 Resetting conversation (starting fresh without -c)');
-            fs.unlinkSync(RESET_FLAG);
-        }
-
-        // Call Claude
+        // Call AI provider
         let response: string;
         try {
-            const modelFlag = getModelFlag();
-            response = execSync(
-                `cd "${SCRIPT_DIR}" && claude --dangerously-skip-permissions ${modelFlag}${continueFlag}-p "${message.replace(/"/g, '\\"')}"`,
-                {
-                    encoding: "utf-8",
-                    timeout: 0, // No timeout - wait for Claude to finish (agents can run long)
-                    maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-                },
-            );
+            if (provider === 'openai') {
+                log('INFO', `Using OpenAI provider`);
+                response = await callOpenAI(message);
+            } else {
+                // Default to Claude (Anthropic)
+                log('INFO', `Using Claude provider`);
+
+                // Check if we should reset conversation (start fresh without -c)
+                const shouldReset = fs.existsSync(RESET_FLAG);
+                const continueFlag = shouldReset ? '' : '-c ';
+
+                if (shouldReset) {
+                    log('INFO', '🔄 Resetting conversation (starting fresh without -c)');
+                    fs.unlinkSync(RESET_FLAG);
+                }
+
+                const modelFlag = getModelFlag();
+                response = execSync(
+                    `cd "${SCRIPT_DIR}" && claude --dangerously-skip-permissions ${modelFlag}${continueFlag}-p "${message.replace(/"/g, '\\"')}"`,
+                    {
+                        encoding: "utf-8",
+                        timeout: 0, // No timeout - wait for Claude to finish (agents can run long)
+                        maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+                    },
+                );
+            }
         } catch (error) {
-            log('ERROR', `Claude error: ${(error as Error).message}`);
+            log('ERROR', `${provider === 'openai' ? 'OpenAI' : 'Claude'} error: ${(error as Error).message}`);
             response = "Sorry, I encountered an error processing your request.";
         }
 
