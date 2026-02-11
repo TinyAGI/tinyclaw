@@ -11,14 +11,17 @@ import TelegramBot from 'node-telegram-bot-api';
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
+import https from 'https';
+import http from 'http';
 
 const SCRIPT_DIR = path.resolve(__dirname, '..');
 const QUEUE_INCOMING = path.join(SCRIPT_DIR, '.tinyclaw/queue/incoming');
 const QUEUE_OUTGOING = path.join(SCRIPT_DIR, '.tinyclaw/queue/outgoing');
 const LOG_FILE = path.join(SCRIPT_DIR, '.tinyclaw/logs/telegram.log');
+const FILES_DIR = path.join(SCRIPT_DIR, '.tinyclaw/files');
 
 // Ensure directories exist
-[QUEUE_INCOMING, QUEUE_OUTGOING, path.dirname(LOG_FILE)].forEach(dir => {
+[QUEUE_INCOMING, QUEUE_OUTGOING, path.dirname(LOG_FILE), FILES_DIR].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -44,6 +47,7 @@ interface QueueData {
     message: string;
     timestamp: number;
     messageId: string;
+    files?: string[];
 }
 
 interface ResponseData {
@@ -53,6 +57,7 @@ interface ResponseData {
     originalMessage: string;
     timestamp: number;
     messageId: string;
+    files?: string[];
 }
 
 // Track pending messages (waiting for response)
@@ -101,6 +106,60 @@ function splitMessage(text: string, maxLength = 4096): string[] {
     return chunks;
 }
 
+// Download a file from URL to local path
+function downloadFile(url: string, destPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const client = url.startsWith('https') ? https : http;
+        const file = fs.createWriteStream(destPath);
+        client.get(url, (response) => {
+            if (response.statusCode === 301 || response.statusCode === 302) {
+                const redirectUrl = response.headers.location;
+                if (redirectUrl) {
+                    file.close();
+                    fs.unlinkSync(destPath);
+                    downloadFile(redirectUrl, destPath).then(resolve).catch(reject);
+                    return;
+                }
+            }
+            response.pipe(file);
+            file.on('finish', () => { file.close(); resolve(); });
+        }).on('error', (err) => {
+            fs.unlink(destPath, () => {}); // Clean up on error
+            reject(err);
+        });
+    });
+}
+
+// Download a Telegram file by file_id and return the local path
+async function downloadTelegramFile(fileId: string, ext: string, messageId: string): Promise<string | null> {
+    try {
+        const file = await bot.getFile(fileId);
+        if (!file.file_path) return null;
+
+        const url = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+        const filename = `telegram_${messageId}_${Date.now()}${ext}`;
+        const localPath = path.join(FILES_DIR, filename);
+
+        await downloadFile(url, localPath);
+        log('INFO', `Downloaded file: ${filename}`);
+        return localPath;
+    } catch (error) {
+        log('ERROR', `Failed to download file: ${(error as Error).message}`);
+        return null;
+    }
+}
+
+// Get file extension from mime type
+function extFromMime(mime?: string): string {
+    if (!mime) return '';
+    const map: Record<string, string> = {
+        'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
+        'image/webp': '.webp', 'audio/ogg': '.ogg', 'audio/mpeg': '.mp3',
+        'video/mp4': '.mp4', 'application/pdf': '.pdf',
+    };
+    return map[mime] || '';
+}
+
 // Initialize Telegram bot (polling mode)
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
 
@@ -116,13 +175,69 @@ bot.getMe().then((me) => {
 // Message received - Write to queue
 bot.on('message', async (msg) => {
     try {
-        // Skip non-text messages
-        if (!msg.text || msg.text.trim().length === 0) {
+        // Skip group/channel messages - only handle private chats
+        if (msg.chat.type !== 'private') {
             return;
         }
 
-        // Skip group/channel messages - only handle private chats
-        if (msg.chat.type !== 'private') {
+        // Determine message text and any media files
+        let messageText = msg.text || msg.caption || '';
+        const downloadedFiles: string[] = [];
+        const queueMessageId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+        // Handle photo messages
+        if (msg.photo && msg.photo.length > 0) {
+            // Get the largest photo (last in array)
+            const photo = msg.photo[msg.photo.length - 1];
+            const filePath = await downloadTelegramFile(photo.file_id, '.jpg', queueMessageId);
+            if (filePath) downloadedFiles.push(filePath);
+        }
+
+        // Handle document/file messages
+        if (msg.document) {
+            const ext = msg.document.file_name
+                ? path.extname(msg.document.file_name)
+                : extFromMime(msg.document.mime_type);
+            const filePath = await downloadTelegramFile(msg.document.file_id, ext, queueMessageId);
+            if (filePath) downloadedFiles.push(filePath);
+        }
+
+        // Handle audio messages
+        if (msg.audio) {
+            const ext = extFromMime(msg.audio.mime_type) || '.mp3';
+            const filePath = await downloadTelegramFile(msg.audio.file_id, ext, queueMessageId);
+            if (filePath) downloadedFiles.push(filePath);
+        }
+
+        // Handle voice messages
+        if (msg.voice) {
+            const filePath = await downloadTelegramFile(msg.voice.file_id, '.ogg', queueMessageId);
+            if (filePath) downloadedFiles.push(filePath);
+        }
+
+        // Handle video messages
+        if (msg.video) {
+            const ext = extFromMime(msg.video.mime_type) || '.mp4';
+            const filePath = await downloadTelegramFile(msg.video.file_id, ext, queueMessageId);
+            if (filePath) downloadedFiles.push(filePath);
+        }
+
+        // Handle video notes (round video messages)
+        if (msg.video_note) {
+            const filePath = await downloadTelegramFile(msg.video_note.file_id, '.mp4', queueMessageId);
+            if (filePath) downloadedFiles.push(filePath);
+        }
+
+        // Handle sticker
+        if (msg.sticker) {
+            const ext = msg.sticker.is_animated ? '.tgs' : msg.sticker.is_video ? '.webm' : '.webp';
+            const filePath = await downloadTelegramFile(msg.sticker.file_id, ext, queueMessageId);
+            if (filePath) downloadedFiles.push(filePath);
+            if (!messageText) messageText = `[Sticker: ${msg.sticker.emoji || 'sticker'}]`;
+        }
+
+        // Skip if no text and no media
+        if ((!messageText || messageText.trim().length === 0) && downloadedFiles.length === 0) {
             return;
         }
 
@@ -131,10 +246,10 @@ bot.on('message', async (msg) => {
             : 'Unknown';
         const senderId = msg.from ? msg.from.id.toString() : msg.chat.id.toString();
 
-        log('INFO', `Message from ${sender}: ${msg.text.substring(0, 50)}...`);
+        log('INFO', `Message from ${sender}: ${messageText.substring(0, 50)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}...`);
 
         // Check for reset command
-        if (msg.text.trim().match(/^[!/]reset$/i)) {
+        if (messageText.trim().match(/^[!/]reset$/i)) {
             log('INFO', 'Reset command received');
 
             // Create reset flag
@@ -151,17 +266,22 @@ bot.on('message', async (msg) => {
         // Show typing indicator
         await bot.sendChatAction(msg.chat.id, 'typing');
 
-        // Generate unique message ID
-        const queueMessageId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        // Build message text with file references
+        let fullMessage = messageText;
+        if (downloadedFiles.length > 0) {
+            const fileRefs = downloadedFiles.map(f => `[file: ${f}]`).join('\n');
+            fullMessage = fullMessage ? `${fullMessage}\n\n${fileRefs}` : fileRefs;
+        }
 
         // Write to incoming queue
         const queueData: QueueData = {
             channel: 'telegram',
             sender: sender,
             senderId: senderId,
-            message: msg.text,
+            message: fullMessage,
             timestamp: Date.now(),
             messageId: queueMessageId,
+            files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
         };
 
         const queueFile = path.join(QUEUE_INCOMING, `telegram_${queueMessageId}.json`);
@@ -190,7 +310,7 @@ bot.on('message', async (msg) => {
 });
 
 // Watch for responses in outgoing queue
-function checkOutgoingQueue(): void {
+async function checkOutgoingQueue(): Promise<void> {
     try {
         const files = fs.readdirSync(QUEUE_OUTGOING)
             .filter(f => f.startsWith('telegram_') && f.endsWith('.json'));
@@ -205,18 +325,42 @@ function checkOutgoingQueue(): void {
                 // Find pending message
                 const pending = pendingMessages.get(messageId);
                 if (pending) {
-                    // Split message if needed (Telegram 4096 char limit)
-                    const chunks = splitMessage(responseText);
-
-                    // First chunk as reply, rest as follow-up messages
-                    bot.sendMessage(pending.chatId, chunks[0], {
-                        reply_to_message_id: pending.messageId,
-                    });
-                    for (let i = 1; i < chunks.length; i++) {
-                        bot.sendMessage(pending.chatId, chunks[i]);
+                    // Send any attached files first
+                    if (responseData.files && responseData.files.length > 0) {
+                        for (const file of responseData.files) {
+                            try {
+                                if (!fs.existsSync(file)) continue;
+                                const ext = path.extname(file).toLowerCase();
+                                if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+                                    await bot.sendPhoto(pending.chatId, file);
+                                } else if (['.mp3', '.ogg', '.wav', '.m4a'].includes(ext)) {
+                                    await bot.sendAudio(pending.chatId, file);
+                                } else if (['.mp4', '.avi', '.mov', '.webm'].includes(ext)) {
+                                    await bot.sendVideo(pending.chatId, file);
+                                } else {
+                                    await bot.sendDocument(pending.chatId, file);
+                                }
+                                log('INFO', `Sent file to Telegram: ${path.basename(file)}`);
+                            } catch (fileErr) {
+                                log('ERROR', `Failed to send file ${file}: ${(fileErr as Error).message}`);
+                            }
+                        }
                     }
 
-                    log('INFO', `Sent response to ${sender} (${responseText.length} chars, ${chunks.length} message(s))`);
+                    // Split message if needed (Telegram 4096 char limit)
+                    if (responseText) {
+                        const chunks = splitMessage(responseText);
+
+                        // First chunk as reply, rest as follow-up messages
+                        bot.sendMessage(pending.chatId, chunks[0], {
+                            reply_to_message_id: pending.messageId,
+                        });
+                        for (let i = 1; i < chunks.length; i++) {
+                            bot.sendMessage(pending.chatId, chunks[i]);
+                        }
+                    }
+
+                    log('INFO', `Sent response to ${sender} (${responseText.length} chars${responseData.files ? `, ${responseData.files.length} file(s)` : ''})`);
 
                     // Clean up
                     pendingMessages.delete(messageId);

@@ -149,6 +149,7 @@ interface MessageData {
     message: string;
     timestamp: number;
     messageId: string;
+    files?: string[];
 }
 
 interface ResponseData {
@@ -158,6 +159,7 @@ interface ResponseData {
     originalMessage: string;
     timestamp: number;
     messageId: string;
+    files?: string[];
 }
 
 // Logger
@@ -269,6 +271,21 @@ async function processMessage(messageFile: string): Promise<void> {
             response = response.substring(0, 3900) + '\n\n[Response truncated...]';
         }
 
+        // Detect file references in the response: [send_file: /path/to/file]
+        const outboundFiles: string[] = [];
+        const fileRefRegex = /\[send_file:\s*([^\]]+)\]/g;
+        let fileMatch;
+        while ((fileMatch = fileRefRegex.exec(response)) !== null) {
+            const filePath = fileMatch[1].trim();
+            if (fs.existsSync(filePath)) {
+                outboundFiles.push(filePath);
+            }
+        }
+        // Remove the [send_file: ...] tags from the response text
+        if (outboundFiles.length > 0) {
+            response = response.replace(fileRefRegex, '').trim();
+        }
+
         // Write response to outgoing queue
         const responseData: ResponseData = {
             channel,
@@ -276,7 +293,8 @@ async function processMessage(messageFile: string): Promise<void> {
             message: response,
             originalMessage: message,
             timestamp: Date.now(),
-            messageId
+            messageId,
+            files: outboundFiles.length > 0 ? outboundFiles : undefined,
         };
 
         // For heartbeat messages, write to a separate location (they handle their own responses)
