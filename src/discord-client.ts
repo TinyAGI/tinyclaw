@@ -105,6 +105,7 @@ function downloadFile(url: string, destPath: string): Promise<void> {
 
 // Track pending messages (waiting for response)
 const pendingMessages = new Map<string, PendingMessage>();
+let processingOutgoingQueue = false;
 
 // Logger
 function log(level: string, message: string): void {
@@ -262,10 +263,10 @@ client.on(Events.MessageCreate, async (message: Message) => {
             timestamp: Date.now(),
         });
 
-        // Clean up old pending messages (older than 5 minutes)
-        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+        // Clean up old pending messages (older than 10 minutes)
+        const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
         for (const [id, data] of pendingMessages.entries()) {
-            if (data.timestamp < fiveMinutesAgo) {
+            if (data.timestamp < tenMinutesAgo) {
                 pendingMessages.delete(id);
             }
         }
@@ -277,6 +278,12 @@ client.on(Events.MessageCreate, async (message: Message) => {
 
 // Watch for responses in outgoing queue
 async function checkOutgoingQueue(): Promise<void> {
+    if (processingOutgoingQueue) {
+        return;
+    }
+
+    processingOutgoingQueue = true;
+
     try {
         const files = fs.readdirSync(QUEUE_OUTGOING)
             .filter(f => f.startsWith('discord_') && f.endsWith('.json'));
@@ -338,6 +345,8 @@ async function checkOutgoingQueue(): Promise<void> {
         }
     } catch (error) {
         log('ERROR', `Outgoing queue error: ${(error as Error).message}`);
+    } finally {
+        processingOutgoingQueue = false;
     }
 }
 

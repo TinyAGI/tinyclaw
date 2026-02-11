@@ -87,6 +87,7 @@ function buildUniqueFilePath(dir: string, preferredName: string): string {
 
 // Track pending messages (waiting for response)
 const pendingMessages = new Map<string, PendingMessage>();
+let processingOutgoingQueue = false;
 
 // Logger
 function log(level: string, message: string): void {
@@ -329,10 +330,10 @@ bot.on('message', async (msg) => {
             timestamp: Date.now(),
         });
 
-        // Clean up old pending messages (older than 5 minutes)
-        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+        // Clean up old pending messages (older than 10 minutes)
+        const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
         for (const [id, data] of pendingMessages.entries()) {
-            if (data.timestamp < fiveMinutesAgo) {
+            if (data.timestamp < tenMinutesAgo) {
                 pendingMessages.delete(id);
             }
         }
@@ -344,6 +345,12 @@ bot.on('message', async (msg) => {
 
 // Watch for responses in outgoing queue
 async function checkOutgoingQueue(): Promise<void> {
+    if (processingOutgoingQueue) {
+        return;
+    }
+
+    processingOutgoingQueue = true;
+
     try {
         const files = fs.readdirSync(QUEUE_OUTGOING)
             .filter(f => f.startsWith('telegram_') && f.endsWith('.json'));
@@ -412,6 +419,8 @@ async function checkOutgoingQueue(): Promise<void> {
         }
     } catch (error) {
         log('ERROR', `Outgoing queue error: ${(error as Error).message}`);
+    } finally {
+        processingOutgoingQueue = false;
     }
 }
 

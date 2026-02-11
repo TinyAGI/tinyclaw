@@ -263,27 +263,27 @@ async function processMessage(messageFile: string): Promise<void> {
             response = "Sorry, I encountered an error processing your request. Please check the queue logs.";
         }
 
-        // Clean response
-        response = response.trim();
-
-        // Limit response length
-        if (response.length > 4000) {
-            response = response.substring(0, 3900) + '\n\n[Response truncated...]';
-        }
-
         // Detect file references in the response: [send_file: /path/to/file]
-        const outboundFiles: string[] = [];
+        response = response.trim();
+        const outboundFilesSet = new Set<string>();
         const fileRefRegex = /\[send_file:\s*([^\]]+)\]/g;
         let fileMatch;
         while ((fileMatch = fileRefRegex.exec(response)) !== null) {
             const filePath = fileMatch[1].trim();
             if (fs.existsSync(filePath)) {
-                outboundFiles.push(filePath);
+                outboundFilesSet.add(filePath);
             }
         }
+        const outboundFiles = Array.from(outboundFilesSet);
+
         // Remove the [send_file: ...] tags from the response text
         if (outboundFiles.length > 0) {
             response = response.replace(fileRefRegex, '').trim();
+        }
+
+        // Limit response length after tags are parsed and removed
+        if (response.length > 4000) {
+            response = response.substring(0, 3900) + '\n\n[Response truncated...]';
         }
 
         // Write response to outgoing queue
