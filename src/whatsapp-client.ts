@@ -15,6 +15,7 @@ const QUEUE_INCOMING = path.join(SCRIPT_DIR, '.tinyclaw/queue/incoming');
 const QUEUE_OUTGOING = path.join(SCRIPT_DIR, '.tinyclaw/queue/outgoing');
 const LOG_FILE = path.join(SCRIPT_DIR, '.tinyclaw/logs/whatsapp.log');
 const SESSION_DIR = path.join(SCRIPT_DIR, '.tinyclaw/whatsapp-session');
+const SETTINGS_FILE = path.join(SCRIPT_DIR, '.tinyclaw/settings.json');
 
 // Ensure directories exist
 [QUEUE_INCOMING, QUEUE_OUTGOING, path.dirname(LOG_FILE), SESSION_DIR].forEach(dir => {
@@ -56,6 +57,30 @@ function log(level: string, message: string): void {
     const logMessage = `[${timestamp}] [${level}] ${message}\n`;
     console.log(logMessage.trim());
     fs.appendFileSync(LOG_FILE, logMessage);
+}
+
+// Load agents from settings for /agents command
+function getAgentListText(): string {
+    try {
+        const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
+        const settings = JSON.parse(settingsData);
+        const agents = settings.agents;
+        if (!agents || Object.keys(agents).length === 0) {
+            return 'No agents configured. Using default single-agent mode.\n\nConfigure agents in .tinyclaw/settings.json or run: tinyclaw agent add';
+        }
+        let text = '*Available Agents:*\n';
+        for (const [id, agent] of Object.entries(agents) as [string, any][]) {
+            text += `\n@${id} - ${agent.name}`;
+            text += `\n  Provider: ${agent.provider}/${agent.model}`;
+            text += `\n  Directory: ${agent.working_directory}`;
+            if (agent.system_prompt) text += `\n  Has custom system prompt`;
+            if (agent.prompt_file) text += `\n  Prompt file: ${agent.prompt_file}`;
+        }
+        text += '\n\nUsage: Start your message with @agent_id to route to a specific agent.';
+        return text;
+    } catch {
+        return 'Could not load agent configuration.';
+    }
 }
 
 // Initialize WhatsApp client
@@ -143,6 +168,14 @@ client.on('message_create', async (message: Message) => {
         }
 
         log('INFO', `📱 Message from ${sender}: ${message.body.substring(0, 50)}...`);
+
+        // Check for agents list command
+        if (message.body.trim().match(/^[!/]agents$/i)) {
+            log('INFO', 'Agents list command received');
+            const agentList = getAgentListText();
+            await message.reply(agentList);
+            return;
+        }
 
         // Check for reset command
         if (message.body.trim().match(/^[!/]reset$/i)) {

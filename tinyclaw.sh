@@ -515,6 +515,313 @@ channels_reset() {
     fi
 }
 
+# --- Agent management ---
+
+AGENTS_DIR="$SCRIPT_DIR/.tinyclaw/agents"
+
+# List all configured agents
+agent_list() {
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}No settings file found. Run setup first.${NC}"
+        exit 1
+    fi
+
+    local agents_count
+    agents_count=$(jq -r '.agents // {} | length' "$SETTINGS_FILE" 2>/dev/null)
+
+    if [ "$agents_count" = "0" ] || [ -z "$agents_count" ]; then
+        echo -e "${YELLOW}No agents configured.${NC}"
+        echo ""
+        echo "Using default single-agent mode (from models section)."
+        echo ""
+        echo "Add an agent with:"
+        echo -e "  ${GREEN}$0 agent add${NC}"
+        return
+    fi
+
+    echo -e "${BLUE}Configured Agents${NC}"
+    echo "=================="
+    echo ""
+
+    jq -r '.agents // {} | to_entries[] | "\(.key)|\(.value.name)|\(.value.provider)|\(.value.model)|\(.value.working_directory)"' "$SETTINGS_FILE" 2>/dev/null | \
+    while IFS='|' read -r id name provider model workdir; do
+        echo -e "  ${GREEN}@${id}${NC} - ${name}"
+        echo "    Provider:  ${provider}/${model}"
+        echo "    Directory: ${workdir}"
+
+        # Check for system prompt
+        local sys_prompt
+        sys_prompt=$(jq -r ".agents.\"${id}\".system_prompt // empty" "$SETTINGS_FILE" 2>/dev/null)
+        local prompt_file
+        prompt_file=$(jq -r ".agents.\"${id}\".prompt_file // empty" "$SETTINGS_FILE" 2>/dev/null)
+
+        if [ -n "$sys_prompt" ]; then
+            echo "    Prompt:    (inline, ${#sys_prompt} chars)"
+        elif [ -n "$prompt_file" ]; then
+            echo "    Prompt:    ${prompt_file}"
+        fi
+        echo ""
+    done
+
+    echo "Usage: Send '@agent_id <message>' in any channel to route to a specific agent."
+}
+
+# Show details for a specific agent
+agent_show() {
+    local agent_id="$1"
+
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}No settings file found.${NC}"
+        exit 1
+    fi
+
+    local agent_json
+    agent_json=$(jq -r ".agents.\"${agent_id}\" // empty" "$SETTINGS_FILE" 2>/dev/null)
+
+    if [ -z "$agent_json" ]; then
+        echo -e "${RED}Agent '${agent_id}' not found.${NC}"
+        echo ""
+        echo "Available agents:"
+        jq -r '.agents // {} | keys[]' "$SETTINGS_FILE" 2>/dev/null | while read -r id; do
+            echo "  @${id}"
+        done
+        exit 1
+    fi
+
+    echo -e "${BLUE}Agent: @${agent_id}${NC}"
+    echo ""
+    jq ".agents.\"${agent_id}\"" "$SETTINGS_FILE" 2>/dev/null
+}
+
+# Add a new agent interactively
+agent_add() {
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}No settings file found. Run setup first.${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Add New Agent${NC}"
+    echo ""
+
+    # Agent ID
+    read -rp "Agent ID (lowercase, no spaces, e.g. 'coder'): " AGENT_ID
+    AGENT_ID=$(echo "$AGENT_ID" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
+    if [ -z "$AGENT_ID" ]; then
+        echo -e "${RED}Invalid agent ID${NC}"
+        exit 1
+    fi
+
+    # Check if exists
+    local existing
+    existing=$(jq -r ".agents.\"${AGENT_ID}\" // empty" "$SETTINGS_FILE" 2>/dev/null)
+    if [ -n "$existing" ]; then
+        echo -e "${RED}Agent '${AGENT_ID}' already exists. Use 'agent remove ${AGENT_ID}' first.${NC}"
+        exit 1
+    fi
+
+    # Agent name
+    read -rp "Display name (e.g. 'Code Assistant'): " AGENT_NAME
+    if [ -z "$AGENT_NAME" ]; then
+        AGENT_NAME="$AGENT_ID"
+    fi
+
+    # Provider
+    echo ""
+    echo "Provider:"
+    echo "  1) Anthropic (Claude)"
+    echo "  2) OpenAI (Codex)"
+    read -rp "Choose [1-2, default: 1]: " AGENT_PROVIDER_CHOICE
+    case "$AGENT_PROVIDER_CHOICE" in
+        2) AGENT_PROVIDER="openai" ;;
+        *) AGENT_PROVIDER="anthropic" ;;
+    esac
+
+    # Model
+    echo ""
+    if [ "$AGENT_PROVIDER" = "anthropic" ]; then
+        echo "Model:"
+        echo "  1) Sonnet (fast)"
+        echo "  2) Opus (smartest)"
+        read -rp "Choose [1-2, default: 1]: " AGENT_MODEL_CHOICE
+        case "$AGENT_MODEL_CHOICE" in
+            2) AGENT_MODEL="opus" ;;
+            *) AGENT_MODEL="sonnet" ;;
+        esac
+    else
+        echo "Model:"
+        echo "  1) GPT-5.3 Codex"
+        echo "  2) GPT-5.2"
+        read -rp "Choose [1-2, default: 1]: " AGENT_MODEL_CHOICE
+        case "$AGENT_MODEL_CHOICE" in
+            2) AGENT_MODEL="gpt-5.2" ;;
+            *) AGENT_MODEL="gpt-5.3-codex" ;;
+        esac
+    fi
+
+    # Working directory
+    echo ""
+    read -rp "Working directory [default: $SCRIPT_DIR]: " AGENT_WORKDIR
+    if [ -z "$AGENT_WORKDIR" ]; then
+        AGENT_WORKDIR="$SCRIPT_DIR"
+    fi
+    # Expand ~ to home directory
+    AGENT_WORKDIR="${AGENT_WORKDIR/#\~/$HOME}"
+    # Convert to absolute path
+    if [ ! "${AGENT_WORKDIR:0:1}" = "/" ]; then
+        AGENT_WORKDIR="$(cd "$AGENT_WORKDIR" 2>/dev/null && pwd)" || AGENT_WORKDIR="$SCRIPT_DIR"
+    fi
+
+    if [ ! -d "$AGENT_WORKDIR" ]; then
+        echo -e "${YELLOW}Warning: Directory '$AGENT_WORKDIR' does not exist.${NC}"
+        read -rp "Create it? [y/N]: " CREATE_DIR
+        if [[ "$CREATE_DIR" =~ ^[yY] ]]; then
+            mkdir -p "$AGENT_WORKDIR"
+        fi
+    fi
+
+    # System prompt
+    echo ""
+    echo "System prompt (optional - gives the agent a specialized role/skill):"
+    echo "  1) None"
+    echo "  2) Enter inline text"
+    echo "  3) Path to a prompt file (.md or .txt)"
+    read -rp "Choose [1-3, default: 1]: " PROMPT_CHOICE
+
+    AGENT_SYSTEM_PROMPT=""
+    AGENT_PROMPT_FILE=""
+    case "$PROMPT_CHOICE" in
+        2)
+            echo ""
+            echo "Enter system prompt (press Enter twice to finish):"
+            AGENT_SYSTEM_PROMPT=""
+            local empty_count=0
+            while IFS= read -r line; do
+                if [ -z "$line" ]; then
+                    empty_count=$((empty_count + 1))
+                    if [ $empty_count -ge 1 ]; then
+                        break
+                    fi
+                else
+                    empty_count=0
+                fi
+                if [ -n "$AGENT_SYSTEM_PROMPT" ]; then
+                    AGENT_SYSTEM_PROMPT="$AGENT_SYSTEM_PROMPT\n$line"
+                else
+                    AGENT_SYSTEM_PROMPT="$line"
+                fi
+            done
+            ;;
+        3)
+            read -rp "Path to prompt file: " AGENT_PROMPT_FILE
+            AGENT_PROMPT_FILE="${AGENT_PROMPT_FILE/#\~/$HOME}"
+            if [ ! -f "$AGENT_PROMPT_FILE" ]; then
+                echo -e "${YELLOW}Warning: File '$AGENT_PROMPT_FILE' does not exist yet.${NC}"
+            fi
+            ;;
+    esac
+
+    # Write to settings
+    local tmp_file="$SETTINGS_FILE.tmp"
+
+    # Build the agent JSON object
+    local agent_json
+    agent_json=$(jq -n \
+        --arg name "$AGENT_NAME" \
+        --arg provider "$AGENT_PROVIDER" \
+        --arg model "$AGENT_MODEL" \
+        --arg workdir "$AGENT_WORKDIR" \
+        --arg sysprompt "$AGENT_SYSTEM_PROMPT" \
+        --arg promptfile "$AGENT_PROMPT_FILE" \
+        '{
+            name: $name,
+            provider: $provider,
+            model: $model,
+            working_directory: $workdir
+        }
+        + (if $sysprompt != "" then {system_prompt: $sysprompt} else {} end)
+        + (if $promptfile != "" then {prompt_file: $promptfile} else {} end)')
+
+    # Ensure agents section exists and add the new agent
+    jq --arg id "$AGENT_ID" --argjson agent "$agent_json" \
+        '.agents //= {} | .agents[$id] = $agent' \
+        "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+
+    # Create agent state directory
+    mkdir -p "$AGENTS_DIR/$AGENT_ID"
+
+    echo ""
+    echo -e "${GREEN}✓ Agent '${AGENT_ID}' created!${NC}"
+    echo ""
+    echo "Usage: Send '@${AGENT_ID} <message>' in any channel to use this agent."
+    echo ""
+    echo "Note: Changes take effect on next message. Restart is not required."
+}
+
+# Remove an agent
+agent_remove() {
+    local agent_id="$1"
+
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}No settings file found.${NC}"
+        exit 1
+    fi
+
+    local agent_json
+    agent_json=$(jq -r ".agents.\"${agent_id}\" // empty" "$SETTINGS_FILE" 2>/dev/null)
+
+    if [ -z "$agent_json" ]; then
+        echo -e "${RED}Agent '${agent_id}' not found.${NC}"
+        exit 1
+    fi
+
+    local agent_name
+    agent_name=$(jq -r ".agents.\"${agent_id}\".name" "$SETTINGS_FILE" 2>/dev/null)
+
+    read -rp "Remove agent '${agent_id}' (${agent_name})? [y/N]: " CONFIRM
+    if [[ ! "$CONFIRM" =~ ^[yY] ]]; then
+        echo "Cancelled."
+        return
+    fi
+
+    local tmp_file="$SETTINGS_FILE.tmp"
+    jq --arg id "$agent_id" 'del(.agents[$id])' "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+
+    # Clean up agent state directory
+    if [ -d "$AGENTS_DIR/$agent_id" ]; then
+        rm -rf "$AGENTS_DIR/$agent_id"
+    fi
+
+    echo -e "${GREEN}✓ Agent '${agent_id}' removed.${NC}"
+}
+
+# Reset a specific agent's conversation
+agent_reset() {
+    local agent_id="$1"
+
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}No settings file found.${NC}"
+        exit 1
+    fi
+
+    local agent_json
+    agent_json=$(jq -r ".agents.\"${agent_id}\" // empty" "$SETTINGS_FILE" 2>/dev/null)
+
+    if [ -z "$agent_json" ]; then
+        echo -e "${RED}Agent '${agent_id}' not found.${NC}"
+        exit 1
+    fi
+
+    mkdir -p "$AGENTS_DIR/$agent_id"
+    touch "$AGENTS_DIR/$agent_id/reset_flag"
+
+    local agent_name
+    agent_name=$(jq -r ".agents.\"${agent_id}\".name" "$SETTINGS_FILE" 2>/dev/null)
+
+    echo -e "${GREEN}✓ Reset flag set for agent '${agent_id}' (${agent_name})${NC}"
+    echo ""
+    echo "The next message to @${agent_id} will start a fresh conversation."
+}
+
 # --- Main command dispatch ---
 
 case "${1:-}" in
@@ -713,6 +1020,57 @@ case "${1:-}" in
             esac
         fi
         ;;
+    agent)
+        case "${2:-}" in
+            list|ls)
+                agent_list
+                ;;
+            add)
+                agent_add
+                ;;
+            remove|rm)
+                if [ -z "$3" ]; then
+                    echo "Usage: $0 agent remove <agent_id>"
+                    exit 1
+                fi
+                agent_remove "$3"
+                ;;
+            show)
+                if [ -z "$3" ]; then
+                    echo "Usage: $0 agent show <agent_id>"
+                    exit 1
+                fi
+                agent_show "$3"
+                ;;
+            reset)
+                if [ -z "$3" ]; then
+                    echo "Usage: $0 agent reset <agent_id>"
+                    exit 1
+                fi
+                agent_reset "$3"
+                ;;
+            *)
+                echo "Usage: $0 agent {list|add|remove|show|reset}"
+                echo ""
+                echo "Agent Commands:"
+                echo "  list                   List all configured agents"
+                echo "  add                    Add a new agent interactively"
+                echo "  remove <id>            Remove an agent"
+                echo "  show <id>              Show agent configuration"
+                echo "  reset <id>             Reset an agent's conversation"
+                echo ""
+                echo "Examples:"
+                echo "  $0 agent list"
+                echo "  $0 agent add"
+                echo "  $0 agent show coder"
+                echo "  $0 agent remove coder"
+                echo "  $0 agent reset coder"
+                echo ""
+                echo "In chat, use '@agent_id message' to route to a specific agent."
+                exit 1
+                ;;
+        esac
+        ;;
     attach)
         tmux attach -t "$TMUX_SESSION"
         ;;
@@ -723,7 +1081,7 @@ case "${1:-}" in
         local_names=$(IFS='|'; echo "${ALL_CHANNELS[*]}")
         echo -e "${BLUE}TinyClaw - Claude Code + Messaging Channels${NC}"
         echo ""
-        echo "Usage: $0 {start|stop|restart|status|setup|send|logs|reset|channels|provider|model|attach}"
+        echo "Usage: $0 {start|stop|restart|status|setup|send|logs|reset|channels|provider|model|agent|attach}"
         echo ""
         echo "Commands:"
         echo "  start                    Start TinyClaw"
@@ -737,6 +1095,7 @@ case "${1:-}" in
         echo "  channels reset <channel> Reset channel auth ($local_names)"
         echo "  provider [name] [--model model]  Show or switch AI provider"
         echo "  model [name]             Show or switch AI model"
+        echo "  agent {list|add|remove|show|reset}  Manage team of agents"
         echo "  attach                   Attach to tmux session"
         echo ""
         echo "Examples:"
@@ -744,7 +1103,9 @@ case "${1:-}" in
         echo "  $0 status"
         echo "  $0 provider openai --model gpt-5.3-codex"
         echo "  $0 model opus"
-        echo "  $0 send 'What time is it?'"
+        echo "  $0 agent list"
+        echo "  $0 agent add"
+        echo "  $0 send '@coder fix the bug'"
         echo "  $0 channels reset whatsapp"
         echo "  $0 logs telegram"
         echo ""

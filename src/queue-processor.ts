@@ -2,6 +2,12 @@
 /**
  * Queue Processor - Handles messages from all channels (WhatsApp, Telegram, etc.)
  * Processes one message at a time to avoid race conditions
+ *
+ * Supports multi-agent routing:
+ *   - Messages prefixed with @agent_id are routed to that agent
+ *   - Unrouted messages go to the "default" agent
+ *   - Each agent has its own provider, model, working directory, and system prompt
+ *   - Conversation isolation via per-agent working directories
  */
 
 import { spawn } from 'child_process';
@@ -14,6 +20,7 @@ const QUEUE_OUTGOING = path.join(SCRIPT_DIR, '.tinyclaw/queue/outgoing');
 const QUEUE_PROCESSING = path.join(SCRIPT_DIR, '.tinyclaw/queue/processing');
 const LOG_FILE = path.join(SCRIPT_DIR, '.tinyclaw/logs/queue.log');
 const RESET_FLAG = path.join(SCRIPT_DIR, '.tinyclaw/reset_flag');
+const AGENTS_DIR = path.join(SCRIPT_DIR, '.tinyclaw/agents');
 const SETTINGS_FILE = path.join(SCRIPT_DIR, '.tinyclaw/settings.json');
 
 // Model name mapping
@@ -28,6 +35,15 @@ const CODEX_MODEL_IDS: Record<string, string> = {
     'gpt-5.2': 'gpt-5.2',
     'gpt-5.3-codex': 'gpt-5.3-codex',
 };
+
+interface AgentConfig {
+    name: string;
+    provider: string;       // 'anthropic' or 'openai'
+    model: string;           // e.g. 'sonnet', 'opus', 'gpt-5.3-codex'
+    working_directory: string;
+    system_prompt?: string;  // inline system prompt text
+    prompt_file?: string;    // path to a file with system prompt
+}
 
 interface Settings {
     channels?: {
@@ -45,6 +61,7 @@ interface Settings {
             model?: string;
         };
     };
+    agents?: Record<string, AgentConfig>;
     monitoring?: {
         heartbeat_interval?: number;
     };
@@ -72,36 +89,101 @@ function getSettings(): Settings {
     }
 }
 
-function getModelFlag(): string {
-    try {
-        const settings = getSettings();
-        const model = settings?.models?.anthropic?.model;
-        if (model) {
-            const modelId = CLAUDE_MODEL_IDS[model];
-            if (modelId) {
-                return modelId;
+/**
+ * Build the default agent config from the legacy models section.
+ * Used when no agents are configured, for backwards compatibility.
+ */
+function getDefaultAgentFromModels(settings: Settings): AgentConfig {
+    const provider = settings?.models?.provider || 'anthropic';
+    let model = '';
+    if (provider === 'openai') {
+        model = settings?.models?.openai?.model || 'gpt-5.3-codex';
+    } else {
+        model = settings?.models?.anthropic?.model || 'sonnet';
+    }
+    return {
+        name: 'Default',
+        provider,
+        model,
+        working_directory: SCRIPT_DIR,
+    };
+}
+
+/**
+ * Get all configured agents. Falls back to a single "default" agent
+ * derived from the legacy models section if no agents are configured.
+ */
+function getAgents(settings: Settings): Record<string, AgentConfig> {
+    if (settings.agents && Object.keys(settings.agents).length > 0) {
+        return settings.agents;
+    }
+    // Backwards compatibility: build default agent from models section
+    return { default: getDefaultAgentFromModels(settings) };
+}
+
+/**
+ * Resolve the model ID for Claude (Anthropic).
+ */
+function resolveClaudeModel(model: string): string {
+    return CLAUDE_MODEL_IDS[model] || model || '';
+}
+
+/**
+ * Resolve the model ID for Codex (OpenAI).
+ */
+function resolveCodexModel(model: string): string {
+    return CODEX_MODEL_IDS[model] || model || '';
+}
+
+/**
+ * Get the reset flag path for a specific agent.
+ */
+function getAgentResetFlag(agentId: string): string {
+    return path.join(AGENTS_DIR, agentId, 'reset_flag');
+}
+
+/**
+ * Load the system prompt for an agent. Checks prompt_file first, then system_prompt.
+ */
+function getAgentSystemPrompt(agent: AgentConfig): string {
+    if (agent.prompt_file) {
+        try {
+            const resolved = path.isAbsolute(agent.prompt_file)
+                ? agent.prompt_file
+                : path.join(SCRIPT_DIR, agent.prompt_file);
+            return fs.readFileSync(resolved, 'utf8').trim();
+        } catch {
+            // Fall through to inline prompt
+        }
+    }
+    return agent.system_prompt || '';
+}
+
+/**
+ * Parse @agent_id prefix from a message.
+ * Returns { agentId, message } where message has the prefix stripped.
+ */
+function parseAgentRouting(rawMessage: string, agents: Record<string, AgentConfig>): { agentId: string; message: string } {
+    const match = rawMessage.match(/^@(\S+)\s+([\s\S]*)$/);
+    if (match) {
+        const candidateId = match[1].toLowerCase();
+        if (agents[candidateId]) {
+            return { agentId: candidateId, message: match[2] };
+        }
+        // Also match by agent name (case-insensitive)
+        for (const [id, config] of Object.entries(agents)) {
+            if (config.name.toLowerCase() === candidateId) {
+                return { agentId: id, message: match[2] };
             }
         }
-    } catch { }
-    return '';
+    }
+    return { agentId: 'default', message: rawMessage };
 }
 
-function getCodexModelFlag(): string {
-    try {
-        const settings = getSettings();
-        const model = settings?.models?.openai?.model;
-        if (model) {
-            const modelId = CODEX_MODEL_IDS[model] || model;
-            return modelId;
-        }
-    } catch { }
-    return '';
-}
-
-async function runCommand(command: string, args: string[]): Promise<string> {
+async function runCommand(command: string, args: string[], cwd?: string): Promise<string> {
     return new Promise((resolve, reject) => {
         const child = spawn(command, args, {
-            cwd: SCRIPT_DIR,
+            cwd: cwd || SCRIPT_DIR,
             stdio: ['ignore', 'pipe', 'pipe'],
         });
 
@@ -136,7 +218,7 @@ async function runCommand(command: string, args: string[]): Promise<string> {
 }
 
 // Ensure directories exist
-[QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING, path.dirname(LOG_FILE)].forEach(dir => {
+[QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING, AGENTS_DIR, path.dirname(LOG_FILE)].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -149,6 +231,7 @@ interface MessageData {
     message: string;
     timestamp: number;
     messageId: string;
+    agent?: string; // optional: pre-routed agent id from channel client
 }
 
 interface ResponseData {
@@ -158,6 +241,7 @@ interface ResponseData {
     originalMessage: string;
     timestamp: number;
     messageId: string;
+    agent?: string; // which agent handled this
 }
 
 // Logger
@@ -178,31 +262,84 @@ async function processMessage(messageFile: string): Promise<void> {
 
         // Read message
         const messageData: MessageData = JSON.parse(fs.readFileSync(processingFile, 'utf8'));
-        const { channel, sender, message, timestamp, messageId } = messageData;
+        const { channel, sender, message: rawMessage, timestamp, messageId } = messageData;
 
-        log('INFO', `Processing [${channel}] from ${sender}: ${message.substring(0, 50)}...`);
+        log('INFO', `Processing [${channel}] from ${sender}: ${rawMessage.substring(0, 50)}...`);
 
-        // Get provider setting
+        // Get settings and agents
         const settings = getSettings();
-        const provider = settings?.models?.provider || 'anthropic';
+        const agents = getAgents(settings);
+
+        // Route message to agent
+        let agentId: string;
+        let message: string;
+
+        if (messageData.agent && agents[messageData.agent]) {
+            // Pre-routed by channel client
+            agentId = messageData.agent;
+            message = rawMessage;
+        } else {
+            // Parse @agent prefix
+            const routing = parseAgentRouting(rawMessage, agents);
+            agentId = routing.agentId;
+            message = routing.message;
+        }
+
+        // Fall back to default if agent not found
+        if (!agents[agentId]) {
+            agentId = 'default';
+            message = rawMessage;
+        }
+
+        // Final fallback: use first available agent if no default
+        if (!agents[agentId]) {
+            agentId = Object.keys(agents)[0];
+        }
+
+        const agent = agents[agentId];
+        log('INFO', `Routing to agent: ${agent.name} (${agentId}) [${agent.provider}/${agent.model}]`);
+
+        // Ensure agent state directory exists
+        const agentDir = path.join(AGENTS_DIR, agentId);
+        if (!fs.existsSync(agentDir)) {
+            fs.mkdirSync(agentDir, { recursive: true });
+        }
+
+        // Resolve working directory
+        const workingDir = agent.working_directory
+            ? (path.isAbsolute(agent.working_directory)
+                ? agent.working_directory
+                : path.join(SCRIPT_DIR, agent.working_directory))
+            : SCRIPT_DIR;
+
+        // Get system prompt
+        const systemPrompt = getAgentSystemPrompt(agent);
+
+        // Check for reset (per-agent or global)
+        const agentResetFlag = getAgentResetFlag(agentId);
+        const shouldReset = fs.existsSync(RESET_FLAG) || fs.existsSync(agentResetFlag);
+
+        if (shouldReset) {
+            // Clean up both flags
+            if (fs.existsSync(RESET_FLAG)) fs.unlinkSync(RESET_FLAG);
+            if (fs.existsSync(agentResetFlag)) fs.unlinkSync(agentResetFlag);
+        }
+
+        const provider = agent.provider || 'anthropic';
 
         // Call AI provider
         let response: string;
         try {
             if (provider === 'openai') {
-                // Use Codex CLI
-                log('INFO', `Using Codex CLI`);
+                log('INFO', `Using Codex CLI (agent: ${agentId})`);
 
-                // Check if we should reset conversation (start fresh without resume)
-                const shouldReset = fs.existsSync(RESET_FLAG);
                 const shouldResume = !shouldReset;
 
                 if (shouldReset) {
-                    log('INFO', '🔄 Resetting Codex conversation (starting fresh without resume)');
-                    fs.unlinkSync(RESET_FLAG);
+                    log('INFO', `🔄 Resetting Codex conversation for agent: ${agentId}`);
                 }
 
-                const modelId = getCodexModelFlag();
+                const modelId = resolveCodexModel(agent.model);
                 const codexArgs = ['exec'];
                 if (shouldResume) {
                     codexArgs.push('resume', '--last');
@@ -212,7 +349,7 @@ async function processMessage(messageFile: string): Promise<void> {
                 }
                 codexArgs.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json', message);
 
-                const codexOutput = await runCommand('codex', codexArgs);
+                const codexOutput = await runCommand('codex', codexArgs, workingDir);
 
                 // Parse JSONL output and extract final agent_message
                 response = '';
@@ -233,31 +370,31 @@ async function processMessage(messageFile: string): Promise<void> {
                 }
             } else {
                 // Default to Claude (Anthropic)
-                log('INFO', `Using Claude provider`);
+                log('INFO', `Using Claude provider (agent: ${agentId})`);
 
-                // Check if we should reset conversation (start fresh without -c)
-                const shouldReset = fs.existsSync(RESET_FLAG);
                 const continueConversation = !shouldReset;
 
                 if (shouldReset) {
-                    log('INFO', '🔄 Resetting conversation (starting fresh without -c)');
-                    fs.unlinkSync(RESET_FLAG);
+                    log('INFO', `🔄 Resetting conversation for agent: ${agentId}`);
                 }
 
-                const modelId = getModelFlag();
+                const modelId = resolveClaudeModel(agent.model);
                 const claudeArgs = ['--dangerously-skip-permissions'];
                 if (modelId) {
                     claudeArgs.push('--model', modelId);
+                }
+                if (systemPrompt) {
+                    claudeArgs.push('--system-prompt', systemPrompt);
                 }
                 if (continueConversation) {
                     claudeArgs.push('-c');
                 }
                 claudeArgs.push('-p', message);
 
-                response = await runCommand('claude', claudeArgs);
+                response = await runCommand('claude', claudeArgs, workingDir);
             }
         } catch (error) {
-            log('ERROR', `${provider === 'openai' ? 'Codex' : 'Claude'} error: ${(error as Error).message}`);
+            log('ERROR', `${provider === 'openai' ? 'Codex' : 'Claude'} error (agent: ${agentId}): ${(error as Error).message}`);
             response = "Sorry, I encountered an error processing your request. Please check the queue logs.";
         }
 
@@ -274,9 +411,10 @@ async function processMessage(messageFile: string): Promise<void> {
             channel,
             sender,
             message: response,
-            originalMessage: message,
+            originalMessage: rawMessage,
             timestamp: Date.now(),
-            messageId
+            messageId,
+            agent: agentId,
         };
 
         // For heartbeat messages, write to a separate location (they handle their own responses)
@@ -286,7 +424,7 @@ async function processMessage(messageFile: string): Promise<void> {
 
         fs.writeFileSync(responseFile, JSON.stringify(responseData, null, 2));
 
-        log('INFO', `✓ Response ready [${channel}] ${sender} (${response.length} chars)`);
+        log('INFO', `✓ Response ready [${channel}] ${sender} via agent:${agentId} (${response.length} chars)`);
 
         // Clean up processing file
         fs.unlinkSync(processingFile);
@@ -337,9 +475,21 @@ async function processQueue(): Promise<void> {
     }
 }
 
+// Log agent configuration on startup
+function logAgentConfig(): void {
+    const settings = getSettings();
+    const agents = getAgents(settings);
+    const agentCount = Object.keys(agents).length;
+    log('INFO', `Loaded ${agentCount} agent(s):`);
+    for (const [id, agent] of Object.entries(agents)) {
+        log('INFO', `  ${id}: ${agent.name} [${agent.provider}/${agent.model}] cwd=${agent.working_directory}`);
+    }
+}
+
 // Main loop
 log('INFO', 'Queue processor started');
 log('INFO', `Watching: ${QUEUE_INCOMING}`);
+logAgentConfig();
 
 // Process queue every 1 second
 setInterval(processQueue, 1000);

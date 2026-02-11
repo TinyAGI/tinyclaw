@@ -153,6 +153,85 @@ fi
 echo -e "${GREEN}✓ Heartbeat interval: ${HEARTBEAT_INTERVAL}s${NC}"
 echo ""
 
+# --- Team of Agents (optional) ---
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  Team of Agents (Optional)${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo "You can set up multiple agents with different roles, models, and working directories."
+echo "Users route messages with '@agent_id message' in chat."
+echo ""
+read -rp "Set up a team of agents? [y/N]: " SETUP_AGENTS
+
+AGENTS_JSON=""
+if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
+    # Create default agent from the provider/model already selected
+    echo ""
+    echo -e "${GREEN}Creating default agent from your selections above...${NC}"
+    AGENTS_JSON='"agents": {'
+    AGENTS_JSON="$AGENTS_JSON \"default\": { \"name\": \"Default\", \"provider\": \"$PROVIDER\", \"model\": \"$MODEL\", \"working_directory\": \"$PROJECT_ROOT\" }"
+
+    # Add more agents
+    ADDING_AGENTS=true
+    while [ "$ADDING_AGENTS" = true ]; do
+        echo ""
+        read -rp "Add another agent? [y/N]: " ADD_MORE
+        if [[ ! "$ADD_MORE" =~ ^[yY] ]]; then
+            ADDING_AGENTS=false
+            continue
+        fi
+
+        read -rp "  Agent ID (lowercase, no spaces): " NEW_AGENT_ID
+        NEW_AGENT_ID=$(echo "$NEW_AGENT_ID" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
+        if [ -z "$NEW_AGENT_ID" ]; then
+            echo -e "${RED}  Invalid ID, skipping${NC}"
+            continue
+        fi
+
+        read -rp "  Display name: " NEW_AGENT_NAME
+        [ -z "$NEW_AGENT_NAME" ] && NEW_AGENT_NAME="$NEW_AGENT_ID"
+
+        echo "  Provider: 1) Anthropic  2) OpenAI"
+        read -rp "  Choose [1-2, default: 1]: " NEW_PROVIDER_CHOICE
+        case "$NEW_PROVIDER_CHOICE" in
+            2) NEW_PROVIDER="openai" ;;
+            *) NEW_PROVIDER="anthropic" ;;
+        esac
+
+        if [ "$NEW_PROVIDER" = "anthropic" ]; then
+            echo "  Model: 1) Sonnet  2) Opus"
+            read -rp "  Choose [1-2, default: 1]: " NEW_MODEL_CHOICE
+            case "$NEW_MODEL_CHOICE" in
+                2) NEW_MODEL="opus" ;;
+                *) NEW_MODEL="sonnet" ;;
+            esac
+        else
+            echo "  Model: 1) GPT-5.3 Codex  2) GPT-5.2"
+            read -rp "  Choose [1-2, default: 1]: " NEW_MODEL_CHOICE
+            case "$NEW_MODEL_CHOICE" in
+                2) NEW_MODEL="gpt-5.2" ;;
+                *) NEW_MODEL="gpt-5.3-codex" ;;
+            esac
+        fi
+
+        read -rp "  Working directory [default: $PROJECT_ROOT]: " NEW_WORKDIR
+        [ -z "$NEW_WORKDIR" ] && NEW_WORKDIR="$PROJECT_ROOT"
+        NEW_WORKDIR="${NEW_WORKDIR/#\~/$HOME}"
+
+        read -rp "  System prompt (one line, or leave empty): " NEW_SYSPROMPT
+
+        AGENTS_JSON="$AGENTS_JSON, \"$NEW_AGENT_ID\": { \"name\": \"$NEW_AGENT_NAME\", \"provider\": \"$NEW_PROVIDER\", \"model\": \"$NEW_MODEL\", \"working_directory\": \"$NEW_WORKDIR\""
+        if [ -n "$NEW_SYSPROMPT" ]; then
+            AGENTS_JSON="$AGENTS_JSON, \"system_prompt\": \"$NEW_SYSPROMPT\""
+        fi
+        AGENTS_JSON="$AGENTS_JSON }"
+
+        echo -e "  ${GREEN}✓ Agent '${NEW_AGENT_ID}' added${NC}"
+    done
+
+    AGENTS_JSON="$AGENTS_JSON },"
+fi
+
 # Build enabled channels array JSON
 CHANNELS_JSON="["
 for i in "${!ENABLED_CHANNELS[@]}"; do
@@ -168,31 +247,13 @@ DISCORD_TOKEN="${TOKENS[discord]:-}"
 TELEGRAM_TOKEN="${TOKENS[telegram]:-}"
 
 # Write settings.json with layered structure
+# Use jq to build valid JSON to avoid escaping issues with agent prompts
 if [ "$PROVIDER" = "anthropic" ]; then
-cat > "$SETTINGS_FILE" <<EOF
-{
-  "channels": {
-    "enabled": ${CHANNELS_JSON},
-    "discord": {
-      "bot_token": "${DISCORD_TOKEN}"
-    },
-    "telegram": {
-      "bot_token": "${TELEGRAM_TOKEN}"
-    },
-    "whatsapp": {}
-  },
-  "models": {
-    "provider": "anthropic",
-    "anthropic": {
-      "model": "${MODEL}"
-    }
-  },
-  "monitoring": {
-    "heartbeat_interval": ${HEARTBEAT_INTERVAL}
-  }
-}
-EOF
+    MODELS_SECTION='"models": { "provider": "anthropic", "anthropic": { "model": "'"${MODEL}"'" } }'
 else
+    MODELS_SECTION='"models": { "provider": "openai", "openai": { "model": "'"${MODEL}"'" } }'
+fi
+
 cat > "$SETTINGS_FILE" <<EOF
 {
   "channels": {
@@ -205,21 +266,28 @@ cat > "$SETTINGS_FILE" <<EOF
     },
     "whatsapp": {}
   },
-  "models": {
-    "provider": "openai",
-    "openai": {
-      "model": "${MODEL}"
-    }
-  },
+  ${AGENTS_JSON}
+  ${MODELS_SECTION},
   "monitoring": {
     "heartbeat_interval": ${HEARTBEAT_INTERVAL}
   }
 }
 EOF
+
+# Normalize JSON with jq (fix any formatting issues)
+if command -v jq &> /dev/null; then
+    tmp_file="$SETTINGS_FILE.tmp"
+    jq '.' "$SETTINGS_FILE" > "$tmp_file" 2>/dev/null && mv "$tmp_file" "$SETTINGS_FILE"
 fi
 
 echo -e "${GREEN}✓ Configuration saved to .tinyclaw/settings.json${NC}"
 echo ""
+if [ -n "$AGENTS_JSON" ]; then
+    echo "You can manage agents later with:"
+    echo -e "  ${GREEN}./tinyclaw.sh agent list${NC}    - List agents"
+    echo -e "  ${GREEN}./tinyclaw.sh agent add${NC}     - Add more agents"
+    echo ""
+fi
 echo "You can now start TinyClaw:"
 echo -e "  ${GREEN}./tinyclaw.sh start${NC}"
 echo ""
