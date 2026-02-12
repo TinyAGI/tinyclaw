@@ -22,6 +22,7 @@ const QUEUE_PROCESSING = path.join(TINYCLAW_HOME, 'queue/processing');
 const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/queue.log');
 const RESET_FLAG = path.join(TINYCLAW_HOME, 'reset_flag');
 const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
+const EVENTS_DIR = path.join(TINYCLAW_HOME, 'events');
 
 // Model name mapping
 const CLAUDE_MODEL_IDS: Record<string, string> = {
@@ -437,6 +438,23 @@ function log(level: string, message: string): void {
 }
 
 /**
+ * Emit a structured event for the team visualizer TUI.
+ * Events are written as JSON files to EVENTS_DIR, watched by the visualizer.
+ */
+function emitEvent(type: string, data: Record<string, unknown>): void {
+    try {
+        if (!fs.existsSync(EVENTS_DIR)) {
+            fs.mkdirSync(EVENTS_DIR, { recursive: true });
+        }
+        const event = { type, timestamp: Date.now(), ...data };
+        const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`;
+        fs.writeFileSync(path.join(EVENTS_DIR, filename), JSON.stringify(event) + '\n');
+    } catch {
+        // Visualizer events are best-effort; never break the queue processor
+    }
+}
+
+/**
  * Invoke a single agent with a message. Contains all Claude/Codex invocation logic.
  * Returns the raw response text.
  */
@@ -537,6 +555,7 @@ async function processMessage(messageFile: string): Promise<void> {
         const { channel, sender, message: rawMessage, timestamp, messageId } = messageData;
 
         log('INFO', `Processing [${channel}] from ${sender}: ${rawMessage.substring(0, 50)}...`);
+        emitEvent('message_received', { channel, sender, message: rawMessage.substring(0, 120), messageId });
 
         // Get settings, agents, and teams
         const settings = getSettings();
@@ -597,6 +616,7 @@ async function processMessage(messageFile: string): Promise<void> {
 
         const agent = agents[agentId];
         log('INFO', `Routing to agent: ${agent.name} (${agentId}) [${agent.provider}/${agent.model}]`);
+        emitEvent('agent_routed', { agentId, agentName: agent.name, provider: agent.provider, model: agent.model, isTeamRouted });
 
         // Determine team context
         // If routed via @team_id, use that team. Otherwise check if agent belongs to a team.
@@ -640,6 +660,7 @@ async function processMessage(messageFile: string): Promise<void> {
         } else {
             // Team context — chain execution
             log('INFO', `Team context: ${teamContext.team.name} (@${teamContext.teamId})`);
+            emitEvent('team_chain_start', { teamId: teamContext.teamId, teamName: teamContext.team.name, agents: teamContext.team.agents, leader: teamContext.team.leader_agent });
 
             const chainSteps: ChainStep[] = [];
             let currentAgentId = agentId;
@@ -654,6 +675,7 @@ async function processMessage(messageFile: string): Promise<void> {
                 }
 
                 log('INFO', `Chain step ${chainSteps.length + 1}: invoking @${currentAgentId}`);
+                emitEvent('chain_step_start', { teamId: teamContext.teamId, step: chainSteps.length + 1, agentId: currentAgentId, agentName: currentAgent.name });
 
                 // Determine if this specific agent needs reset
                 const currentResetFlag = getAgentResetFlag(currentAgentId, workspacePath);
@@ -675,6 +697,7 @@ async function processMessage(messageFile: string): Promise<void> {
                 }
 
                 chainSteps.push({ agentId: currentAgentId, response: stepResponse });
+                emitEvent('chain_step_done', { teamId: teamContext.teamId, step: chainSteps.length, agentId: currentAgentId, responseLength: stepResponse.length });
 
                 // Collect files from this step
                 const stepFileRegex = /\[send_file:\s*([^\]]+)\]/g;
@@ -694,11 +717,13 @@ async function processMessage(messageFile: string): Promise<void> {
                 if (!teammateMention) {
                     // No teammate mentioned — chain ends naturally
                     log('INFO', `Chain ended after ${chainSteps.length} step(s) — no teammate mentioned`);
+                    emitEvent('team_chain_end', { teamId: teamContext.teamId, totalSteps: chainSteps.length, agents: chainSteps.map(s => s.agentId) });
                     break;
                 }
 
                 // Hand off to teammate
                 log('INFO', `@${currentAgentId} mentioned @${teammateMention.teammateId} — continuing chain`);
+                emitEvent('chain_handoff', { teamId: teamContext.teamId, fromAgent: currentAgentId, toAgent: teammateMention.teammateId, step: chainSteps.length });
                 currentAgentId = teammateMention.teammateId;
                 currentMessage = `[Message from teammate @${chainSteps[chainSteps.length - 1].agentId}]:\n${stepResponse}`;
             }
@@ -756,6 +781,7 @@ async function processMessage(messageFile: string): Promise<void> {
         fs.writeFileSync(responseFile, JSON.stringify(responseData, null, 2));
 
         log('INFO', `✓ Response ready [${channel}] ${sender} via agent:${agentId} (${finalResponse.length} chars)`);
+        emitEvent('response_ready', { channel, sender, agentId, responseLength: finalResponse.length, messageId });
 
         // Clean up processing file
         fs.unlinkSync(processingFile);
@@ -875,10 +901,16 @@ function logAgentConfig(): void {
     }
 }
 
+// Ensure events dir exists
+if (!fs.existsSync(EVENTS_DIR)) {
+    fs.mkdirSync(EVENTS_DIR, { recursive: true });
+}
+
 // Main loop
 log('INFO', 'Queue processor started');
 log('INFO', `Watching: ${QUEUE_INCOMING}`);
 logAgentConfig();
+emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), teams: Object.keys(getTeams(getSettings())) });
 
 // Process queue every 1 second
 setInterval(processQueue, 1000);
