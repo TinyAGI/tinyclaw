@@ -253,6 +253,8 @@ pub enum Language {
     C,
     Cpp,
     Kotlin,
+    Toml,
+    Yaml,
 }
 
 impl Language {
@@ -268,6 +270,8 @@ impl Language {
             "c" | "h" => Some(Language::C),
             "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Some(Language::Cpp),
             "kt" | "kts" => Some(Language::Kotlin),
+            "toml" => Some(Language::Toml),
+            "yml" | "yaml" => Some(Language::Yaml),
             _ => None,
         }
     }

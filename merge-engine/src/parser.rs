@@ -93,6 +93,12 @@ fn classify_ordering(kind: &str) -> ListOrdering {
         | "companion_object" | "enum_class_body" | "object_declaration" => {
             ListOrdering::Unordered
         }
+        // TOML tables — key ordering within a table doesn't affect semantics
+        "table" | "inline_table" | "document" | "table_array_element" => {
+            ListOrdering::Unordered
+        }
+        // YAML mappings — key ordering doesn't affect semantics
+        "block_mapping" | "flow_mapping" => ListOrdering::Unordered,
         // Everything else is ordered by default
         _ => ListOrdering::Ordered,
     }
@@ -111,6 +117,18 @@ fn is_list_node(kind: &str) -> bool {
         || kind == "source_file"
         || kind == "module"
         || kind == "translation_unit"
+        // TOML
+        || kind == "document"
+        || kind == "table"
+        || kind == "array"
+        || kind == "inline_table"
+        // YAML
+        || kind == "stream"
+        || kind == "block_node"
+        || kind == "block_mapping"
+        || kind == "block_sequence"
+        || kind == "flow_mapping"
+        || kind == "flow_sequence"
 }
 
 /// Get the tree-sitter Language object for a given language.
@@ -125,6 +143,8 @@ fn get_tree_sitter_language(lang: Language) -> Result<tree_sitter::Language, Par
         Language::C => tree_sitter_c::LANGUAGE,
         Language::Cpp => tree_sitter_cpp::LANGUAGE,
         Language::Kotlin => tree_sitter_kotlin_ng::LANGUAGE,
+        Language::Toml => tree_sitter_toml_ng::LANGUAGE,
+        Language::Yaml => tree_sitter_yaml::LANGUAGE,
     };
     Ok(lang_ref.into())
 }
@@ -175,6 +195,27 @@ mod tests {
         let reconstructed = tree.to_source();
         assert!(reconstructed.contains("fun"));
         assert!(reconstructed.contains("val"));
+    }
+
+    #[test]
+    fn test_parse_toml() {
+        let src = "[package]\nname = \"merge-engine\"\nversion = \"0.1.0\"\n";
+        let tree = parse_to_cst(src, Language::Toml).unwrap();
+        assert_eq!(tree.kind(), "document");
+        assert!(!tree.children().is_empty());
+        let reconstructed = tree.to_source();
+        assert!(reconstructed.contains("package"));
+        assert!(reconstructed.contains("name"));
+    }
+
+    #[test]
+    fn test_parse_yaml() {
+        let src = "name: test\non:\n  push:\n    branches: [main]\njobs:\n  build:\n    runs-on: ubuntu-latest\n";
+        let tree = parse_to_cst(src, Language::Yaml).unwrap();
+        assert_eq!(tree.kind(), "stream");
+        let reconstructed = tree.to_source();
+        assert!(reconstructed.contains("ubuntu-latest"));
+        assert!(reconstructed.contains("branches"));
     }
 
     #[test]
