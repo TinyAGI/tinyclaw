@@ -15,7 +15,7 @@ import path from 'path';
 import { MessageData, ResponseData, QueueFile, ChainStep, TeamConfig } from './lib/types';
 import {
     QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING,
-    LOG_FILE, RESET_FLAG, EVENTS_DIR,
+    LOG_FILE, RESET_FLAG, EVENTS_DIR, CHATS_DIR,
     getSettings, getAgents, getTeams
 } from './lib/config';
 import { log, emitEvent } from './lib/logging';
@@ -272,6 +272,44 @@ async function processMessage(messageFile: string): Promise<void> {
                 finalResponse = chainSteps
                     .map(step => `@${step.agentId}: ${step.response}`)
                     .join('\n\n---\n\n');
+            }
+
+            // Write chain chat history to .tinyclaw/chats
+            try {
+                const teamChatsDir = path.join(CHATS_DIR, teamContext.teamId);
+                if (!fs.existsSync(teamChatsDir)) {
+                    fs.mkdirSync(teamChatsDir, { recursive: true });
+                }
+                const chatLines: string[] = [];
+                chatLines.push(`# Team Chain: ${teamContext.team.name} (@${teamContext.teamId})`);
+                chatLines.push(`**Date:** ${new Date().toISOString()}`);
+                chatLines.push(`**Channel:** ${channel} | **Sender:** ${sender}`);
+                chatLines.push(`**Steps:** ${chainSteps.length}`);
+                chatLines.push('');
+                chatLines.push('---');
+                chatLines.push('');
+                chatLines.push(`## User Message`);
+                chatLines.push('');
+                chatLines.push(rawMessage);
+                chatLines.push('');
+                for (let i = 0; i < chainSteps.length; i++) {
+                    const step = chainSteps[i];
+                    const stepAgent = agents[step.agentId];
+                    const stepLabel = stepAgent ? `${stepAgent.name} (@${step.agentId})` : `@${step.agentId}`;
+                    chatLines.push('---');
+                    chatLines.push('');
+                    chatLines.push(`## Step ${i + 1}: ${stepLabel}`);
+                    chatLines.push('');
+                    chatLines.push(step.response);
+                    chatLines.push('');
+                }
+                const now = new Date();
+                const dateTime = now.toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '');
+                const chatFilename = `${dateTime}.md`;
+                fs.writeFileSync(path.join(teamChatsDir, chatFilename), chatLines.join('\n'));
+                log('INFO', `Chain chat history saved to ${chatFilename}`);
+            } catch (e) {
+                log('ERROR', `Failed to save chain chat history: ${(e as Error).message}`);
             }
         }
 
