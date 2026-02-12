@@ -200,6 +200,13 @@ agent_add() {
         echo "  → Linked skills to .claude/skills/"
     fi
 
+    # Create .tinyclaw directory and copy SOUL.md
+    mkdir -p "$AGENTS_DIR/$AGENT_ID/.tinyclaw"
+    if [ -f "$SCRIPT_DIR/SOUL.md" ]; then
+        cp "$SCRIPT_DIR/SOUL.md" "$AGENTS_DIR/$AGENT_ID/.tinyclaw/SOUL.md"
+        echo "  → Copied SOUL.md to .tinyclaw/"
+    fi
+
     echo ""
     echo -e "${GREEN}✓ Agent '${AGENT_ID}' created!${NC}"
     echo -e "  Directory: $AGENTS_DIR/$AGENT_ID"

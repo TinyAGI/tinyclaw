@@ -193,6 +193,14 @@ function ensureAgentDirectory(agentDir: string): void {
         fs.mkdirSync(path.join(agentDir, '.claude'), { recursive: true });
         fs.symlinkSync(sourceSkills, targetSkills);
     }
+
+    // Create .tinyclaw directory and copy SOUL.md
+    const targetTinyclaw = path.join(agentDir, '.tinyclaw');
+    fs.mkdirSync(targetTinyclaw, { recursive: true });
+    const sourceSoul = path.join(SCRIPT_DIR, 'SOUL.md');
+    if (fs.existsSync(sourceSoul)) {
+        fs.copyFileSync(sourceSoul, path.join(targetTinyclaw, 'SOUL.md'));
+    }
 }
 
 /**
