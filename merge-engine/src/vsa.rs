@@ -13,7 +13,9 @@
 //! and enumerated lazily from highest to lowest score.
 
 use crate::matcher::tree_similarity;
-use crate::types::{CstNode, Confidence, ListOrdering, MergeScenario, ResolutionCandidate, ResolutionStrategy};
+use crate::types::{
+    Confidence, CstNode, ListOrdering, MergeScenario, ResolutionCandidate, ResolutionStrategy,
+};
 
 /// A version space representing a set of possible AST subtrees.
 #[derive(Debug, Clone)]
@@ -65,7 +67,12 @@ impl VersionSpace {
                 }
                 Some(total)
             }
-            VersionSpace::ListJoin { left_items, right_items, base_items, .. } => {
+            VersionSpace::ListJoin {
+                left_items,
+                right_items,
+                base_items,
+                ..
+            } => {
                 // Conservative estimate: each list merge has multiple interleavings
                 let n = left_items.len() + right_items.len() + base_items.len();
                 if n > 20 {
@@ -94,10 +101,8 @@ impl VersionSpace {
             }
             VersionSpace::Join { kind, children } => {
                 // Cross product of all children
-                let child_options: Vec<Vec<CstNode>> = children
-                    .iter()
-                    .map(|c| c.enumerate(max))
-                    .collect();
+                let child_options: Vec<Vec<CstNode>> =
+                    children.iter().map(|c| c.enumerate(max)).collect();
 
                 let mut combos = vec![Vec::new()];
                 for options in &child_options {
@@ -147,10 +152,8 @@ impl VersionSpace {
                     left_items.iter().map(|vs| vs.enumerate(max)).collect();
                 let right_nodes: Vec<Vec<CstNode>> =
                     right_items.iter().map(|vs| vs.enumerate(max)).collect();
-                let base_nodes: Vec<CstNode> = base_items
-                    .iter()
-                    .flat_map(|vs| vs.enumerate(1))
-                    .collect();
+                let base_nodes: Vec<CstNode> =
+                    base_items.iter().flat_map(|vs| vs.enumerate(1)).collect();
 
                 // Strategy 1: left before right
                 let mut children1 = base_nodes.clone();

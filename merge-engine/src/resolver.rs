@@ -11,7 +11,7 @@
 //! The resolver stops at the first strategy that produces a resolution with
 //! sufficient confidence, or returns ranked candidates from all strategies.
 
-use crate::amalgamator::{amalgam_to_merge_result, amalgamate, AmalgamResult};
+use crate::amalgamator::{AmalgamResult, amalgam_to_merge_result, amalgamate};
 use crate::diff3;
 use crate::parser::{self, ParseError};
 use crate::patterns::PatternRegistry;
@@ -73,12 +73,7 @@ impl Resolver {
     ///
     /// This is the main entry point. It first runs diff3 to identify conflict
     /// regions, then applies the resolution pipeline to each conflict.
-    pub fn resolve_file(
-        &self,
-        base: &str,
-        left: &str,
-        right: &str,
-    ) -> FileResolverOutput {
+    pub fn resolve_file(&self, base: &str, left: &str, right: &str) -> FileResolverOutput {
         let scenario = MergeScenario::new(base, left, right);
         let diff3_result = diff3::diff3_merge(&scenario);
 
@@ -103,7 +98,9 @@ impl Resolver {
 
                 for hunk in &hunks {
                     match hunk {
-                        Diff3Hunk::Stable(lines) | Diff3Hunk::LeftChanged(lines) | Diff3Hunk::RightChanged(lines) => {
+                        Diff3Hunk::Stable(lines)
+                        | Diff3Hunk::LeftChanged(lines)
+                        | Diff3Hunk::RightChanged(lines) => {
                             for line in lines {
                                 merged_parts.push(line.clone());
                             }
@@ -151,12 +148,7 @@ impl Resolver {
     }
 
     /// Resolve a single conflict region using the full pipeline.
-    pub fn resolve_conflict(
-        &self,
-        base: &str,
-        left: &str,
-        right: &str,
-    ) -> ResolverOutput {
+    pub fn resolve_conflict(&self, base: &str, left: &str, right: &str) -> ResolverOutput {
         let mut candidates: Vec<ResolutionCandidate> = Vec::new();
         let mut strategies_tried = Vec::new();
 
@@ -214,8 +206,7 @@ impl Resolver {
 
         // ── Strategy 4: Search-based resolution ──
         strategies_tried.push(ResolutionStrategy::SearchBased);
-        let search_candidates =
-            search::search_resolve(&text_scenario, &self.config.search_config);
+        let search_candidates = search::search_resolve(&text_scenario, &self.config.search_config);
         candidates.extend(search_candidates);
 
         // Sort all candidates by confidence
@@ -272,7 +263,10 @@ impl Resolver {
         let right_tree = parser::parse_to_cst(right, lang)?;
 
         let scenario = MergeScenario::new(&base_tree, &left_tree, &right_tree);
-        Ok(vsa::resolve_via_vsa(&scenario, self.config.max_vsa_candidates))
+        Ok(vsa::resolve_via_vsa(
+            &scenario,
+            self.config.max_vsa_candidates,
+        ))
     }
 }
 
@@ -305,11 +299,7 @@ mod tests {
     #[test]
     fn test_pattern_resolves_whitespace() {
         let resolver = Resolver::new(ResolverConfig::default());
-        let output = resolver.resolve_conflict(
-            "int x = 1;",
-            "int  x = 1;",
-            "int x  = 1;",
-        );
+        let output = resolver.resolve_conflict("int x = 1;", "int  x = 1;", "int x  = 1;");
         assert!(output.resolution.is_some());
         assert_eq!(
             output.resolution.unwrap().strategy,
@@ -342,6 +332,10 @@ mod tests {
             "fn main() { let x = 1; let y = 3; }",
         );
         // Should attempt structured merge
-        assert!(output.strategies_tried.contains(&ResolutionStrategy::StructuredMerge));
+        assert!(
+            output
+                .strategies_tried
+                .contains(&ResolutionStrategy::StructuredMerge)
+        );
     }
 }

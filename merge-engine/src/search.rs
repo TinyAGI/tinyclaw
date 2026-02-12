@@ -118,12 +118,7 @@ pub fn search_resolve(
 
         // Evaluate and select best
         population.extend(new_pop);
-        population = select_best(
-            population,
-            scenario,
-            config,
-            config.population_size,
-        );
+        population = select_best(population, scenario, config, config.population_size);
     }
 
     // Final scoring and ranking
@@ -161,8 +156,7 @@ fn fitness(candidate: &str, scenario: &MergeScenario<&str>, config: &SearchConfi
     let right_sim = jaccard_similarity(candidate, scenario.right);
     let base_sim = jaccard_similarity(candidate, scenario.base);
 
-    config.left_weight * left_sim + config.right_weight * right_sim
-        - config.base_penalty * base_sim
+    config.left_weight * left_sim + config.right_weight * right_sim - config.base_penalty * base_sim
 }
 
 /// Token-level Jaccard similarity between two strings.
@@ -308,7 +302,11 @@ fn select_best(
     let mut seen = HashSet::new();
     scored.retain(|(c, _)| seen.insert(c.clone()));
 
-    scored.into_iter().take(target_size).map(|(c, _)| c).collect()
+    scored
+        .into_iter()
+        .take(target_size)
+        .map(|(c, _)| c)
+        .collect()
 }
 
 #[cfg(test)]

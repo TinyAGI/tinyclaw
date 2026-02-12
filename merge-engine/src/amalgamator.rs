@@ -47,7 +47,14 @@ pub fn amalgamate(scenario: &MergeScenario<&CstNode>) -> AmalgamResult {
     let lr_map: HashMap<NodeId, NodeId> = lr_matches.iter().map(|p| (p.left, p.right)).collect();
 
     // Phase 2: Top-down traversal with conflict detection
-    amalgamate_node(scenario.base, scenario.left, scenario.right, &bl_map, &br_map, &lr_map)
+    amalgamate_node(
+        scenario.base,
+        scenario.left,
+        scenario.right,
+        &bl_map,
+        &br_map,
+        &lr_map,
+    )
 }
 
 fn amalgamate_node(
@@ -148,7 +155,11 @@ fn amalgamate_children(
                 used_right.insert(rc.id());
                 match amalgamate_node(base_child, lc, rc, bl_map, br_map, lr_map) {
                     AmalgamResult::Merged(node) => merged_children.push(node),
-                    AmalgamResult::Conflict { base: b, left: l, right: r } => {
+                    AmalgamResult::Conflict {
+                        base: b,
+                        left: l,
+                        right: r,
+                    } => {
                         has_conflict = true;
                         conflict_base = b;
                         conflict_left = l;
@@ -199,18 +210,14 @@ fn amalgamate_children(
 
     // Add children that were inserted by left (not in base)
     for lc in left_children {
-        if !used_left.contains(&lc.id())
-            && !bl_child_map.values().any(|v| v.id() == lc.id())
-        {
+        if !used_left.contains(&lc.id()) && !bl_child_map.values().any(|v| v.id() == lc.id()) {
             merged_children.push(lc.clone());
         }
     }
 
     // Add children that were inserted by right (not in base)
     for rc in right_children {
-        if !used_right.contains(&rc.id())
-            && !br_child_map.values().any(|v| v.id() == rc.id())
-        {
+        if !used_right.contains(&rc.id()) && !br_child_map.values().any(|v| v.id() == rc.id()) {
             merged_children.push(rc.clone());
         }
     }
@@ -313,10 +320,10 @@ fn build_child_match_map<'a>(
 
     let mut result = HashMap::new();
     for bc in base_children {
-        if let Some(&other_id) = match_map.get(&bc.id()) {
-            if let Some(other_node) = other_by_id.get(&other_id) {
-                result.insert(bc.id(), *other_node);
-            }
+        if let Some(&other_id) = match_map.get(&bc.id())
+            && let Some(other_node) = other_by_id.get(&other_id)
+        {
+            result.insert(bc.id(), *other_node);
         }
     }
 
@@ -332,10 +339,10 @@ fn build_child_match_map<'a>(
             .filter(|oc| !matched_other.contains(&oc.id()))
             .filter(|oc| oc.kind() == bc.kind())
             .max_by_key(|oc| tree_similarity(bc, oc));
-        if let Some(matched) = best {
-            if tree_similarity(bc, matched) > 0 {
-                result.insert(bc.id(), matched);
-            }
+        if let Some(matched) = best
+            && tree_similarity(bc, matched) > 0
+        {
+            result.insert(bc.id(), matched);
         }
     }
 
@@ -352,10 +359,7 @@ fn reconstruct_node(template: &CstNode, children: Vec<CstNode>) -> CstNode {
             children,
         },
         CstNode::List {
-            id,
-            kind,
-            ordering,
-            ..
+            id, kind, ordering, ..
         } => CstNode::List {
             id: *id,
             kind: kind.clone(),

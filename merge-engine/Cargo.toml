@@ -4,6 +4,18 @@ version = "0.1.0"
 edition = "2024"
 description = "A non-LLM merge conflict resolver using structured merge, Version Space Algebra, and search-based techniques"
 license = "MIT"
+readme = "README.md"
+repository = "https://github.com/maceip/merge-engine"
+keywords = ["merge", "conflict", "git", "tree-sitter", "diff3"]
+categories = ["development-tools", "text-processing"]
+
+[lib]
+name = "merge_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "merge-engine"
+path = "src/main.rs"
 
 [dependencies]
 tree-sitter = "0.25"

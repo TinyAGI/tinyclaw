@@ -8,6 +8,7 @@ members = [
     "crates/tinyclaw-cli",
     "crates/tinyclaw-android",
 ]
+exclude = ["merge-engine"]
 resolver = "2"
 
 [workspace.dependencies]

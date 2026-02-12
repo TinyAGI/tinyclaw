@@ -73,12 +73,7 @@ fn match_trees_recursive(left: &CstNode, right: &CstNode, pairs: &mut Vec<MatchP
 
     // Determine ordering for child matching
     let ordering = match (left, right) {
-        (
-            CstNode::List {
-                ordering: lo, ..
-            },
-            CstNode::List { .. },
-        ) => *lo,
+        (CstNode::List { ordering: lo, .. }, CstNode::List { .. }) => *lo,
         _ => ListOrdering::Ordered,
     };
 
@@ -90,10 +85,8 @@ fn match_trees_recursive(left: &CstNode, right: &CstNode, pairs: &mut Vec<MatchP
     let right_children = right.children();
 
     // Build lookup from matched pairs to recurse into
-    let left_map: HashMap<NodeId, &CstNode> =
-        left_children.iter().map(|c| (c.id(), c)).collect();
-    let right_map: HashMap<NodeId, &CstNode> =
-        right_children.iter().map(|c| (c.id(), c)).collect();
+    let left_map: HashMap<NodeId, &CstNode> = left_children.iter().map(|c| (c.id(), c)).collect();
+    let right_map: HashMap<NodeId, &CstNode> = right_children.iter().map(|c| (c.id(), c)).collect();
 
     for pair in child_pairs {
         if let (Some(lc), Some(rc)) = (left_map.get(&pair.left), right_map.get(&pair.right)) {
