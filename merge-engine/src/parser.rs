@@ -86,11 +86,11 @@ fn ts_node_to_cst(node: &tree_sitter::Node, source: &[u8]) -> CstNode {
 fn classify_ordering(kind: &str) -> ListOrdering {
     match kind {
         // Import / use declarations — order doesn't matter
-        "use_declaration_list" | "import_list" | "import_statement" | "imports" => {
-            ListOrdering::Unordered
-        }
+        "use_declaration_list" | "import_list" | "import_statement" | "imports"
+        | "import_header" => ListOrdering::Unordered,
         // Class/struct member lists — order usually doesn't matter for semantics
-        "class_body" | "enum_body" | "interface_body" | "declaration_list" => {
+        "class_body" | "enum_body" | "interface_body" | "declaration_list"
+        | "companion_object" | "enum_class_body" | "object_declaration" => {
             ListOrdering::Unordered
         }
         // Everything else is ordered by default
@@ -124,6 +124,7 @@ fn get_tree_sitter_language(lang: Language) -> Result<tree_sitter::Language, Par
         Language::Go => tree_sitter_go::LANGUAGE,
         Language::C => tree_sitter_c::LANGUAGE,
         Language::Cpp => tree_sitter_cpp::LANGUAGE,
+        Language::Kotlin => tree_sitter_kotlin_ng::LANGUAGE,
     };
     Ok(lang_ref.into())
 }
@@ -163,6 +164,17 @@ mod tests {
         let tree = parse_to_cst(src, Language::JavaScript).unwrap();
         assert_eq!(tree.kind(), "program");
         assert!(!tree.children().is_empty());
+    }
+
+    #[test]
+    fn test_parse_kotlin() {
+        let src = "fun main() { val x = 1 }";
+        let tree = parse_to_cst(src, Language::Kotlin).unwrap();
+        assert_eq!(tree.kind(), "source_file");
+        assert!(!tree.children().is_empty());
+        let reconstructed = tree.to_source();
+        assert!(reconstructed.contains("fun"));
+        assert!(reconstructed.contains("val"));
     }
 
     #[test]

@@ -252,6 +252,7 @@ pub enum Language {
     Go,
     C,
     Cpp,
+    Kotlin,
 }
 
 impl Language {
@@ -266,6 +267,7 @@ impl Language {
             "go" => Some(Language::Go),
             "c" | "h" => Some(Language::C),
             "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Some(Language::Cpp),
+            "kt" | "kts" => Some(Language::Kotlin),
             _ => None,
         }
     }

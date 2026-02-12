@@ -15,6 +15,7 @@ tree-sitter-go = "0.23"
 tree-sitter-typescript = "0.23"
 tree-sitter-c = "0.23"
 tree-sitter-cpp = "0.23"
+tree-sitter-kotlin-ng = "1.1"
 thiserror = "2"
 similar = "2"
 
