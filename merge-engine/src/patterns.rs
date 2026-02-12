@@ -58,10 +58,7 @@ impl PatternRegistry {
     }
 
     /// Try all rules against a conflict, returning the first match.
-    pub fn try_resolve(
-        &self,
-        scenario: &MergeScenario<&str>,
-    ) -> Option<ResolutionCandidate> {
+    pub fn try_resolve(&self, scenario: &MergeScenario<&str>) -> Option<ResolutionCandidate> {
         for rule in &self.rules {
             if rule.matches(scenario) {
                 return Some(ResolutionCandidate {
@@ -75,10 +72,7 @@ impl PatternRegistry {
     }
 
     /// Try all rules and return ALL matching resolutions, not just the first.
-    pub fn try_resolve_all(
-        &self,
-        scenario: &MergeScenario<&str>,
-    ) -> Vec<ResolutionCandidate> {
+    pub fn try_resolve_all(&self, scenario: &MergeScenario<&str>) -> Vec<ResolutionCandidate> {
         self.rules
             .iter()
             .filter(|rule| rule.matches(scenario))
@@ -114,8 +108,7 @@ impl PatternRule for WhitespaceOnlyRule {
         let left_norm = normalize_whitespace(scenario.left);
         let right_norm = normalize_whitespace(scenario.right);
         // If all three are the same after whitespace normalization, it's a false conflict
-        base_norm == left_norm && base_norm == right_norm
-            || left_norm == right_norm
+        base_norm == left_norm && base_norm == right_norm || left_norm == right_norm
     }
 
     fn resolve(&self, scenario: &MergeScenario<&str>) -> String {
@@ -281,7 +274,7 @@ impl PatternRule for ImportUnionRule {
         let all_imports = |text: &str| {
             text.lines()
                 .filter(|l| !l.trim().is_empty())
-                .all(|l| is_import_line(l))
+                .all(is_import_line)
         };
         all_imports(scenario.base) && all_imports(scenario.left) && all_imports(scenario.right)
     }
@@ -339,7 +332,10 @@ impl PatternRule for AdjacentEditRule {
         }
 
         // At least one line changed on each side
-        let left_has_changes = base_lines.iter().zip(left_lines.iter()).any(|(b, l)| b != l);
+        let left_has_changes = base_lines
+            .iter()
+            .zip(left_lines.iter())
+            .any(|(b, l)| b != l);
         let right_has_changes = base_lines
             .iter()
             .zip(right_lines.iter())
@@ -398,8 +394,8 @@ mod tests {
     fn test_whitespace_only() {
         let scenario = MergeScenario::new(
             "int x = 1;",
-            "int  x = 1;",  // extra space
-            "int x  = 1;",  // different extra space
+            "int  x = 1;", // extra space
+            "int x  = 1;", // different extra space
         );
         let registry = PatternRegistry::new();
         let result = registry.try_resolve(&scenario);

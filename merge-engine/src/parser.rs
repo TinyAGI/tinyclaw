@@ -32,9 +32,7 @@ pub fn parse_to_cst(source: &str, lang: Language) -> Result<CstNode, ParseError>
         .set_language(&ts_lang)
         .map_err(|e| ParseError::LanguageError(e.to_string()))?;
 
-    let tree = parser
-        .parse(source, None)
-        .ok_or(ParseError::ParseFailed)?;
+    let tree = parser.parse(source, None).ok_or(ParseError::ParseFailed)?;
 
     let root = tree.root_node();
     Ok(ts_node_to_cst(&root, source.as_bytes()))
@@ -47,10 +45,7 @@ fn ts_node_to_cst(node: &tree_sitter::Node, source: &[u8]) -> CstNode {
 
     if node.child_count() == 0 {
         // Terminal / leaf node
-        let value = node
-            .utf8_text(source)
-            .unwrap_or("")
-            .to_string();
+        let value = node.utf8_text(source).unwrap_or("").to_string();
         return CstNode::Leaf { id, kind, value };
     }
 
@@ -72,11 +67,7 @@ fn ts_node_to_cst(node: &tree_sitter::Node, source: &[u8]) -> CstNode {
             children,
         }
     } else {
-        CstNode::Constructed {
-            id,
-            kind,
-            children,
-        }
+        CstNode::Constructed { id, kind, children }
     }
 }
 
@@ -86,17 +77,16 @@ fn ts_node_to_cst(node: &tree_sitter::Node, source: &[u8]) -> CstNode {
 fn classify_ordering(kind: &str) -> ListOrdering {
     match kind {
         // Import / use declarations — order doesn't matter
-        "use_declaration_list" | "import_list" | "import_statement" | "imports"
+        "use_declaration_list"
+        | "import_list"
+        | "import_statement"
+        | "imports"
         | "import_header" => ListOrdering::Unordered,
         // Class/struct member lists — order usually doesn't matter for semantics
-        "class_body" | "enum_body" | "interface_body" | "declaration_list"
-        | "companion_object" | "enum_class_body" | "object_declaration" => {
-            ListOrdering::Unordered
-        }
+        "class_body" | "enum_body" | "interface_body" | "declaration_list" | "companion_object"
+        | "enum_class_body" | "object_declaration" => ListOrdering::Unordered,
         // TOML tables — key ordering within a table doesn't affect semantics
-        "table" | "inline_table" | "document" | "table_array_element" => {
-            ListOrdering::Unordered
-        }
+        "table" | "inline_table" | "document" | "table_array_element" => ListOrdering::Unordered,
         // YAML mappings — key ordering doesn't affect semantics
         "block_mapping" | "flow_mapping" => ListOrdering::Unordered,
         // Everything else is ordered by default

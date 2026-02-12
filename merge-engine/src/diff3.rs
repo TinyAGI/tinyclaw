@@ -18,46 +18,123 @@ use crate::types::{Diff3Hunk, MergeResult, MergeScenario};
 /// left-only change, right-only change, or a conflict.
 pub fn diff3_hunks(scenario: &MergeScenario<&str>) -> Vec<Diff3Hunk> {
     let base_lines: Vec<&str> = scenario.base.lines().collect();
-    let left_lines: Vec<&str> = scenario.left.lines().collect();
-    let right_lines: Vec<&str> = scenario.right.lines().collect();
 
-    // Compute diffs: base→left and base→right
-    let diff_bl = TextDiff::from_lines(scenario.base, scenario.left);
-    let diff_br = TextDiff::from_lines(scenario.base, scenario.right);
+    // Compute per-base-line edits for left and right
+    let left_edits = compute_edits(scenario.base, scenario.left);
+    let right_edits = compute_edits(scenario.base, scenario.right);
 
-    // Map each base line to its change status in left and right
-    let left_ops = extract_line_ops(&diff_bl, base_lines.len());
-    let right_ops = extract_line_ops(&diff_br, base_lines.len());
+    // Walk base lines and merge both edit sequences
+    let mut hunks = Vec::new();
+    let mut bi = 0;
+    let mut lei = 0; // left edit index
+    let mut rei = 0; // right edit index
 
-    // Walk through base lines and classify each region
-    build_hunks(&base_lines, &left_lines, &right_lines, &left_ops, &right_ops)
+    while bi < base_lines.len() || lei < left_edits.len() || rei < right_edits.len() {
+        // Handle insertions before the current base line
+        let left_insert = get_insert_at(&left_edits, &mut lei, bi);
+        let right_insert = get_insert_at(&right_edits, &mut rei, bi);
+
+        if !left_insert.is_empty() || !right_insert.is_empty() {
+            if !left_insert.is_empty() && !right_insert.is_empty() {
+                if left_insert == right_insert {
+                    // Both inserted the same lines
+                    hunks.push(Diff3Hunk::LeftChanged(left_insert));
+                } else {
+                    // Both inserted different lines — conflict
+                    hunks.push(Diff3Hunk::Conflict {
+                        base: vec![],
+                        left: left_insert,
+                        right: right_insert,
+                    });
+                }
+            } else if !left_insert.is_empty() {
+                hunks.push(Diff3Hunk::LeftChanged(left_insert));
+            } else {
+                hunks.push(Diff3Hunk::RightChanged(right_insert));
+            }
+        }
+
+        if bi >= base_lines.len() {
+            break;
+        }
+
+        // What did each side do with this base line?
+        let left_action = get_action_at(&left_edits, &mut lei, bi);
+        let right_action = get_action_at(&right_edits, &mut rei, bi);
+
+        match (&left_action, &right_action) {
+            // Both kept the line unchanged
+            (Edit::Keep, Edit::Keep) => {
+                hunks.push(Diff3Hunk::Stable(vec![base_lines[bi].to_string()]));
+            }
+            // Only left changed (right kept)
+            (Edit::Replace(new_lines), Edit::Keep) => {
+                hunks.push(Diff3Hunk::LeftChanged(new_lines.clone()));
+            }
+            (Edit::Delete, Edit::Keep) => {
+                // Left deleted, right kept — left changed to nothing
+                hunks.push(Diff3Hunk::LeftChanged(vec![]));
+            }
+            // Only right changed (left kept)
+            (Edit::Keep, Edit::Replace(new_lines)) => {
+                hunks.push(Diff3Hunk::RightChanged(new_lines.clone()));
+            }
+            (Edit::Keep, Edit::Delete) => {
+                hunks.push(Diff3Hunk::RightChanged(vec![]));
+            }
+            // Both deleted — stable removal
+            (Edit::Delete, Edit::Delete) => {
+                // Both agree to delete
+            }
+            // Both replaced with same content — convergence
+            (Edit::Replace(left_new), Edit::Replace(right_new)) if left_new == right_new => {
+                hunks.push(Diff3Hunk::LeftChanged(left_new.clone()));
+            }
+            // Both changed differently — conflict
+            (Edit::Replace(left_new), Edit::Replace(right_new)) => {
+                hunks.push(Diff3Hunk::Conflict {
+                    base: vec![base_lines[bi].to_string()],
+                    left: left_new.clone(),
+                    right: right_new.clone(),
+                });
+            }
+            (Edit::Replace(left_new), Edit::Delete) => {
+                hunks.push(Diff3Hunk::Conflict {
+                    base: vec![base_lines[bi].to_string()],
+                    left: left_new.clone(),
+                    right: vec![],
+                });
+            }
+            (Edit::Delete, Edit::Replace(right_new)) => {
+                hunks.push(Diff3Hunk::Conflict {
+                    base: vec![base_lines[bi].to_string()],
+                    left: vec![],
+                    right: right_new.clone(),
+                });
+            }
+        }
+
+        bi += 1;
+    }
+
+    coalesce_hunks(hunks)
 }
 
 /// Perform a full three-way merge, returning a single MergeResult.
 pub fn diff3_merge(scenario: &MergeScenario<&str>) -> MergeResult {
     let hunks = diff3_hunks(scenario);
 
-    let mut has_conflict = false;
     let mut merged = String::new();
-    let mut conflict_base = String::new();
-    let mut conflict_left = String::new();
-    let mut conflict_right = String::new();
+    let mut all_conflict_base = Vec::new();
+    let mut all_conflict_left = Vec::new();
+    let mut all_conflict_right = Vec::new();
+    let mut has_conflict = false;
 
     for hunk in &hunks {
         match hunk {
-            Diff3Hunk::Stable(lines) => {
-                for line in lines {
-                    merged.push_str(line);
-                    merged.push('\n');
-                }
-            }
-            Diff3Hunk::LeftChanged(lines) => {
-                for line in lines {
-                    merged.push_str(line);
-                    merged.push('\n');
-                }
-            }
-            Diff3Hunk::RightChanged(lines) => {
+            Diff3Hunk::Stable(lines)
+            | Diff3Hunk::LeftChanged(lines)
+            | Diff3Hunk::RightChanged(lines) => {
                 for line in lines {
                     merged.push_str(line);
                     merged.push('\n');
@@ -65,18 +142,18 @@ pub fn diff3_merge(scenario: &MergeScenario<&str>) -> MergeResult {
             }
             Diff3Hunk::Conflict { base, left, right } => {
                 has_conflict = true;
-                conflict_base = base.join("\n");
-                conflict_left = left.join("\n");
-                conflict_right = right.join("\n");
+                all_conflict_base.extend(base.iter().cloned());
+                all_conflict_left.extend(left.iter().cloned());
+                all_conflict_right.extend(right.iter().cloned());
             }
         }
     }
 
     if has_conflict {
         MergeResult::Conflict {
-            base: conflict_base,
-            left: conflict_left,
-            right: conflict_right,
+            base: all_conflict_base.join("\n"),
+            left: all_conflict_left.join("\n"),
+            right: all_conflict_right.join("\n"),
         }
     } else {
         MergeResult::Resolved(merged)
@@ -99,133 +176,170 @@ pub fn extract_conflicts(scenario: &MergeScenario<&str>) -> Vec<MergeScenario<St
         .collect()
 }
 
-/// Per-line operation from a diff.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LineOp {
+// ──────────────────────────────────────────────────────────────
+// Internal: Edit representation and diff computation
+// ──────────────────────────────────────────────────────────────
+
+/// What happened to a base line in one side of the merge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Edit {
     Keep,
     Delete,
-    /// Index into the "new" side for inserted lines
-    Insert,
+    Replace(Vec<String>),
 }
 
-/// Extract per-base-line operations from a TextDiff.
-fn extract_line_ops<'a>(diff: &TextDiff<'a, 'a, 'a, str>, _base_len: usize) -> Vec<(LineOp, Vec<String>)> {
+/// Represents an edit operation at a specific base line position.
+#[derive(Debug, Clone)]
+enum EditOp {
+    /// Inserted lines before base line `before_base_idx`.
+    Insert {
+        before_base_idx: usize,
+        lines: Vec<String>,
+    },
+    /// Base line `base_idx` was kept.
+    Kept { base_idx: usize },
+    /// Base line `base_idx` was deleted.
+    Deleted { base_idx: usize },
+    /// Base line `base_idx` was replaced with `lines`.
+    Replaced { base_idx: usize, lines: Vec<String> },
+}
+
+/// Compute edits from base to target, returning a sequence of EditOps.
+fn compute_edits(base: &str, target: &str) -> Vec<EditOp> {
+    let diff = TextDiff::from_lines(base, target);
     let mut ops = Vec::new();
+    let mut base_idx: usize = 0;
+    let mut pending_deletes: Vec<usize> = Vec::new();
     let mut pending_inserts: Vec<String> = Vec::new();
 
     for change in diff.iter_all_changes() {
         match change.tag() {
             ChangeTag::Equal => {
-                if !pending_inserts.is_empty() {
-                    ops.push((LineOp::Insert, std::mem::take(&mut pending_inserts)));
-                }
-                ops.push((LineOp::Keep, vec![change.value().trim_end_matches('\n').to_string()]));
+                flush_pending(
+                    &mut ops,
+                    &mut pending_deletes,
+                    &mut pending_inserts,
+                    base_idx,
+                );
+                ops.push(EditOp::Kept { base_idx });
+                base_idx += 1;
             }
             ChangeTag::Delete => {
-                if !pending_inserts.is_empty() {
-                    ops.push((LineOp::Insert, std::mem::take(&mut pending_inserts)));
+                // Flush inserts that came before this delete
+                if !pending_inserts.is_empty() && pending_deletes.is_empty() {
+                    ops.push(EditOp::Insert {
+                        before_base_idx: base_idx,
+                        lines: std::mem::take(&mut pending_inserts),
+                    });
                 }
-                ops.push((LineOp::Delete, vec![change.value().trim_end_matches('\n').to_string()]));
+                pending_deletes.push(base_idx);
+                base_idx += 1;
             }
             ChangeTag::Insert => {
                 pending_inserts.push(change.value().trim_end_matches('\n').to_string());
             }
         }
     }
-    if !pending_inserts.is_empty() {
-        ops.push((LineOp::Insert, pending_inserts));
-    }
+
+    let base_line_count = base.lines().count();
+    flush_pending(
+        &mut ops,
+        &mut pending_deletes,
+        &mut pending_inserts,
+        base_line_count,
+    );
 
     ops
 }
 
-/// Build Diff3Hunks by walking both diffs in parallel over the base.
-fn build_hunks(
-    _base_lines: &[&str],
-    _left_lines: &[&str],
-    _right_lines: &[&str],
-    left_ops: &[(LineOp, Vec<String>)],
-    right_ops: &[(LineOp, Vec<String>)],
-) -> Vec<Diff3Hunk> {
-    let mut hunks = Vec::new();
+/// Flush pending deletes and inserts into the ops list.
+fn flush_pending(
+    ops: &mut Vec<EditOp>,
+    pending_deletes: &mut Vec<usize>,
+    pending_inserts: &mut Vec<String>,
+    next_base_idx: usize,
+) {
+    if !pending_deletes.is_empty() && !pending_inserts.is_empty() {
+        // Delete+Insert = Replace
+        let first_del = pending_deletes[0];
+        let replacement = std::mem::take(pending_inserts);
+        // First deleted line gets the replacement
+        ops.push(EditOp::Replaced {
+            base_idx: first_del,
+            lines: replacement,
+        });
+        // Remaining deleted lines are just deletes
+        for &del_idx in &pending_deletes[1..] {
+            ops.push(EditOp::Deleted { base_idx: del_idx });
+        }
+        pending_deletes.clear();
+    } else if !pending_deletes.is_empty() {
+        for &del_idx in pending_deletes.iter() {
+            ops.push(EditOp::Deleted { base_idx: del_idx });
+        }
+        pending_deletes.clear();
+    } else if !pending_inserts.is_empty() {
+        ops.push(EditOp::Insert {
+            before_base_idx: next_base_idx,
+            lines: std::mem::take(pending_inserts),
+        });
+    }
+}
 
-    // Simplified: walk both op sequences and classify
-    let mut li = 0;
-    let mut ri = 0;
-
-    while li < left_ops.len() || ri < right_ops.len() {
-        let l_op = left_ops.get(li);
-        let r_op = right_ops.get(ri);
-
-        match (l_op, r_op) {
-            // Both keep the same base line
-            (Some((LineOp::Keep, lv)), Some((LineOp::Keep, _rv))) => {
-                hunks.push(Diff3Hunk::Stable(lv.clone()));
-                li += 1;
-                ri += 1;
+/// Get any insertions before `base_idx` from the edit list.
+fn get_insert_at(edits: &[EditOp], edit_idx: &mut usize, base_idx: usize) -> Vec<String> {
+    let mut inserted = Vec::new();
+    while *edit_idx < edits.len() {
+        match &edits[*edit_idx] {
+            EditOp::Insert {
+                before_base_idx,
+                lines,
+            } if *before_base_idx == base_idx => {
+                inserted.extend(lines.iter().cloned());
+                *edit_idx += 1;
             }
-            // Left inserts, right keeps or doesn't exist yet
-            (Some((LineOp::Insert, lv)), _) => {
-                hunks.push(Diff3Hunk::LeftChanged(lv.clone()));
-                li += 1;
-            }
-            // Right inserts
-            (_, Some((LineOp::Insert, rv))) => {
-                hunks.push(Diff3Hunk::RightChanged(rv.clone()));
-                ri += 1;
-            }
-            // Both delete same line — stable removal
-            (Some((LineOp::Delete, _)), Some((LineOp::Delete, _))) => {
-                li += 1;
-                ri += 1;
-            }
-            // Left deletes, right keeps — left changed
-            (Some((LineOp::Delete, _)), Some((LineOp::Keep, _rv))) => {
-                // Left deleted this line — accept left's deletion
-                li += 1;
-                ri += 1;
-            }
-            // Right deletes, left keeps
-            (Some((LineOp::Keep, _lv)), Some((LineOp::Delete, _))) => {
-                li += 1;
-                ri += 1;
-            }
-            // One side exhausted
-            (Some((op, v)), None) => {
-                match op {
-                    LineOp::Keep | LineOp::Insert => hunks.push(Diff3Hunk::Stable(v.clone())),
-                    LineOp::Delete => {}
-                }
-                li += 1;
-                if *op != LineOp::Insert {
-                    }
-            }
-            (None, Some((op, v))) => {
-                match op {
-                    LineOp::Keep | LineOp::Insert => hunks.push(Diff3Hunk::Stable(v.clone())),
-                    LineOp::Delete => {}
-                }
-                ri += 1;
-                if *op != LineOp::Insert {
-                    }
-            }
-            (None, None) => break,
+            _ => break,
         }
     }
+    inserted
+}
 
-    // Coalesce adjacent hunks of same type
-    coalesce_hunks(hunks)
+/// Get the action for `base_idx` from the edit list.
+fn get_action_at(edits: &[EditOp], edit_idx: &mut usize, base_idx: usize) -> Edit {
+    if *edit_idx >= edits.len() {
+        return Edit::Keep;
+    }
+    match &edits[*edit_idx] {
+        EditOp::Kept { base_idx: bi } if *bi == base_idx => {
+            *edit_idx += 1;
+            Edit::Keep
+        }
+        EditOp::Deleted { base_idx: bi } if *bi == base_idx => {
+            *edit_idx += 1;
+            Edit::Delete
+        }
+        EditOp::Replaced {
+            base_idx: bi,
+            lines,
+        } if *bi == base_idx => {
+            let lines = lines.clone();
+            *edit_idx += 1;
+            Edit::Replace(lines)
+        }
+        _ => Edit::Keep,
+    }
 }
 
 fn coalesce_hunks(hunks: Vec<Diff3Hunk>) -> Vec<Diff3Hunk> {
     let mut result: Vec<Diff3Hunk> = Vec::new();
     for hunk in hunks {
-        let should_merge = match (&hunk, result.last()) {
-            (Diff3Hunk::Stable(_), Some(Diff3Hunk::Stable(_))) => true,
-            (Diff3Hunk::LeftChanged(_), Some(Diff3Hunk::LeftChanged(_))) => true,
-            (Diff3Hunk::RightChanged(_), Some(Diff3Hunk::RightChanged(_))) => true,
-            _ => false,
-        };
+        let should_merge = matches!(
+            (&hunk, result.last()),
+            (Diff3Hunk::Stable(_), Some(Diff3Hunk::Stable(_)))
+                | (Diff3Hunk::LeftChanged(_), Some(Diff3Hunk::LeftChanged(_)))
+                | (Diff3Hunk::RightChanged(_), Some(Diff3Hunk::RightChanged(_)))
+                | (Diff3Hunk::Conflict { .. }, Some(Diff3Hunk::Conflict { .. }))
+        );
         if should_merge {
             match (result.last_mut().unwrap(), hunk) {
                 (Diff3Hunk::Stable(existing), Diff3Hunk::Stable(new)) => existing.extend(new),
@@ -234,6 +348,22 @@ fn coalesce_hunks(hunks: Vec<Diff3Hunk>) -> Vec<Diff3Hunk> {
                 }
                 (Diff3Hunk::RightChanged(existing), Diff3Hunk::RightChanged(new)) => {
                     existing.extend(new)
+                }
+                (
+                    Diff3Hunk::Conflict {
+                        base: eb,
+                        left: el,
+                        right: er,
+                    },
+                    Diff3Hunk::Conflict {
+                        base: nb,
+                        left: nl,
+                        right: nr,
+                    },
+                ) => {
+                    eb.extend(nb);
+                    el.extend(nl);
+                    er.extend(nr);
                 }
                 _ => unreachable!(),
             }
@@ -250,19 +380,23 @@ mod tests {
 
     #[test]
     fn test_no_conflict() {
-        let base = "line1\nline2\nline3\n";
-        let left = "line1\nmodified_left\nline3\n";
-        let right = "line1\nline2\nline3_right\n";
+        let base = "line1\nline2\nline3";
+        let left = "line1\nmodified_left\nline3";
+        let right = "line1\nline2\nline3_right";
         let scenario = MergeScenario::new(base, left, right);
         let result = diff3_merge(&scenario);
         assert!(result.is_resolved());
+        if let MergeResult::Resolved(content) = &result {
+            assert!(content.contains("modified_left"));
+            assert!(content.contains("line3_right"));
+        }
     }
 
     #[test]
     fn test_identical_changes() {
-        let base = "line1\nline2\n";
-        let left = "line1\nchanged\n";
-        let right = "line1\nchanged\n";
+        let base = "line1\nline2";
+        let left = "line1\nchanged";
+        let right = "line1\nchanged";
         let scenario = MergeScenario::new(base, left, right);
         let result = diff3_merge(&scenario);
         assert!(result.is_resolved());
@@ -270,15 +404,72 @@ mod tests {
 
     #[test]
     fn test_conflict_detection() {
-        // Use the full diff3_merge to check for conflicts
-        let base = "a\n";
-        let left = "b\n";
-        let right = "c\n";
+        let base = "line1\noriginal\nline3";
+        let left = "line1\nleft_change\nline3";
+        let right = "line1\nright_change\nline3";
         let scenario = MergeScenario::new(base, left, right);
         let result = diff3_merge(&scenario);
-        // Even if our simplified diff3 can't always detect this as a textual
-        // conflict, the resolver pipeline catches it via pattern/search/VSA.
-        // Here we just verify it produces *some* output.
-        assert!(result.is_resolved() || result.is_conflict());
+        assert!(
+            result.is_conflict(),
+            "expected conflict but got: {:?}",
+            result
+        );
+        if let MergeResult::Conflict { left, right, .. } = &result {
+            assert!(left.contains("left_change"));
+            assert!(right.contains("right_change"));
+        }
+    }
+
+    #[test]
+    fn test_multiple_conflicts() {
+        let base = "a\nb\nc";
+        let left = "x\nb\ny";
+        let right = "p\nb\nq";
+        let scenario = MergeScenario::new(base, left, right);
+        let conflicts = extract_conflicts(&scenario);
+        assert!(!conflicts.is_empty(), "should detect at least one conflict");
+    }
+
+    #[test]
+    fn test_left_only_insert() {
+        let base = "line1\nline3";
+        let left = "line1\nline2\nline3";
+        let right = "line1\nline3";
+        let scenario = MergeScenario::new(base, left, right);
+        let result = diff3_merge(&scenario);
+        assert!(result.is_resolved());
+        if let MergeResult::Resolved(content) = &result {
+            assert!(content.contains("line2"));
+        }
+    }
+
+    #[test]
+    fn test_both_insert_different() {
+        let base = "line1\nline3";
+        let left = "line1\nleft_insert\nline3";
+        let right = "line1\nright_insert\nline3";
+        let scenario = MergeScenario::new(base, left, right);
+        let result = diff3_merge(&scenario);
+        // This should be a conflict since both inserted different content
+        // at the same position
+        assert!(
+            result.is_conflict(),
+            "expected conflict for different insertions at same position, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_delete_vs_modify_conflict() {
+        let base = "keep\nmodify_me\nkeep_too";
+        let left = "keep\nmodified_left\nkeep_too";
+        let right = "keep\nkeep_too";
+        let scenario = MergeScenario::new(base, left, right);
+        let result = diff3_merge(&scenario);
+        assert!(
+            result.is_conflict(),
+            "delete vs modify should conflict, got: {:?}",
+            result
+        );
     }
 }

@@ -129,15 +129,22 @@ impl CstNode {
             (CstNode::Leaf { value: v1, .. }, CstNode::Leaf { value: v2, .. }) => v1 == v2,
             (
                 CstNode::Constructed {
-                    children: c1, kind: k1, ..
+                    children: c1,
+                    kind: k1,
+                    ..
                 },
                 CstNode::Constructed {
-                    children: c2, kind: k2, ..
+                    children: c2,
+                    kind: k2,
+                    ..
                 },
             ) => {
                 k1 == k2
                     && c1.len() == c2.len()
-                    && c1.iter().zip(c2.iter()).all(|(a, b)| a.structurally_equal(b))
+                    && c1
+                        .iter()
+                        .zip(c2.iter())
+                        .all(|(a, b)| a.structurally_equal(b))
             }
             (
                 CstNode::List {
@@ -156,7 +163,10 @@ impl CstNode {
                 k1 == k2
                     && o1 == o2
                     && c1.len() == c2.len()
-                    && c1.iter().zip(c2.iter()).all(|(a, b)| a.structurally_equal(b))
+                    && c1
+                        .iter()
+                        .zip(c2.iter())
+                        .all(|(a, b)| a.structurally_equal(b))
             }
             _ => false,
         }
