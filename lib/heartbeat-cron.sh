@@ -3,7 +3,11 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-TINYCLAW_HOME="$HOME/.tinyclaw"
+if [ -f "$PROJECT_ROOT/.tinyclaw/settings.json" ]; then
+    TINYCLAW_HOME="$PROJECT_ROOT/.tinyclaw"
+else
+    TINYCLAW_HOME="$HOME/.tinyclaw"
+fi
 LOG_FILE="$TINYCLAW_HOME/logs/heartbeat.log"
 QUEUE_INCOMING="$TINYCLAW_HOME/queue/incoming"
 QUEUE_OUTGOING="$TINYCLAW_HOME/queue/outgoing"

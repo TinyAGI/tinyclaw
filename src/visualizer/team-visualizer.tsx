@@ -13,9 +13,16 @@ import { render, Box, Text, useApp, useInput, Newline } from 'ink';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 // ─── Paths ──────────────────────────────────────────────────────────────────
-const TINYCLAW_HOME = path.join(os.homedir(), '.tinyclaw');
+const __filename_ = fileURLToPath(import.meta.url);
+const __dirname_ = path.dirname(__filename_);
+const _localTinyclaw = path.join(__dirname_, '..', '..', '.tinyclaw');
+const TINYCLAW_HOME = fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
+    ? _localTinyclaw
+    : path.join(os.homedir(), '.tinyclaw');
 const EVENTS_DIR = path.join(TINYCLAW_HOME, 'events');
 const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 
@@ -228,7 +235,7 @@ function StatusBar({ queueDepth, totalProcessed, processorAlive }: { queueDepth:
                 {processorAlive ? (
                     <Text color="green">{'\u25CF'} Queue Processor Online</Text>
                 ) : (
-                    <Text color="red">{'\u25CB'} Queue Processor Offline</Text>
+                    <Text color="yellow">{'\u25CB'} Queue Processor Idle</Text>
                 )}
                 <Text color="gray">{sep}</Text>
                 <Text color="white">Queue: <Text color={queueDepth > 0 ? 'yellow' : 'green'}>{queueDepth}</Text></Text>
@@ -405,7 +412,7 @@ function App({ filterTeamId }: { filterTeamId: string | null }) {
 
             case 'response_ready':
                 setTotalProcessed(prev => prev + 1);
-                addLog('\u2709', `Response sent to ${event.sender} via @${event.agentId} (${event.responseLength} chars)`, 'green');
+                addLog('\u2709', `Response to ${event.sender} via @${event.agentId}: ${event.responseText ?? `(${event.responseLength} chars)`}`, 'green');
                 // Reset agent states to idle after a short delay via next tick
                 setTimeout(() => {
                     setAgentStates(prev => {
@@ -487,16 +494,12 @@ function App({ filterTeamId }: { filterTeamId: string | null }) {
         return () => clearInterval(interval);
     }, []);
 
-    // Detect if processor is alive (check for recent events or log file mtime)
+    // Detect if processor is alive (check if process is running)
     useEffect(() => {
         const interval = setInterval(() => {
             try {
-                const logFile = path.join(TINYCLAW_HOME, 'logs/queue.log');
-                if (fs.existsSync(logFile)) {
-                    const stat = fs.statSync(logFile);
-                    const age = Date.now() - stat.mtimeMs;
-                    setProcessorAlive(age < 30_000); // Consider alive if log updated in last 30s
-                }
+                execSync('pgrep -f "queue-processor"', { stdio: 'ignore' });
+                setProcessorAlive(true);
             } catch {
                 setProcessorAlive(false);
             }

@@ -14,8 +14,11 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 
-const SCRIPT_DIR = path.resolve(__dirname, '..');
-const TINYCLAW_HOME = path.join(require('os').homedir(), '.tinyclaw');
+const SCRIPT_DIR = path.resolve(__dirname, '..', '..');
+const _localTinyclaw = path.join(SCRIPT_DIR, '.tinyclaw');
+const TINYCLAW_HOME = fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
+    ? _localTinyclaw
+    : path.join(require('os').homedir(), '.tinyclaw');
 const QUEUE_INCOMING = path.join(TINYCLAW_HOME, 'queue/incoming');
 const QUEUE_OUTGOING = path.join(TINYCLAW_HOME, 'queue/outgoing');
 const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/telegram.log');

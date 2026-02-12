@@ -12,6 +12,8 @@ dist/
 .tinyclaw/reset_flag
 .tinyclaw/settings.json
 .tinyclaw/files
+.tinyclaw/events
+
 .wwebjs_cache
 *.log
 

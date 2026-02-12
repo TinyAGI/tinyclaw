@@ -15,7 +15,10 @@ import fs from 'fs';
 import path from 'path';
 
 const SCRIPT_DIR = path.resolve(__dirname, '..');
-const TINYCLAW_HOME = path.join(require('os').homedir(), '.tinyclaw');
+const _localTinyclaw = path.join(SCRIPT_DIR, '.tinyclaw');
+const TINYCLAW_HOME = fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
+    ? _localTinyclaw
+    : path.join(require('os').homedir(), '.tinyclaw');
 const QUEUE_INCOMING = path.join(TINYCLAW_HOME, 'queue/incoming');
 const QUEUE_OUTGOING = path.join(TINYCLAW_HOME, 'queue/outgoing');
 const QUEUE_PROCESSING = path.join(TINYCLAW_HOME, 'queue/processing');
@@ -781,7 +784,7 @@ async function processMessage(messageFile: string): Promise<void> {
         fs.writeFileSync(responseFile, JSON.stringify(responseData, null, 2));
 
         log('INFO', `✓ Response ready [${channel}] ${sender} via agent:${agentId} (${finalResponse.length} chars)`);
-        emitEvent('response_ready', { channel, sender, agentId, responseLength: finalResponse.length, messageId });
+        emitEvent('response_ready', { channel, sender, agentId, responseLength: finalResponse.length, responseText: finalResponse, messageId });
 
         // Clean up processing file
         fs.unlinkSync(processingFile);

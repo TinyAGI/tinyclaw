@@ -16,7 +16,11 @@ fi
 TMUX_SESSION="tinyclaw"
 # Centralize all logs to ~/.tinyclaw/logs
 LOG_DIR="$HOME/.tinyclaw/logs"
-SETTINGS_FILE="$HOME/.tinyclaw/settings.json"
+if [ -f "$SCRIPT_DIR/.tinyclaw/settings.json" ]; then
+    SETTINGS_FILE="$SCRIPT_DIR/.tinyclaw/settings.json"
+else
+    SETTINGS_FILE="$HOME/.tinyclaw/settings.json"
+fi
 
 mkdir -p "$LOG_DIR"
 

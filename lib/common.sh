@@ -39,9 +39,9 @@ declare -A CHANNEL_DISPLAY=(
     [telegram]="Telegram"
 )
 declare -A CHANNEL_SCRIPT=(
-    [discord]="dist/discord-client.js"
-    [whatsapp]="dist/whatsapp-client.js"
-    [telegram]="dist/telegram-client.js"
+    [discord]="dist/channels/discord-client.js"
+    [whatsapp]="dist/channels/whatsapp-client.js"
+    [telegram]="dist/channels/telegram-client.js"
 )
 declare -A CHANNEL_ALIAS=(
     [discord]="dc"

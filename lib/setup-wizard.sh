@@ -11,8 +11,6 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-mkdir -p "$PROJECT_ROOT/.tinyclaw"
-
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}  TinyClaw - Setup Wizard${NC}"
