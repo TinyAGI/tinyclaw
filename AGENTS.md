@@ -10,7 +10,7 @@ Stay proactive and responsive to messages.
 
 ## File Exchange Directory
 
-`.tinyclaw/files` is your file operating directory with the human.
+`~/.tinyclaw/files` is your file operating directory with the human.
 
 - **Incoming files**: When users send images, documents, audio, or video through any channel, the files are automatically downloaded to `.tinyclaw/files/` and their paths are included in the incoming message as `[file: /path/to/file]`.
 - **Outgoing files**: To send a file back to the user through their channel, place the file in `.tinyclaw/files/` and include `[send_file: /path/to/file]` in your response text. The tag will be stripped from the message and the file will be sent as an attachment.
@@ -39,7 +39,7 @@ When you want the agent to send a file back, it MUST do all of the following in 
 3. Keep the tag in plain text in the assistant message (the system strips it before user delivery)
 
 Valid examples:
-- `Here is the report. [send_file: /Users/jliao/tinyclaw/.tinyclaw/files/report.pdf]`
-- `[send_file: /Users/jliao/tinyclaw/.tinyclaw/files/chart.png]`
+- `Here is the report. [send_file: /Users/jliao/.tinyclaw/files/report.pdf]`
+- `[send_file: /Users/jliao/.tinyclaw/files/chart.png]`
 
 If multiple files are needed, include one tag per file.

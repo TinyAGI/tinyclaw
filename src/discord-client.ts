@@ -17,8 +17,8 @@ const TINYCLAW_HOME = path.join(require('os').homedir(), '.tinyclaw');
 const QUEUE_INCOMING = path.join(TINYCLAW_HOME, 'queue/incoming');
 const QUEUE_OUTGOING = path.join(TINYCLAW_HOME, 'queue/outgoing');
 const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/discord.log');
-const SETTINGS_FILE = path.join(SCRIPT_DIR, '.tinyclaw/settings.json');
-const FILES_DIR = path.join(SCRIPT_DIR, '.tinyclaw/files');
+const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
+const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
 
 // Ensure directories exist
 [QUEUE_INCOMING, QUEUE_OUTGOING, path.dirname(LOG_FILE), FILES_DIR].forEach(dir => {

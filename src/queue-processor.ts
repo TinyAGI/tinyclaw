@@ -21,7 +21,7 @@ const QUEUE_OUTGOING = path.join(TINYCLAW_HOME, 'queue/outgoing');
 const QUEUE_PROCESSING = path.join(TINYCLAW_HOME, 'queue/processing');
 const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/queue.log');
 const RESET_FLAG = path.join(TINYCLAW_HOME, 'reset_flag');
-const SETTINGS_FILE = path.join(SCRIPT_DIR, '.tinyclaw/settings.json');
+const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 
 // Model name mapping
 const CLAUDE_MODEL_IDS: Record<string, string> = {

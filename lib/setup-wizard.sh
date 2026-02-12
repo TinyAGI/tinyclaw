@@ -3,7 +3,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SETTINGS_FILE="$PROJECT_ROOT/.tinyclaw/settings.json"
+SETTINGS_FILE="$HOME/.tinyclaw/settings.json"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -338,6 +338,10 @@ if [ -f "$TINYCLAW_HOME/AGENTS.md" ]; then
 fi
 echo -e "${GREEN}✓ Created default team directory: $DEFAULT_TEAM_DIR${NC}"
 
+# Create ~/.tinyclaw/files directory for file exchange
+mkdir -p "$TINYCLAW_HOME/files"
+echo -e "${GREEN}✓ Created files directory: $TINYCLAW_HOME/files${NC}"
+
 # Create directories for additional teams
 for team_id in "${ADDITIONAL_TEAMS[@]}"; do
     TEAM_DIR="$WORKSPACE_PATH/$team_id"
@@ -354,7 +358,7 @@ for team_id in "${ADDITIONAL_TEAMS[@]}"; do
     echo -e "${GREEN}✓ Created team directory: $TEAM_DIR${NC}"
 done
 
-echo -e "${GREEN}✓ Configuration saved to .tinyclaw/settings.json${NC}"
+echo -e "${GREEN}✓ Configuration saved to ~/.tinyclaw/settings.json${NC}"
 echo ""
 echo "You can manage teams later with:"
 echo -e "  ${GREEN}./tinyclaw.sh team list${NC}    - List teams"
