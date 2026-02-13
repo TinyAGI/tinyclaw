@@ -38,7 +38,9 @@ function recoverOrphanedFiles() {
         try {
             fs.renameSync(path.join(QUEUE_PROCESSING, f), path.join(QUEUE_INCOMING, f));
             log('INFO', `Recovered orphaned file: ${f}`);
-        } catch {}
+        } catch (error) {
+            log('ERROR', `Failed to recover orphaned file ${f}: ${(error as Error).message}`);
+        }
     }
 }
 
