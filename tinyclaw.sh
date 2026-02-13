@@ -30,6 +30,7 @@ source "$SCRIPT_DIR/lib/daemon.sh"
 source "$SCRIPT_DIR/lib/messaging.sh"
 source "$SCRIPT_DIR/lib/agents.sh"
 source "$SCRIPT_DIR/lib/teams.sh"
+source "$SCRIPT_DIR/lib/pairing.sh"
 source "$SCRIPT_DIR/lib/update.sh"
 
 # --- Main command dispatch ---
@@ -347,15 +348,7 @@ case "${1:-}" in
         esac
         ;;
     pairing)
-        if [ ! -f "$SCRIPT_DIR/dist/pairing-cli.js" ] || [ "$SCRIPT_DIR/src/pairing-cli.ts" -nt "$SCRIPT_DIR/dist/pairing-cli.js" ]; then
-            echo -e "${BLUE}Building pairing CLI...${NC}"
-            cd "$SCRIPT_DIR" && npm run build:main >/dev/null 2>&1
-            if [ $? -ne 0 ]; then
-                echo -e "${RED}Failed to build pairing CLI.${NC}"
-                exit 1
-            fi
-        fi
-        node "$SCRIPT_DIR/dist/pairing-cli.js" "${@:2}"
+        pairing_command "${2:-}" "${3:-}"
         ;;
     attach)
         tmux attach -t "$TMUX_SESSION"
