@@ -4,6 +4,13 @@ description: Browser automation CLI for AI agents. Use when the user needs to in
 allowed-tools: Bash(agent-browser:*)
 ---
 
+## Installing agent-browser
+
+```base
+npm install -g agent-browser      # all platforms
+brew install agent-browser        # macOS
+```
+
 # Browser Automation with agent-browser
 
 ## Core Workflow
@@ -95,6 +102,28 @@ agent-browser state save auth.json
 # Reuse in future sessions
 agent-browser state load auth.json
 agent-browser open https://app.example.com/dashboard
+```
+
+### Session Persistence
+
+```bash
+# Auto-save/restore cookies and localStorage across browser restarts
+agent-browser --session-name myapp open https://app.example.com/login
+# ... login flow ...
+agent-browser close  # State auto-saved to ~/.agent-browser/sessions/
+
+# Next time, state is auto-loaded
+agent-browser --session-name myapp open https://app.example.com/dashboard
+
+# Encrypt state at rest
+export AGENT_BROWSER_ENCRYPTION_KEY=$(openssl rand -hex 32)
+agent-browser --session-name secure open https://app.example.com
+
+# Manage saved states
+agent-browser state list
+agent-browser state show myapp-default.json
+agent-browser state clear myapp
+agent-browser state clean --older-than 7
 ```
 
 ### Data Extraction
