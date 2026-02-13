@@ -39,6 +39,19 @@ if (!TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN === 'your_token_here') {
     process.exit(1);
 }
 
+// Load allowed user IDs from settings (empty = allow all for backward compat)
+function loadAllowedUsers(): Set<string> {
+    try {
+        const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+        const list: string[] = settings.channels?.telegram?.allowed_users ?? [];
+        return new Set(list.map(String));
+    } catch {
+        return new Set();
+    }
+}
+
+let allowedUsers = loadAllowedUsers();
+
 interface PendingMessage {
     chatId: number;
     messageId: number;
@@ -263,6 +276,13 @@ bot.on('message', async (msg: TelegramBot.Message) => {
             return;
         }
 
+        // Enforce sender allowlist (if configured)
+        const senderId = msg.from ? msg.from.id.toString() : msg.chat.id.toString();
+        if (allowedUsers.size > 0 && !allowedUsers.has(senderId)) {
+            log('WARN', `Rejected message from unauthorized user: ${senderId} (${msg.from?.first_name ?? 'unknown'})`);
+            return;
+        }
+
         // Determine message text and any media files
         let messageText = msg.text || msg.caption || '';
         const downloadedFiles: string[] = [];
@@ -329,7 +349,6 @@ bot.on('message', async (msg: TelegramBot.Message) => {
         const sender = msg.from
             ? (msg.from.first_name + (msg.from.last_name ? ` ${msg.from.last_name}` : ''))
             : 'Unknown';
-        const senderId = msg.from ? msg.from.id.toString() : msg.chat.id.toString();
 
         log('INFO', `Message from ${sender}: ${messageText.substring(0, 50)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}...`);
 
@@ -497,6 +516,9 @@ async function checkOutgoingQueue(): Promise<void> {
 
 // Check outgoing queue every second
 setInterval(checkOutgoingQueue, 1000);
+
+// Reload allowlist every 30 seconds (pick up settings changes without restart)
+setInterval(() => { allowedUsers = loadAllowedUsers(); }, 30000);
 
 // Refresh typing indicator every 4 seconds for pending messages
 setInterval(() => {
