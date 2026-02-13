@@ -1,6 +1,6 @@
 {
   "name": "tinyclaw",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "TinyClaw is a tiny agent that acts as your 24/7 personal assistant",
   "scripts": {
     "build": "tsc && tsc -p tsconfig.visualizer.json && echo '{\"type\":\"module\"}' > dist/visualizer/package.json",
