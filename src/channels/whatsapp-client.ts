@@ -281,8 +281,12 @@ client.on('message_create', async (message: Message) => {
 
         const pairing = ensureSenderPaired(PAIRING_FILE, 'whatsapp', message.from, sender);
         if (!pairing.approved && pairing.code) {
-            log('INFO', `Blocked unpaired WhatsApp sender ${sender} (${message.from}) with code ${pairing.code}`);
-            await message.reply(pairingMessage(pairing.code));
+            if (pairing.isNewPending) {
+                log('INFO', `Blocked unpaired WhatsApp sender ${sender} (${message.from}) with code ${pairing.code}`);
+                await message.reply(pairingMessage(pairing.code));
+            } else {
+                log('INFO', `Blocked pending WhatsApp sender ${sender} (${message.from}) without re-sending pairing message`);
+            }
             return;
         }
 

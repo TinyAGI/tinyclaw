@@ -281,8 +281,12 @@ client.on(Events.MessageCreate, async (message: Message) => {
 
         const pairing = ensureSenderPaired(PAIRING_FILE, 'discord', message.author.id, sender);
         if (!pairing.approved && pairing.code) {
-            log('INFO', `Blocked unpaired Discord sender ${sender} (${message.author.id}) with code ${pairing.code}`);
-            await message.reply(pairingMessage(pairing.code));
+            if (pairing.isNewPending) {
+                log('INFO', `Blocked unpaired Discord sender ${sender} (${message.author.id}) with code ${pairing.code}`);
+                await message.reply(pairingMessage(pairing.code));
+            } else {
+                log('INFO', `Blocked pending Discord sender ${sender} (${message.author.id}) without re-sending pairing message`);
+            }
             return;
         }
 

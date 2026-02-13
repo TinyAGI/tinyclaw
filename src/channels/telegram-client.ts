@@ -346,10 +346,14 @@ bot.on('message', async (msg: TelegramBot.Message) => {
 
         const pairing = ensureSenderPaired(PAIRING_FILE, 'telegram', senderId, sender);
         if (!pairing.approved && pairing.code) {
-            log('INFO', `Blocked unpaired Telegram sender ${sender} (${senderId}) with code ${pairing.code}`);
-            await bot.sendMessage(msg.chat.id, pairingMessage(pairing.code), {
-                reply_to_message_id: msg.message_id,
-            });
+            if (pairing.isNewPending) {
+                log('INFO', `Blocked unpaired Telegram sender ${sender} (${senderId}) with code ${pairing.code}`);
+                await bot.sendMessage(msg.chat.id, pairingMessage(pairing.code), {
+                    reply_to_message_id: msg.message_id,
+                });
+            } else {
+                log('INFO', `Blocked pending Telegram sender ${sender} (${senderId}) without re-sending pairing message`);
+            }
             return;
         }
 
