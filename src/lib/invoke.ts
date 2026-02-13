@@ -6,11 +6,12 @@ import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel } from './config';
 import { log } from './logging';
 import { ensureAgentDirectory, updateAgentTeammates } from './agent-setup';
 
-export async function runCommand(command: string, args: string[], cwd?: string): Promise<string> {
+export async function runCommand(command: string, args: string[], cwd?: string, env?: Record<string, string>): Promise<string> {
     return new Promise((resolve, reject) => {
         const child = spawn(command, args, {
             cwd: cwd || SCRIPT_DIR,
             stdio: ['ignore', 'pipe', 'pipe'],
+            env: env ? { ...process.env, ...env } : undefined,
         });
 
         let stdout = '';
@@ -95,7 +96,7 @@ export async function invokeAgent(
         }
         codexArgs.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json', message);
 
-        const codexOutput = await runCommand('codex', codexArgs, workingDir);
+        const codexOutput = await runCommand('codex', codexArgs, workingDir, agent.env);
 
         // Parse JSONL output and extract final agent_message
         let response = '';
@@ -132,6 +133,6 @@ export async function invokeAgent(
         }
         claudeArgs.push('-p', message);
 
-        return await runCommand('claude', claudeArgs, workingDir);
+        return await runCommand('claude', claudeArgs, workingDir, agent.env);
     }
 }
