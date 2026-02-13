@@ -145,6 +145,24 @@ Commands work with `tinyclaw` (if CLI installed) or `./tinyclaw.sh` (direct scri
 | `reset`                           | Reset all conversations      | `tinyclaw reset`                                 |
 | `channels reset <channel>`        | Reset channel authentication | `tinyclaw channels reset whatsapp`               |
 
+### Pairing Commands
+
+Use sender pairing to control who can message your agents.
+
+| Command                                      | Description                                               | Example                                     |
+| -------------------------------------------- | --------------------------------------------------------- | ------------------------------------------- |
+| `pairing pending`                            | Show pending sender approvals (with pairing codes)        | `tinyclaw pairing pending`                  |
+| `pairing approved`                           | Show approved senders                                     | `tinyclaw pairing approved`                 |
+| `pairing list`                               | Show both pending and approved senders                    | `tinyclaw pairing list`                     |
+| `pairing approve <code>`                     | Move a sender from pending to approved by code            | `tinyclaw pairing approve ABCD1234`         |
+| `pairing unpair <channel> <sender_id>`       | Remove an approved sender from the allowlist              | `tinyclaw pairing unpair telegram 1234567`  |
+
+Pairing behavior:
+
+- First message from unknown sender: TinyClaw generates a code and sends approval instructions.
+- Additional messages while still pending: TinyClaw blocks silently (no repeated pairing message).
+- After approval: messages from that sender are processed normally.
+
 ### Update Commands
 
 | Command  | Description                       | Example           |
@@ -200,6 +218,8 @@ These commands work in Discord, Telegram, and WhatsApp:
 | `message`           | Send to default agent (no prefix)            | `help me with this`                  |
 
 **Note:** The `@agent_id` routing prefix requires a space after it (e.g., `@coder fix` not `@coderfix`).
+  
+**Access control note:** before routing, channel clients apply sender pairing allowlist checks.
 
 ## 🤖 Using Agents
 
@@ -329,6 +349,7 @@ tinyclaw/
 │   ├── logs/             # All logs
 │   ├── channels/         # Channel state
 │   ├── files/            # Uploaded files
+│   ├── pairing.json      # Sender allowlist state (pending + approved)
 │   ├── chats/            # Team chain chat history
 │   │   └── {team_id}/    # Per-team chat logs
 │   ├── events/           # Real-time event files
