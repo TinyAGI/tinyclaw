@@ -15,7 +15,7 @@ import path from 'path';
 import { MessageData, ResponseData, QueueFile, ChainStep, TeamConfig } from './lib/types';
 import {
     QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING,
-    LOG_FILE, RESET_FLAG, EVENTS_DIR, CHATS_DIR,
+    LOG_FILE, EVENTS_DIR, CHATS_DIR,
     getSettings, getAgents, getTeams
 } from './lib/config';
 import { log, emitEvent } from './lib/logging';
@@ -137,14 +137,12 @@ async function processMessage(messageFile: string): Promise<void> {
             teamContext = findTeamForAgent(agentId, teams);
         }
 
-        // Check for reset (per-agent or global)
+        // Check for per-agent reset
         const agentResetFlag = getAgentResetFlag(agentId, workspacePath);
-        const shouldReset = fs.existsSync(RESET_FLAG) || fs.existsSync(agentResetFlag);
+        const shouldReset = fs.existsSync(agentResetFlag);
 
         if (shouldReset) {
-            // Clean up both flags
-            if (fs.existsSync(RESET_FLAG)) fs.unlinkSync(RESET_FLAG);
-            if (fs.existsSync(agentResetFlag)) fs.unlinkSync(agentResetFlag);
+            fs.unlinkSync(agentResetFlag);
         }
 
         let finalResponse: string;
