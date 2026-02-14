@@ -50,6 +50,10 @@ git clone https://github.com/jlia0/tinyclaw.git
 cd tinyclaw && npm install && ./scripts/install.sh
 ```
 
+### Deployment
+
+- Docker + Coolify (VPS): see `docs/DEPLOY_COOLIFY.md`
+
 ### First Run
 
 ```bash
