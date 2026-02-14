@@ -13,8 +13,8 @@ Use **Dockerfile** deployment from your Git repo.
 
 Set build args in Coolify:
 
-- `PUID=1000`
-- `PGID=1000`
+- `PUID=1001`
+- `PGID=1001`
 
 Use your host UID/GID if you want bind-mounted files owned by your VPS user.
 
@@ -50,6 +50,10 @@ codex login
 ```
 
 After login, state is preserved in mounted directories.
+
+Note:
+- `claude` and `qmd` are installed in the image.
+- If `memory.qmd.command` is set explicitly in settings, use `/home/tinyclaw/.bun/bin/qmd`.
 
 ## 5. TinyClaw configuration
 

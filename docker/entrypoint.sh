@@ -3,13 +3,17 @@ set -euo pipefail
 
 cd /app
 
-mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.config" /app/.tinyclaw
+mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.config" "$HOME/.bun" /app/.tinyclaw "$HOME/.tinyclaw/logs" /app/.tinyclaw/logs
+
+# Ensure qmd installed via bun is discoverable even when settings command is empty.
+export PATH="$HOME/.bun/bin:$PATH"
 
 case "${1:-start}" in
   start)
     ./tinyclaw.sh start
     # Keep container in foreground while daemon runs in tmux.
-    exec tail -F /app/.tinyclaw/logs/queue.log /app/.tinyclaw/logs/telegram.log /app/.tinyclaw/logs/heartbeat.log
+    touch "$HOME/.tinyclaw/logs/queue.log" "$HOME/.tinyclaw/logs/telegram.log" "$HOME/.tinyclaw/logs/heartbeat.log"
+    exec tail -F "$HOME/.tinyclaw/logs/queue.log" "$HOME/.tinyclaw/logs/telegram.log" "$HOME/.tinyclaw/logs/heartbeat.log"
     ;;
   restart)
     exec ./tinyclaw.sh restart
