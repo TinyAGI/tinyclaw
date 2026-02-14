@@ -96,11 +96,34 @@ function pathInDirectory(candidatePath: string, directoryPath: string): boolean 
     }
 }
 
+function readSecuritySettings(): {
+    requireSenderAllowlist: boolean;
+    allowOutsideFilesDir: boolean;
+    allowedSenders: string[];
+} {
+    try {
+        const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
+        const settings = JSON.parse(settingsData);
+        return {
+            requireSenderAllowlist: settings?.security?.require_sender_allowlist !== false,
+            allowOutsideFilesDir: settings?.security?.allow_outbound_file_paths_outside_files_dir === true,
+            allowedSenders: settings?.security?.allowed_senders?.discord || [],
+        };
+    } catch {
+        return {
+            requireSenderAllowlist: true,
+            allowOutsideFilesDir: false,
+            allowedSenders: [],
+        };
+    }
+}
+
 function isAllowedOutgoingFile(filePath: string): boolean {
     if (!fs.existsSync(filePath)) return false;
     const stat = fs.statSync(filePath);
     if (!stat.isFile()) return false;
-    return pathInDirectory(filePath, FILES_DIR);
+    const security = readSecuritySettings();
+    return security.allowOutsideFilesDir || pathInDirectory(filePath, FILES_DIR);
 }
 
 // Download a file from URL to local path
@@ -257,16 +280,9 @@ function getAgentListText(): string {
 }
 
 function isSenderAllowed(senderId: string): boolean {
-    try {
-        const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
-        const settings = JSON.parse(settingsData);
-        const requireAllowlist = settings?.security?.require_sender_allowlist !== false;
-        if (!requireAllowlist) return true;
-        const allowed: string[] = settings?.security?.allowed_senders?.discord || [];
-        return allowed.includes('*') || allowed.includes(senderId);
-    } catch {
-        return false;
-    }
+    const security = readSecuritySettings();
+    if (!security.requireSenderAllowlist) return true;
+    return security.allowedSenders.includes('*') || security.allowedSenders.includes(senderId);
 }
 
 // Split long messages for Discord's 2000 char limit

@@ -25,6 +25,7 @@ Run multiple teams of AI agents that collaborate with each other simultaneously 
 - Node.js v14+
 - tmux
 - Bash 4.0+ (macOS: `brew install bash`)
+- jq (`brew install jq` or `apt install jq`)
 - [Claude Code CLI](https://claude.com/claude-code) (for Anthropic provider)
 - [Codex CLI](https://docs.openai.com/codex) (for OpenAI provider)
 

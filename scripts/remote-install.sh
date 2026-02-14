@@ -38,6 +38,26 @@ verify_sha256() {
     [ "$actual" = "$expected" ]
 }
 
+confirm_insecure_bundle() {
+    local reason="$1"
+    echo -e "${YELLOW}Warning: ${reason}${NC}"
+    echo -e "${YELLOW}Proceeding without checksum verification.${NC}"
+
+    if [ "${TINYCLAW_ALLOW_INSECURE_BUNDLE:-}" = "1" ]; then
+        echo -e "${YELLOW}Proceeding because TINYCLAW_ALLOW_INSECURE_BUNDLE=1${NC}"
+        return 0
+    fi
+
+    if [ -t 0 ]; then
+        read -p "Continue with unverified bundle? (y/N) " -n 1 -r
+        echo ""
+        [[ $REPLY =~ ^[Yy]$ ]]
+        return
+    fi
+
+    return 1
+}
+
 echo ""
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║     TinyClaw Remote Installer         ║${NC}"
@@ -75,6 +95,10 @@ if ! command_exists claude; then
     MISSING_DEPS+=("claude (Claude Code CLI)")
 fi
 
+if ! command_exists jq; then
+    MISSING_DEPS+=("jq")
+fi
+
 if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
     echo -e "${RED}✗ Missing dependencies:${NC}"
     for dep in "${MISSING_DEPS[@]}"; do
@@ -85,6 +109,7 @@ if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
     echo "  - Node.js/npm: https://nodejs.org/"
     echo "  - tmux: sudo apt install tmux (or brew install tmux)"
     echo "  - Claude Code: https://claude.com/claude-code"
+    echo "  - jq: sudo apt install jq (or brew install jq)"
     echo ""
     exit 1
 fi
@@ -123,12 +148,31 @@ if [ -n "$LATEST_RELEASE" ]; then
     BUNDLE_URL="https://github.com/$GITHUB_REPO/releases/download/$LATEST_RELEASE/tinyclaw-bundle.tar.gz"
     CHECKSUM_URL="https://github.com/$GITHUB_REPO/releases/download/$LATEST_RELEASE/tinyclaw-bundle.sha256"
 
-    # Check if bundle exists
-    if curl -fsSL -I "$BUNDLE_URL" >/dev/null 2>&1 && curl -fsSL -I "$CHECKSUM_URL" >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ Pre-built bundle available ($LATEST_RELEASE)${NC}"
+    BUNDLE_AVAILABLE=false
+    CHECKSUM_AVAILABLE=false
+
+    if curl -fsSL -I "$BUNDLE_URL" >/dev/null 2>&1; then
+        BUNDLE_AVAILABLE=true
+    fi
+    if curl -fsSL -I "$CHECKSUM_URL" >/dev/null 2>&1; then
+        CHECKSUM_AVAILABLE=true
+    fi
+
+    if [ "$BUNDLE_AVAILABLE" = true ] && [ "$CHECKSUM_AVAILABLE" = true ]; then
+        echo -e "${GREEN}✓ Verified pre-built bundle available ($LATEST_RELEASE)${NC}"
         USE_BUNDLE=true
+        ALLOW_UNVERIFIED_BUNDLE=false
+    elif [ "$BUNDLE_AVAILABLE" = true ]; then
+        if confirm_insecure_bundle "Checksum asset not found for $LATEST_RELEASE (legacy release)."; then
+            USE_BUNDLE=true
+            ALLOW_UNVERIFIED_BUNDLE=true
+            echo -e "${YELLOW}⚠ Using unverified pre-built bundle${NC}"
+        else
+            echo -e "${YELLOW}⚠ Bundle checksum missing; falling back to source install${NC}"
+            USE_BUNDLE=false
+        fi
     else
-        echo -e "${YELLOW}⚠ No verified pre-built bundle found, will build from source${NC}"
+        echo -e "${YELLOW}⚠ No pre-built bundle found, will build from source${NC}"
         USE_BUNDLE=false
     fi
 else
@@ -147,8 +191,16 @@ if [ "$USE_BUNDLE" = true ]; then
     BUNDLE_FILE="$TMP_DIR/tinyclaw-bundle.tar.gz"
     CHECKSUM_FILE="$TMP_DIR/tinyclaw-bundle.sha256"
 
-    echo "Downloading bundle and checksum..."
-    if curl -fsSL -o "$BUNDLE_FILE" "$BUNDLE_URL" \
+    echo "Downloading bundle..."
+    if [ "${ALLOW_UNVERIFIED_BUNDLE:-false}" = true ]; then
+        if curl -fsSL -o "$BUNDLE_FILE" "$BUNDLE_URL" \
+            && tar -xzf "$BUNDLE_FILE" -C "$INSTALL_DIR" --strip-components=1; then
+            echo -e "${GREEN}✓ Bundle extracted (unverified)${NC}"
+        else
+            echo -e "${RED}✗ Failed to download bundle, falling back to source install${NC}"
+            USE_BUNDLE=false
+        fi
+    elif curl -fsSL -o "$BUNDLE_FILE" "$BUNDLE_URL" \
         && curl -fsSL -o "$CHECKSUM_FILE" "$CHECKSUM_URL" \
         && verify_sha256 "$BUNDLE_FILE" "$CHECKSUM_FILE" \
         && tar -xzf "$BUNDLE_FILE" -C "$INSTALL_DIR" --strip-components=1; then

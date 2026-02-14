@@ -9,7 +9,7 @@ curl -fsSL https://raw.githubusercontent.com/jlia0/tinyclaw/main/scripts/remote-
 ```
 
 This one-line command:
-- ✅ Checks all dependencies (node, npm, tmux, claude)
+- ✅ Checks all dependencies (node, npm, tmux, claude, jq)
 - ✅ Downloads pre-built bundle (no npm install needed!)
 - ✅ Installs to `~/.tinyclaw`
 - ✅ Creates global `tinyclaw` command
@@ -28,6 +28,7 @@ Before installing, ensure you have:
 - **npm** (comes with Node.js)
 - **tmux** - `sudo apt install tmux` or `brew install tmux`
 - **Claude Code CLI** ([claude.com/claude-code](https://claude.com/claude-code))
+- **jq** - `sudo apt install jq` or `brew install jq`
 
 **Optional:**
 - **git** (only needed for source install)
@@ -191,6 +192,10 @@ brew install tmux            # macOS
 
 # Claude Code
 # Visit: https://claude.com/claude-code
+
+# jq
+sudo apt install jq          # Ubuntu/Debian
+brew install jq              # macOS
 ```
 
 ### Bundle download fails

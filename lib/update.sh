@@ -28,6 +28,20 @@ verify_sha256() {
     [ "$actual" = "$expected" ]
 }
 
+confirm_insecure_update() {
+    local reason="$1"
+    echo -e "${YELLOW}Warning: ${reason}${NC}"
+    echo -e "${YELLOW}The update bundle will NOT be integrity-verified.${NC}"
+
+    if [ "${TINYCLAW_ALLOW_INSECURE_UPDATE:-}" = "1" ]; then
+        echo -e "${YELLOW}Proceeding because TINYCLAW_ALLOW_INSECURE_UPDATE=1${NC}"
+        return 0
+    fi
+
+    read -rp "Continue without checksum verification? [y/N]: " CONFIRM
+    [[ "$CONFIRM" =~ ^[yY]$ ]]
+}
+
 # Get current version
 get_current_version() {
     if [ -f "$SCRIPT_DIR/package.json" ]; then
@@ -214,17 +228,27 @@ do_update() {
     echo ""
 
     echo -e "${BLUE}[2/5] Verifying integrity...${NC}"
-    if ! curl -fsSL -o "$checksum_file" "$checksum_url"; then
-        echo -e "${RED}Error: Could not download checksum file${NC}"
+    local checksum_status
+    checksum_status=$(curl -sS -L -w "%{http_code}" -o "$checksum_file" "$checksum_url" || echo "000")
+    if [ "$checksum_status" = "200" ]; then
+        if ! verify_sha256 "$bundle_file" "$checksum_file"; then
+            echo -e "${RED}Error: Checksum verification failed${NC}"
+            rm -rf "$temp_dir"
+            return 1
+        fi
+        echo -e "${GREEN}✓ Checksum verified${NC}"
+    elif [ "$checksum_status" = "404" ]; then
+        if ! confirm_insecure_update "No checksum asset found for v${latest_version} (legacy release)."; then
+            echo "Update cancelled."
+            rm -rf "$temp_dir"
+            return 1
+        fi
+        echo -e "${YELLOW}⚠ Proceeding without checksum verification${NC}"
+    else
+        echo -e "${RED}Error: Could not download checksum file (HTTP ${checksum_status})${NC}"
         rm -rf "$temp_dir"
         return 1
     fi
-    if ! verify_sha256 "$bundle_file" "$checksum_file"; then
-        echo -e "${RED}Error: Checksum verification failed${NC}"
-        rm -rf "$temp_dir"
-        return 1
-    fi
-    echo -e "${GREEN}✓ Checksum verified${NC}"
     echo ""
 
     # Backup current installation
