@@ -13,6 +13,15 @@
 
 set -euo pipefail
 
+# Platform check — crontab is not available on Windows natively
+case "$(uname -s)" in
+    CYGWIN*|MINGW*|MSYS*|Windows_NT*)
+        echo "ERROR: schedule.sh requires crontab, which is not available on Windows." >&2
+        echo "Use WSL (Windows Subsystem for Linux) to run this script." >&2
+        exit 1
+        ;;
+esac
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${TINYCLAW_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 
@@ -178,17 +187,17 @@ cmd_list() {
     echo "---"
 
     echo "$entries" | while IFS= read -r line; do
-        # Extract label from comment
+        # Extract label from comment (POSIX-compatible, no grep -P)
         local label
-        label=$(echo "$line" | grep -oP "# ${TAG_PREFIX}:\K.*")
+        label=$(echo "$line" | sed "s/.*# ${TAG_PREFIX}://")
 
         # Extract cron expression (first 5 fields)
         local cron_expr
         cron_expr=$(echo "$line" | awk '{print $1, $2, $3, $4, $5}')
 
-        # Extract agent from @agent pattern in the message
+        # Extract agent from @agent pattern in the message (POSIX-compatible)
         local agent
-        agent=$(echo "$line" | grep -oP '@\K[a-zA-Z0-9_-]+' | head -1)
+        agent=$(echo "$line" | sed -n 's/.*@\([a-zA-Z0-9_-]*\).*/\1/p' | head -1)
 
         echo "  Label: $label"
         echo "  Cron:  $cron_expr"
