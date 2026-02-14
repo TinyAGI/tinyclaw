@@ -1,0 +1,24 @@
+services:
+  tinyclaw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-1000}
+    container_name: tinyclaw
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    environment:
+      - TZ=${TZ:-UTC}
+      - HOME=/home/tinyclaw
+    volumes:
+      # Runtime state: settings, queue, logs, memory
+      - ./data/tinyclaw:/app/.tinyclaw
+      # Workspace directories for agents
+      - ./data/workspace:/home/tinyclaw/tinyclaw-workspace
+      # CLI auth persistence (Claude/Codex and related configs)
+      - ./data/home/.claude:/home/tinyclaw/.claude
+      - ./data/home/.codex:/home/tinyclaw/.codex
+      - ./data/home/.config:/home/tinyclaw/.config

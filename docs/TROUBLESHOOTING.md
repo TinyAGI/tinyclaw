@@ -375,6 +375,38 @@ ps aux | grep -E 'claude|codex|node' | awk '{print $4, $11}'
    tail -f .tinyclaw/logs/queue.log | grep "Processing completed"
    ```
 
+### QMD memory retrieval not working
+
+If you enabled memory retrieval and see warnings like `qmd not found` or `Memory retrieval skipped`:
+
+1. **Check qmd command:**
+   ```bash
+   command -v qmd
+   qmd status
+   ```
+
+2. **If qmd is not in PATH, set explicit command in `~/.tinyclaw/settings.json`:**
+   ```json
+   {
+     "memory": {
+       "enabled": true,
+       "qmd": {
+         "command": "/home/you/.bun/bin/qmd"
+       }
+     }
+   }
+   ```
+
+3. **Restart TinyClaw:**
+   ```bash
+   tinyclaw restart
+   ```
+
+4. **Verify retrieval hits in logs:**
+   ```bash
+   grep "Memory retrieval hit" ~/.tinyclaw/logs/queue.log
+   ```
+
 ## Log Analysis
 
 ### Enable debug logging

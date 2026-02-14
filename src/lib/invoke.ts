@@ -1,10 +1,11 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { AgentConfig, TeamConfig } from './types';
+import { AgentConfig, Settings, TeamConfig } from './types';
 import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel } from './config';
 import { log } from './logging';
 import { ensureAgentDirectory, updateAgentTeammates } from './agent-setup';
+import { enrichMessageWithMemory } from './memory';
 
 export async function runCommand(command: string, args: string[], cwd?: string): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -51,8 +52,10 @@ export async function invokeAgent(
     agent: AgentConfig,
     agentId: string,
     message: string,
+    sourceChannel: string,
     workspacePath: string,
     shouldReset: boolean,
+    settings: Settings,
     agents: Record<string, AgentConfig> = {},
     teams: Record<string, TeamConfig> = {}
 ): Promise<string> {
@@ -74,6 +77,7 @@ export async function invokeAgent(
             : path.join(workspacePath, agent.working_directory))
         : agentDir;
 
+    const messageForModel = await enrichMessageWithMemory(agentId, message, settings, sourceChannel);
     const provider = agent.provider || 'anthropic';
 
     if (provider === 'openai') {
@@ -93,7 +97,7 @@ export async function invokeAgent(
         if (modelId) {
             codexArgs.push('--model', modelId);
         }
-        codexArgs.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json', message);
+        codexArgs.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json', messageForModel);
 
         const codexOutput = await runCommand('codex', codexArgs, workingDir);
 
@@ -130,7 +134,7 @@ export async function invokeAgent(
         if (continueConversation) {
             claudeArgs.push('-c');
         }
-        claudeArgs.push('-p', message);
+        claudeArgs.push('-p', messageForModel);
 
         return await runCommand('claude', claudeArgs, workingDir);
     }

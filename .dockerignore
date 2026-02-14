@@ -1,0 +1,20 @@
+.git
+.gitignore
+.github
+node_modules
+npm-debug.log*
+*.log
+
+# local runtime/state
+.tinyclaw
+settings.json
+settings.json:Zone.Identifier
+.env
+
+# editor / os
+.vscode
+.idea
+.DS_Store
+
+# build artifacts (rebuild in image)
+dist

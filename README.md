@@ -64,6 +64,10 @@ git clone https://github.com/jlia0/tinyclaw.git
 cd tinyclaw && npm install && ./scripts/install.sh
 ```
 
+### Deployment
+
+- Docker + Coolify (VPS): see `docs/DEPLOY_COOLIFY.md`
+
 ### First Run
 
 ```bash
@@ -427,8 +431,45 @@ Located at `.tinyclaw/settings.json`:
   },
   "monitoring": {
     "heartbeat_interval": 3600
+  },
+  "memory": {
+    "enabled": true,
+    "qmd": {
+      "enabled": true,
+      "command": "/home/me/.bun/bin/qmd",
+      "top_k": 4,
+      "min_score": 0.05,
+      "max_chars": 2500,
+      "update_interval_seconds": 120,
+      "use_semantic_search": false
+    }
   }
 }
+```
+
+### Optional Memory Retrieval (QMD)
+
+TinyClaw can use external memory retrieval with `qmd` (BM25 by default).
+
+- Memory retrieval is **disabled by default**. Set `"memory.enabled": true` to enable.
+- Retrieval runs only for user chat channels (`telegram`, `discord`, `whatsapp`).
+- Heartbeat/system messages are excluded from retrieval and memory persistence.
+- Turns are stored in `~/.tinyclaw/memory/turns/<agent_id>/`.
+
+Quick setup:
+
+```bash
+# Install qmd (recommended by qmd project)
+bun install -g github:tobi/qmd
+
+# Linux/WSL: install sqlite-vec extension package if qmd reports missing extension
+bun add -g sqlite-vec-linux-x64
+
+# Verify qmd works
+qmd status
+
+# Optional: if qmd is not in PATH, set memory.qmd.command in settings.json
+tinyclaw restart
 ```
 
 ### Heartbeat Configuration

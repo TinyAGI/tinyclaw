@@ -41,6 +41,18 @@ export interface Settings {
     monitoring?: {
         heartbeat_interval?: number;
     };
+    memory?: {
+        enabled?: boolean;
+        qmd?: {
+            enabled?: boolean;
+            command?: string;
+            top_k?: number;
+            min_score?: number;
+            max_chars?: number;
+            update_interval_seconds?: number;
+            use_semantic_search?: boolean;
+        };
+    };
 }
 
 export interface MessageData {

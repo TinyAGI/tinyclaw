@@ -21,6 +21,13 @@ import {
 import { log, emitEvent } from './lib/logging';
 import { parseAgentRouting, findTeamForAgent, getAgentResetFlag, extractTeammateMentions } from './lib/routing';
 import { invokeAgent } from './lib/invoke';
+import { saveTurnToMemory } from './lib/memory';
+
+const MEMORY_PERSIST_CHANNELS = new Set(['telegram', 'discord', 'whatsapp']);
+
+function shouldPersistMemoryTurn(channel: string): boolean {
+    return MEMORY_PERSIST_CHANNELS.has(channel);
+}
 
 // Ensure directories exist
 [QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING, path.dirname(LOG_FILE)].forEach(dir => {
@@ -153,7 +160,19 @@ async function processMessage(messageFile: string): Promise<void> {
         if (!teamContext) {
             // No team context — single agent invocation (backward compatible)
             try {
-                finalResponse = await invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams);
+                finalResponse = await invokeAgent(agent, agentId, message, channel, workspacePath, shouldReset, settings, agents, teams);
+                if (shouldPersistMemoryTurn(channel)) {
+                    await saveTurnToMemory({
+                        agentId,
+                        agent,
+                        channel,
+                        sender,
+                        messageId,
+                        userMessage: message,
+                        agentResponse: finalResponse,
+                        timestampMs: Date.now(),
+                    });
+                }
             } catch (error) {
                 const provider = agent.provider || 'anthropic';
                 log('ERROR', `${provider === 'openai' ? 'Codex' : 'Claude'} error (agent: ${agentId}): ${(error as Error).message}`);
@@ -191,7 +210,19 @@ async function processMessage(messageFile: string): Promise<void> {
 
                 let stepResponse: string;
                 try {
-                    stepResponse = await invokeAgent(currentAgent, currentAgentId, currentMessage, workspacePath, currentShouldReset, agents, teams);
+                    stepResponse = await invokeAgent(currentAgent, currentAgentId, currentMessage, channel, workspacePath, currentShouldReset, settings, agents, teams);
+                    if (shouldPersistMemoryTurn(channel)) {
+                        await saveTurnToMemory({
+                            agentId: currentAgentId,
+                            agent: currentAgent,
+                            channel,
+                            sender,
+                            messageId,
+                            userMessage: currentMessage,
+                            agentResponse: stepResponse,
+                            timestampMs: Date.now(),
+                        });
+                    }
                 } catch (error) {
                     const provider = currentAgent.provider || 'anthropic';
                     log('ERROR', `${provider === 'openai' ? 'Codex' : 'Claude'} error (agent: ${currentAgentId}): ${(error as Error).message}`);
@@ -251,7 +282,19 @@ async function processMessage(messageFile: string): Promise<void> {
                             let mResponse: string;
                             try {
                                 const mMessage = `[Message from teammate @${currentAgentId}]:\n${mention.message}`;
-                                mResponse = await invokeAgent(mAgent, mention.teammateId, mMessage, workspacePath, mShouldReset, agents, teams);
+                                mResponse = await invokeAgent(mAgent, mention.teammateId, mMessage, channel, workspacePath, mShouldReset, settings, agents, teams);
+                                if (shouldPersistMemoryTurn(channel)) {
+                                    await saveTurnToMemory({
+                                        agentId: mention.teammateId,
+                                        agent: mAgent,
+                                        channel,
+                                        sender,
+                                        messageId,
+                                        userMessage: mMessage,
+                                        agentResponse: mResponse,
+                                        timestampMs: Date.now(),
+                                    });
+                                }
                             } catch (error) {
                                 log('ERROR', `Fan-out error (agent: ${mention.teammateId}): ${(error as Error).message}`);
                                 mResponse = "Sorry, I encountered an error processing this request.";
