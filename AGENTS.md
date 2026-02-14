@@ -35,6 +35,21 @@ You can message multiple teammates in a single response. They will all be invoke
 
 - `[@coder: Fix the auth bug in login.ts] [@reviewer: Review the PR for security issues]`
 
+### Shared context
+
+When messaging multiple teammates, any text **outside** the `[@agent: ...]` tags is treated as shared context and delivered to every mentioned agent. Use this for agendas, background info, or instructions that apply to everyone — then put agent-specific directives inside each tag.
+
+```
+We're doing a standup. The sprint ends Friday and we have 3 open bugs.
+Please reply with: (1) status (2) blockers (3) next step.
+
+[@coder: Also list any PRs you have open.]
+[@reviewer: Also flag any PRs waiting on you.]
+[@tester: Also report test coverage for the auth module.]
+```
+
+Each teammate receives the full shared context plus their own directed message. Keep shared context concise — it's prepended to every teammate's message.
+
 ### Back-and-forth
 
 You can communicate back and forth by mentioning your teammate in your response and the system will route the messages in real-time.
