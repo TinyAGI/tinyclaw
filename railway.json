@@ -1,0 +1,13 @@
+{
+  "$schema": "https://backboard.railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "npm install && npm run build && npm install --no-save @openai/codex"
+  },
+  "deploy": {
+    "startCommand": "bash ./scripts/railway-start.sh",
+    "restartPolicyType": "ALWAYS",
+    "restartPolicyMaxRetries": 10,
+    "sleepApplication": false
+  }
+}
