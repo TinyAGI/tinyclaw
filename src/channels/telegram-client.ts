@@ -93,9 +93,71 @@ function buildUniqueFilePath(dir: string, preferredName: string): string {
     return candidate;
 }
 
-// Track pending messages (waiting for response)
+// Track pending messages (waiting for response) — persisted to survive restarts
+const PENDING_FILE = path.join(TINYCLAW_HOME, 'queue', 'pending-telegram.json');
 const pendingMessages = new Map<string, PendingMessage>();
 let processingOutgoingQueue = false;
+
+function loadPendingMessages(): void {
+    try {
+        if (fs.existsSync(PENDING_FILE)) {
+            const data: Record<string, PendingMessage> = JSON.parse(fs.readFileSync(PENDING_FILE, 'utf8'));
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            for (const [id, msg] of Object.entries(data)) {
+                if (msg.timestamp >= tenMinutesAgo) {
+                    pendingMessages.set(id, msg);
+                }
+            }
+            if (pendingMessages.size > 0) {
+                log('INFO', `Restored ${pendingMessages.size} pending message(s) from disk`);
+            }
+        }
+    } catch (error) {
+        log('WARN', `Failed to load pending messages: ${(error as Error).message}`);
+    }
+}
+
+function savePendingMessages(): void {
+    const tempFile = `${PENDING_FILE}.tmp`;
+    try {
+        const obj: Record<string, PendingMessage> = {};
+        for (const [id, msg] of pendingMessages.entries()) {
+            obj[id] = msg;
+        }
+        const payload = JSON.stringify(obj, null, 2);
+
+        // Crash-safe persistence: write+fsync temp file, then atomic rename.
+        fs.writeFileSync(tempFile, payload, 'utf8');
+        const tempFd = fs.openSync(tempFile, 'r');
+        try {
+            fs.fsyncSync(tempFd);
+        } finally {
+            fs.closeSync(tempFd);
+        }
+
+        fs.renameSync(tempFile, PENDING_FILE);
+
+        // Best-effort directory sync so rename metadata is durable.
+        const dirFd = fs.openSync(path.dirname(PENDING_FILE), 'r');
+        try {
+            fs.fsyncSync(dirFd);
+        } finally {
+            fs.closeSync(dirFd);
+        }
+    } catch (error) {
+        try {
+            if (fs.existsSync(tempFile)) {
+                fs.unlinkSync(tempFile);
+            }
+        } catch {
+            // Ignore cleanup errors.
+        }
+        log('WARN', `Failed to save pending messages: ${(error as Error).message}`);
+    }
+}
+
+// Load persisted pending messages on startup
+loadPendingMessages();
 
 // Logger
 function log(level: string, message: string): void {
@@ -457,6 +519,9 @@ bot.on('message', async (msg: TelegramBot.Message) => {
             }
         }
 
+        // Persist to disk so responses survive restarts
+        savePendingMessages();
+
     } catch (error) {
         log('ERROR', `Message handling error: ${(error as Error).message}`);
     }
@@ -525,6 +590,7 @@ async function checkOutgoingQueue(): Promise<void> {
 
                     // Clean up
                     pendingMessages.delete(messageId);
+                    savePendingMessages();
                     fs.unlinkSync(filePath);
                 } else if (responseData.senderId) {
                     // Proactive/agent-initiated message — send directly to user
