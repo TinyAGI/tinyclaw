@@ -49,9 +49,15 @@ start_daemon() {
         jq_err=$(jq empty "$SETTINGS_FILE" 2>&1)
         echo -e "  ${YELLOW}${jq_err}${NC}"
         echo ""
+
+        # Attempt auto-fix using jsonrepair (npm package)
         echo -e "${YELLOW}Attempting to auto-fix...${NC}"
-        if fix_settings_json "$SETTINGS_FILE"; then
+        local repair_output
+        repair_output=$(node -e 'const{jsonrepair}=require("jsonrepair");const fs=require("fs");try{const raw=fs.readFileSync(process.argv[1],"utf8");const fixed=jsonrepair(raw);JSON.parse(fixed);fs.copyFileSync(process.argv[1],process.argv[1]+".bak");fs.writeFileSync(process.argv[1],JSON.stringify(JSON.parse(fixed),null,2)+"\n");console.log("ok")}catch(e){console.error(e.message);process.exit(1)}' "$SETTINGS_FILE" 2>&1)
+
+        if [ $? -eq 0 ]; then
             echo -e "  ${GREEN}✓ JSON auto-fixed successfully${NC}"
+            echo -e "  Backup saved to ${SETTINGS_FILE}.bak"
             echo ""
             load_settings
             load_rc=$?
@@ -61,7 +67,6 @@ start_daemon() {
             echo -e "${RED}Could not repair settings.json${NC}"
             echo "  Fix manually: $SETTINGS_FILE"
             echo "  Or reconfigure: tinyclaw setup"
-            echo "  Backup saved: ${SETTINGS_FILE}.bak"
             return 1
         fi
     elif [ $load_rc -ne 0 ]; then
