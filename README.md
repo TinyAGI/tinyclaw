@@ -409,6 +409,7 @@ Located at `.tinyclaw/settings.json`:
 TinyClaw can use external memory retrieval with `qmd` (BM25 by default).
 
 - Memory retrieval is **disabled by default**. Set `"memory.enabled": true` to enable.
+- `qmd` requires `bun` for installation in non-Docker environments.
 - Retrieval runs only for user chat channels (`telegram`, `discord`, `whatsapp`).
 - Heartbeat/system messages are excluded from retrieval and memory persistence.
 - Turns are stored in `~/.tinyclaw/memory/turns/<agent_id>/`.
@@ -428,6 +429,9 @@ qmd status
 # Optional: if qmd is not in PATH, set memory.qmd.command in settings.json
 tinyclaw restart
 ```
+
+Docker note:
+- The Docker deployment path in `docs/DEPLOY_COOLIFY.md` installs `bun` + `qmd` in the image.
 
 ### Heartbeat Configuration
 

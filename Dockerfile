@@ -48,7 +48,9 @@ RUN npm run build
 
 # Install required model CLIs in image so redeploys don't lose binaries.
 RUN npm install -g @anthropic-ai/claude-code bun \
-    && BUN_INSTALL=/home/tinyclaw/.bun bun install -g github:tobi/qmd
+    && BUN_INSTALL=/home/tinyclaw/.bun bun install -g github:tobi/qmd \
+    && /home/tinyclaw/.bun/bin/qmd --help >/dev/null \
+    && ln -sf /home/tinyclaw/.bun/bin/qmd /usr/local/bin/qmd
 
 # Runtime state and auth persistence locations
 RUN mkdir -p /app/.tinyclaw /home/tinyclaw/.claude /home/tinyclaw/.codex /home/tinyclaw/.config /home/tinyclaw/.bun \

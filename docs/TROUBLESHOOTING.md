@@ -389,6 +389,7 @@ If you enabled memory retrieval and see warnings like `qmd not found` or `Memory
 
 1. **Check qmd command:**
    ```bash
+   command -v bun
    command -v qmd
    qmd status
    ```
