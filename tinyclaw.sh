@@ -7,20 +7,23 @@
 #   3. Fill in the CHANNEL_* registry arrays in lib/common.sh
 #   4. Run setup wizard to enable it
 
-# Use TINYCLAW_HOME if set (for CLI wrapper), otherwise detect from script location
-if [ -n "$TINYCLAW_HOME" ]; then
-    SCRIPT_DIR="$TINYCLAW_HOME"
-else
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SCRIPT_DIR = repo root (where bash scripts live)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# TINYCLAW_HOME = data directory (settings, queue, logs, etc.)
+# - Installed CLI sets this to ~/.tinyclaw via bin/tinyclaw
+# - Local dev: detect from local .tinyclaw/ or fall back to ~/.tinyclaw
+if [ -z "$TINYCLAW_HOME" ]; then
+    if [ -f "$SCRIPT_DIR/.tinyclaw/settings.json" ]; then
+        TINYCLAW_HOME="$SCRIPT_DIR/.tinyclaw"
+    else
+        TINYCLAW_HOME="$HOME/.tinyclaw"
+    fi
 fi
+
 TMUX_SESSION="tinyclaw"
-# Centralize all logs to ~/.tinyclaw/logs
-LOG_DIR="$HOME/.tinyclaw/logs"
-if [ -f "$SCRIPT_DIR/.tinyclaw/settings.json" ]; then
-    SETTINGS_FILE="$SCRIPT_DIR/.tinyclaw/settings.json"
-else
-    SETTINGS_FILE="$HOME/.tinyclaw/settings.json"
-fi
+LOG_DIR="$TINYCLAW_HOME/logs"
+SETTINGS_FILE="$TINYCLAW_HOME/settings.json"
 
 mkdir -p "$LOG_DIR"
 

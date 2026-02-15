@@ -143,8 +143,8 @@ start_daemon() {
         echo -e "${YELLOW}Starting WhatsApp client...${NC}"
         echo ""
 
-        QR_FILE="$SCRIPT_DIR/.tinyclaw/channels/whatsapp_qr.txt"
-        READY_FILE="$SCRIPT_DIR/.tinyclaw/channels/whatsapp_ready"
+        QR_FILE="$TINYCLAW_HOME/channels/whatsapp_qr.txt"
+        READY_FILE="$TINYCLAW_HOME/channels/whatsapp_ready"
         QR_DISPLAYED=false
 
         for i in {1..60}; do
@@ -274,7 +274,7 @@ status_daemon() {
     echo ""
 
     # Channel process status
-    local ready_file="$SCRIPT_DIR/.tinyclaw/channels/whatsapp_ready"
+    local ready_file="$TINYCLAW_HOME/channels/whatsapp_ready"
 
     for ch in "${ALL_CHANNELS[@]}"; do
         local display="${CHANNEL_DISPLAY[$ch]}"

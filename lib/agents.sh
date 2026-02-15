@@ -187,10 +187,12 @@ agent_add() {
         "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
 
     # Create agent directory and copy configuration files
-    if [ -f "$SCRIPT_DIR/.tinyclaw/settings.json" ]; then
-        TINYCLAW_HOME="$SCRIPT_DIR/.tinyclaw"
-    else
-        TINYCLAW_HOME="$HOME/.tinyclaw"
+    if [ -z "$TINYCLAW_HOME" ]; then
+        if [ -f "$SCRIPT_DIR/.tinyclaw/settings.json" ]; then
+            TINYCLAW_HOME="$SCRIPT_DIR/.tinyclaw"
+        else
+            TINYCLAW_HOME="$HOME/.tinyclaw"
+        fi
     fi
     mkdir -p "$AGENTS_DIR/$AGENT_ID"
 

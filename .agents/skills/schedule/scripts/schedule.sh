@@ -26,10 +26,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${TINYCLAW_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 
 # Resolve TINYCLAW_HOME (same logic as the TypeScript config)
-if [ -f "$PROJECT_ROOT/.tinyclaw/settings.json" ]; then
-    TINYCLAW_HOME="$PROJECT_ROOT/.tinyclaw"
-else
-    TINYCLAW_HOME="$HOME/.tinyclaw"
+if [ -z "$TINYCLAW_HOME" ]; then
+    if [ -f "$PROJECT_ROOT/.tinyclaw/settings.json" ]; then
+        TINYCLAW_HOME="$PROJECT_ROOT/.tinyclaw"
+    else
+        TINYCLAW_HOME="$HOME/.tinyclaw"
+    fi
 fi
 
 QUEUE_INCOMING="$TINYCLAW_HOME/queue/incoming"

@@ -4,9 +4,10 @@ import { Settings, AgentConfig, TeamConfig, CLAUDE_MODEL_IDS, CODEX_MODEL_IDS } 
 
 export const SCRIPT_DIR = path.resolve(__dirname, '../..');
 const _localTinyclaw = path.join(SCRIPT_DIR, '.tinyclaw');
-export const TINYCLAW_HOME = fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
-    ? _localTinyclaw
-    : path.join(require('os').homedir(), '.tinyclaw');
+export const TINYCLAW_HOME = process.env.TINYCLAW_HOME
+    || (fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
+        ? _localTinyclaw
+        : path.join(require('os').homedir(), '.tinyclaw'));
 export const QUEUE_INCOMING = path.join(TINYCLAW_HOME, 'queue/incoming');
 export const QUEUE_OUTGOING = path.join(TINYCLAW_HOME, 'queue/outgoing');
 export const QUEUE_PROCESSING = path.join(TINYCLAW_HOME, 'queue/processing');
