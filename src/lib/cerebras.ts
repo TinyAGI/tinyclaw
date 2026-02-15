@@ -109,17 +109,28 @@ export async function cerebrasChatCompletion(opts: {
     let lastErrMsg = 'Unknown Cerebras error';
     let lastStatus = 0;
     for (let attempt = 0; attempt < 3; attempt++) {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: opts.model,
-                messages,
-            }),
-        });
+        let res: Response;
+        try {
+            res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: opts.model,
+                    messages,
+                }),
+            });
+        } catch (e) {
+            lastStatus = 0;
+            lastErrMsg = (e as Error).message || 'Network error';
+            if (attempt < 2) {
+                await sleep(250 * Math.pow(2, attempt));
+                continue;
+            }
+            break;
+        }
 
         lastStatus = res.status;
         const text = await res.text();
@@ -132,6 +143,7 @@ export async function cerebrasChatCompletion(opts: {
                 await sleep(250 * Math.pow(2, attempt));
                 continue;
             }
+            if (isRetryable(res.status, lastErrMsg)) break;
             throw new Error(lastErrMsg);
         }
 
@@ -144,6 +156,7 @@ export async function cerebrasChatCompletion(opts: {
                 await sleep(delay);
                 continue;
             }
+            if (isRetryable(res.status, msg)) break;
             throw new Error(msg);
         }
 
@@ -154,12 +167,12 @@ export async function cerebrasChatCompletion(opts: {
                 await sleep(250 * Math.pow(2, attempt));
                 continue;
             }
-            throw new Error(lastErrMsg);
+            break;
         }
 
         appendHistory(opts.agentDir, { role: 'assistant', content });
         return content;
     }
 
-    throw new Error(`Cerebras temporarily unavailable (HTTP ${lastStatus}): ${lastErrMsg}`);
+    throw new Error(`Cerebras temporarily unavailable${lastStatus ? ` (HTTP ${lastStatus})` : ''}: ${lastErrMsg}`);
 }
