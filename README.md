@@ -68,6 +68,12 @@ git clone https://github.com/jlia0/tinyclaw.git
 cd tinyclaw && npm install && ./scripts/install.sh
 ```
 
+### Railway (Template-Friendly)
+
+TinyClaw can run on Railway without interactive setup by generating `.tinyclaw/settings.json` from env vars at startup.
+
+See: [docs/RAILWAY.md](docs/RAILWAY.md)
+
 ### First Run
 
 ```bash
@@ -501,6 +507,7 @@ All channels share agent conversations!
 - [AGENTS.md](docs/AGENTS.md) - Agent management and routing
 - [TEAMS.md](docs/TEAMS.md) - Team collaboration, chain execution, and visualizer
 - [QUEUE.md](docs/QUEUE.md) - Queue system and message flow
+- [RAILWAY.md](docs/RAILWAY.md) - Railway deployment and env-based setup
 - [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues and solutions
 
 ## 🐛 Troubleshooting
