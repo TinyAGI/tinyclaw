@@ -1,16 +1,40 @@
 import fs from 'fs';
 import path from 'path';
+import { log } from './logging';
 
 type Role = 'system' | 'user' | 'assistant';
 type Msg = { role: Role; content: string };
 
 const DEFAULT_BASE_URL = 'https://api.cerebras.ai/v1';
 const HISTORY_FILE = '.tinyclaw/cerebras_history.jsonl';
+const META_FILE = '.tinyclaw/cerebras_meta.json';
 const MAX_HISTORY_MESSAGES = 20;
 const SYSTEM_PROMPT_FILE = path.join('.claude', 'CLAUDE.md');
 
 function getHistoryPath(agentDir: string): string {
     return path.join(agentDir, HISTORY_FILE);
+}
+
+function getMetaPath(agentDir: string): string {
+    return path.join(agentDir, META_FILE);
+}
+
+function readMeta(agentDir: string): { model?: string } {
+    const p = getMetaPath(agentDir);
+    try {
+        const raw = fs.readFileSync(p, 'utf8');
+        const j = JSON.parse(raw);
+        if (j && typeof j.model === 'string') return { model: j.model };
+    } catch {
+        // ignore
+    }
+    return {};
+}
+
+function writeMeta(agentDir: string, meta: { model: string }): void {
+    const p = getMetaPath(agentDir);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify({ ...meta, updatedAt: Date.now() }, null, 2));
 }
 
 function readSystemPrompt(agentDir: string): string {
@@ -50,6 +74,22 @@ function readHistory(agentDir: string): Msg[] {
     } catch {
         return [];
     }
+}
+
+function inferModelFromHistory(history: Msg[]): string | undefined {
+    // Best-effort: detect self-reported model strings in recent assistant messages
+    // to avoid getting "stuck" after switching models.
+    for (let i = history.length - 1; i >= 0; i--) {
+        const m = history[i];
+        if (m.role !== 'assistant') continue;
+        const txt = m.content || '';
+        const match =
+            txt.match(/\bprovider\s*=\s*cerebras\b[\s\S]{0,80}\bmodel\s*=\s*([a-z0-9._-]+)/i) ||
+            txt.match(/\bruntime model:\s*([a-z0-9._-]+)/i) ||
+            txt.match(/\bmodel\s*=\s*([a-z0-9._-]+)\b/i);
+        if (match && match[1]) return match[1].toLowerCase();
+    }
+    return undefined;
 }
 
 function appendHistory(agentDir: string, msg: Msg): void {
@@ -99,8 +139,26 @@ export async function cerebrasChatCompletion(opts: {
 
     const url = `${baseUrl}/chat/completions`;
 
+    // If the configured model changed, reset history to avoid model "stickiness".
+    // This is intentionally conservative: we'd rather lose a bit of conversational context
+    // than keep returning stale self-identification.
+    const initialHistory = readHistory(opts.agentDir);
+    const inferred = inferModelFromHistory(initialHistory);
+    const prevMeta = readMeta(opts.agentDir);
+    if ((prevMeta.model && prevMeta.model !== opts.model) || (inferred && inferred !== opts.model)) {
+        resetCerebrasHistory(opts.agentDir);
+    }
+    writeMeta(opts.agentDir, { model: opts.model });
+
     const history = readHistory(opts.agentDir);
-    const system = readSystemPrompt(opts.agentDir);
+    const baseSystem = readSystemPrompt(opts.agentDir);
+    const system = [
+        `Runtime provider: cerebras`,
+        `Runtime model: ${opts.model}`,
+        `If asked what provider/model you're using, answer exactly: provider=cerebras model=${opts.model}.`,
+        '',
+        baseSystem,
+    ].join('\n');
     const messages: Msg[] = [{ role: 'system', content: system }, ...history, { role: 'user', content: opts.userMessage }];
 
     // Persist user message before sending so history is consistent even if we crash mid-call.
@@ -109,6 +167,7 @@ export async function cerebrasChatCompletion(opts: {
     let lastErrMsg = 'Unknown Cerebras error';
     let lastStatus = 0;
     for (let attempt = 0; attempt < 3; attempt++) {
+        const attemptStart = Date.now();
         let res: Response;
         try {
             res = await fetch(url, {
@@ -153,6 +212,7 @@ export async function cerebrasChatCompletion(opts: {
             if (attempt < 2 && isRetryable(res.status, msg)) {
                 const ra = Number(res.headers.get('retry-after') || '');
                 const delay = Number.isFinite(ra) && ra > 0 ? ra * 1000 : 250 * Math.pow(2, attempt);
+                log('WARN', `Cerebras retrying (model=${opts.model}, status=${res.status}, attempt=${attempt + 1}/3, delayMs=${delay}, ms=${Date.now() - attemptStart}): ${msg}`);
                 await sleep(delay);
                 continue;
             }
@@ -169,6 +229,13 @@ export async function cerebrasChatCompletion(opts: {
             }
             break;
         }
+
+        const usage = json?.usage || {};
+        const completionTokens = Number(usage.completion_tokens || usage.completionTokens || 0) || 0;
+        const totalTokens = Number(usage.total_tokens || usage.totalTokens || 0) || 0;
+        const ms = Date.now() - attemptStart;
+        const tps = completionTokens > 0 && ms > 0 ? Math.round((completionTokens / ms) * 1000) : 0;
+        log('INFO', `Cerebras ok (model=${opts.model}, status=${res.status}, attempt=${attempt + 1}/3, ms=${ms}, completionTokens=${completionTokens || 'n/a'}, totalTokens=${totalTokens || 'n/a'}, tps=${tps || 'n/a'})`);
 
         appendHistory(opts.agentDir, { role: 'assistant', content });
         return content;

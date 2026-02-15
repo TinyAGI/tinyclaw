@@ -231,6 +231,7 @@ async function processMessage(messageFile: string): Promise<void> {
         const messageData: MessageData = JSON.parse(fs.readFileSync(processingFile, 'utf8'));
         const { channel, sender, message: rawMessage, timestamp, messageId } = messageData;
         const isInternal = !!messageData.conversationId;
+        const startedAt = Date.now();
 
         log('INFO', `Processing [${isInternal ? 'internal' : channel}] ${isInternal ? `@${messageData.fromAgent}→@${messageData.agent}` : `from ${sender}`}: ${rawMessage.substring(0, 50)}...`);
         if (!isInternal) {
@@ -279,6 +280,7 @@ async function processMessage(messageFile: string): Promise<void> {
             fs.writeFileSync(responseFile, JSON.stringify(responseData, null, 2));
             fs.unlinkSync(processingFile);
             log('INFO', `✓ Easter egg sent to ${sender}`);
+            log('INFO', `Handled message ${messageId} (channel=${channel}, agent=error, ms=${Date.now() - startedAt})`);
             return;
         }
 
@@ -343,6 +345,7 @@ async function processMessage(messageFile: string): Promise<void> {
         // Invoke agent
         emitEvent('chain_step_start', { agentId, agentName: agent.name, fromAgent: messageData.fromAgent || null });
         let response: string;
+        const invokeStartedAt = Date.now();
         try {
             response = await invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams);
         } catch (error) {
@@ -356,6 +359,7 @@ async function processMessage(messageFile: string): Promise<void> {
                 response = "Sorry, I encountered an error processing your request. Please check the queue logs.";
             }
         }
+        log('INFO', `Agent invoke done (agent=${agentId}, provider=${agent.provider}/${agent.model}, ms=${Date.now() - invokeStartedAt})`);
 
         emitEvent('chain_step_done', { agentId, agentName: agent.name, responseLength: response.length, responseText: response });
 
@@ -396,6 +400,7 @@ async function processMessage(messageFile: string): Promise<void> {
             emitEvent('response_ready', { channel, sender, agentId, responseLength: finalResponse.length, responseText: finalResponse, messageId });
 
             fs.unlinkSync(processingFile);
+            log('INFO', `Handled message ${messageId} (channel=${channel}, agent=${agentId}, provider=${agent.provider}/${agent.model}, ms=${Date.now() - startedAt})`);
             return;
         }
 

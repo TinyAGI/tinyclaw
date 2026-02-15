@@ -355,7 +355,11 @@ case "${1:-}" in
                 if [ ! -f "$SCRIPT_DIR/dist/visualizer/team-visualizer.js" ] || \
                    [ "$SCRIPT_DIR/src/visualizer/team-visualizer.tsx" -nt "$SCRIPT_DIR/dist/visualizer/team-visualizer.js" ]; then
                     echo -e "${BLUE}Building team visualizer...${NC}"
-                    cd "$SCRIPT_DIR" && npm run build:visualizer 2>/dev/null
+                    if command -v bun >/dev/null 2>&1; then
+                        cd "$SCRIPT_DIR" && bun run build:visualizer 2>/dev/null
+                    else
+                        cd "$SCRIPT_DIR" && npm run build:visualizer 2>/dev/null
+                    fi
                     if [ $? -ne 0 ]; then
                         echo -e "${RED}Failed to build visualizer.${NC}"
                         exit 1

@@ -15,7 +15,12 @@ start_daemon() {
     if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
         echo -e "${YELLOW}Installing Node.js dependencies...${NC}"
         cd "$SCRIPT_DIR"
-        PUPPETEER_SKIP_DOWNLOAD=true npm install
+        if command -v bun >/dev/null 2>&1; then
+            # bun is typically much faster than npm. Avoid writing lockfiles in user installs.
+            PUPPETEER_SKIP_DOWNLOAD=true bun install --no-save
+        else
+            PUPPETEER_SKIP_DOWNLOAD=true npm install
+        fi
     fi
 
     # Build TypeScript if any src file is newer than its dist counterpart.
@@ -37,7 +42,11 @@ start_daemon() {
     if [ "$needs_build" = true ]; then
         echo -e "${YELLOW}Building TypeScript...${NC}"
         cd "$SCRIPT_DIR"
-        npm run build
+        if command -v bun >/dev/null 2>&1; then
+            bun run build
+        else
+            npm run build
+        fi
     fi
 
     # Load settings or run setup wizard
