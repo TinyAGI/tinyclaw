@@ -181,7 +181,6 @@ const client = new Client({
         headless: process.env.TINYCLAW_HEADLESS === 'false'
             ? false
             : (process.env.TINYCLAW_HEADLESS || 'new') as any,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
