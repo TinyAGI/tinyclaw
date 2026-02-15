@@ -39,7 +39,7 @@ const queuedFiles = new Set<string>();
 // Active conversations — tracks in-flight team message passing
 const conversations = new Map<string, Conversation>();
 
-const MAX_CONVERSATION_MESSAGES = 15;
+const MAX_CONVERSATION_MESSAGES = 50;
 
 // Recover orphaned files from processing/ on startup (crash recovery)
 function recoverOrphanedFiles() {
@@ -319,6 +319,7 @@ async function processMessage(messageFile: string): Promise<void> {
         }
 
         // Invoke agent
+        emitEvent('chain_step_start', { agentId, agentName: agent.name, fromAgent: messageData.fromAgent || null });
         let response: string;
         try {
             response = await invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams);
