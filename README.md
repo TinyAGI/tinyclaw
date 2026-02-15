@@ -174,6 +174,8 @@ export TINYCLAW_OPENAI_BASE_URL="https://api.cerebras.ai/v1"
 export CEREBRAS_API_KEY="..."
 ```
 
+Note: model availability can depend on how the Codex CLI is authenticated. If you see errors about a model being unsupported with a ChatGPT account, switch to a supported Codex model (e.g. `gpt-5.3-codex`) or authenticate with an API-key style credential appropriate for your endpoint.
+
 ### Pairing Commands
 
 Use sender pairing to control who can message your agents.

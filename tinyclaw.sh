@@ -135,11 +135,11 @@ case "${1:-}" in
                     tmp_file="$SETTINGS_FILE.tmp"
                     if [ -n "$MODEL_ARG" ]; then
                         # Set both provider and model
-                        jq ".models.provider = \"anthropic\" | .models.anthropic.model = \"$MODEL_ARG\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                        jq ".models.provider = \"anthropic\" | .models.anthropic.model = \"$MODEL_ARG\" | (if .agents.assistant? then .agents.assistant.provider = \"anthropic\" | .agents.assistant.model = \"$MODEL_ARG\" else . end)" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
                         echo -e "${GREEN}✓ Switched to Anthropic provider with model: $MODEL_ARG${NC}"
                     else
                         # Set provider only
-                        jq ".models.provider = \"anthropic\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                        jq ".models.provider = \"anthropic\" | (if .agents.assistant? then .agents.assistant.provider = \"anthropic\" else . end)" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
                         echo -e "${GREEN}✓ Switched to Anthropic provider${NC}"
                         echo ""
                         echo "Use 'tinyclaw model {sonnet|opus}' to set the model."
@@ -155,13 +155,13 @@ case "${1:-}" in
                     tmp_file="$SETTINGS_FILE.tmp"
                     if [ -n "$MODEL_ARG" ]; then
                         # Set both provider and model (supports any model name)
-                        jq ".models.provider = \"openai\" | .models.openai.model = \"$MODEL_ARG\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                        jq ".models.provider = \"openai\" | .models.openai.model = \"$MODEL_ARG\" | (if .agents.assistant? then .agents.assistant.provider = \"openai\" | .agents.assistant.model = \"$MODEL_ARG\" else . end)" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
                         echo -e "${GREEN}✓ Switched to OpenAI/Codex provider with model: $MODEL_ARG${NC}"
                         echo ""
                         echo "Note: Make sure you have the 'codex' CLI installed and authenticated."
                     else
                         # Set provider only
-                        jq ".models.provider = \"openai\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                        jq ".models.provider = \"openai\" | (if .agents.assistant? then .agents.assistant.provider = \"openai\" else . end)" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
                         echo -e "${GREEN}✓ Switched to OpenAI/Codex provider${NC}"
                         echo ""
                         echo "Use 'tinyclaw model {gpt-5.3-codex|gpt-5.2}' to set the model."
@@ -213,7 +213,7 @@ case "${1:-}" in
 
                     # Update model using jq
                     tmp_file="$SETTINGS_FILE.tmp"
-                    jq ".models.anthropic.model = \"$2\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                    jq ".models.anthropic.model = \"$2\" | (if .agents.assistant? then .agents.assistant.model = \"$2\" else . end)" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
 
                     echo -e "${GREEN}✓ Model switched to: $2${NC}"
                     echo ""
@@ -227,7 +227,7 @@ case "${1:-}" in
 
                     # Update model using jq
                     tmp_file="$SETTINGS_FILE.tmp"
-                    jq ".models.openai.model = \"$2\"" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                    jq ".models.openai.model = \"$2\" | (if .agents.assistant? then .agents.assistant.model = \"$2\" else . end)" "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
 
                     echo -e "${GREEN}✓ Model switched to: $2${NC}"
                     echo ""
