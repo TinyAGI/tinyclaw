@@ -163,15 +163,14 @@ Commands work with `tinyclaw` (if CLI installed) or `./tinyclaw.sh` (direct scri
 | `reset`                           | Reset all conversations      | `tinyclaw reset`                                 |
 | `channels reset <channel>`        | Reset channel authentication | `tinyclaw channels reset whatsapp`               |
 
-### OpenAI-Compatible Providers (Optional)
+### OpenAI (Codex CLI) Provider
 
-If you select the `openai` provider, TinyClaw uses the Codex CLI. You can point it at an OpenAI-compatible endpoint (for example, Cerebras) by exporting:
+If you select the `openai` provider, TinyClaw uses the Codex CLI.
+
+Environment variables:
 
 ```bash
-export TINYCLAW_OPENAI_API_KEY="..."
-export TINYCLAW_OPENAI_BASE_URL="https://api.cerebras.ai/v1"
-# or, as a shortcut:
-export CEREBRAS_API_KEY="..."
+export OPENAI_API_KEY="..."
 ```
 
 Note: model availability can depend on how the Codex CLI is authenticated. If you see errors about a model being unsupported with a ChatGPT account, switch to a supported Codex model (e.g. `gpt-5.3-codex`) or authenticate with an API-key style credential appropriate for your endpoint.
@@ -184,7 +183,7 @@ Environment variables:
 
 ```bash
 export CEREBRAS_API_KEY="..."
-export OPENAI_BASE_URL="https://api.cerebras.ai/v1"   # optional (defaults to Cerebras)
+export TINYCLAW_CEREBRAS_BASE_URL="https://api.cerebras.ai/v1"   # optional (defaults to Cerebras)
 ```
 
 In `settings.json`, set the agent provider/model:

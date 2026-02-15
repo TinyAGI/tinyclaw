@@ -118,7 +118,7 @@ start_daemon() {
 
     # Ensure critical env vars are present inside tmux panes.
     # tmux servers can outlive the calling shell, so relying on inheritance is brittle.
-    for k in CEREBRAS_API_KEY OPENAI_API_KEY OPENAI_BASE_URL TINYCLAW_OPENAI_API_KEY TINYCLAW_OPENAI_BASE_URL TINYCLAW_CEREBRAS_BASE_URL; do
+    for k in CEREBRAS_API_KEY OPENAI_API_KEY TINYCLAW_CEREBRAS_BASE_URL; do
         if [ -n "${!k:-}" ]; then
             tmux set-environment -t "$TMUX_SESSION" "$k" "${!k}"
         fi

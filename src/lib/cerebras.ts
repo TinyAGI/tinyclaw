@@ -108,12 +108,13 @@ export function resetCerebrasHistory(agentDir: string): void {
 }
 
 function getBaseUrl(): string {
-    // Accept either OPENAI_BASE_URL (set by tinyclaw.sh) or a dedicated var.
-    return (process.env.TINYCLAW_CEREBRAS_BASE_URL || process.env.OPENAI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
+    // Keep Cerebras isolated from OpenAI/Codex env vars to avoid accidental cross-contamination.
+    return (process.env.TINYCLAW_CEREBRAS_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
 }
 
 function getApiKey(): string {
-    return process.env.CEREBRAS_API_KEY || process.env.TINYCLAW_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
+    // Do not fall back to OPENAI_API_KEY: it's for Codex/OpenAI, not Cerebras.
+    return process.env.CEREBRAS_API_KEY || '';
 }
 
 function sleep(ms: number): Promise<void> {
@@ -134,7 +135,7 @@ export async function cerebrasChatCompletion(opts: {
     const baseUrl = getBaseUrl();
     const apiKey = getApiKey();
     if (!apiKey) {
-        throw new Error('Missing Cerebras API key (set CEREBRAS_API_KEY or TINYCLAW_OPENAI_API_KEY).');
+        throw new Error('Missing Cerebras API key (set CEREBRAS_API_KEY).');
     }
 
     const url = `${baseUrl}/chat/completions`;
