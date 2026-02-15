@@ -19,12 +19,13 @@ echo ""
 
 # --- Channel registry ---
 # To add a new channel, add its ID here and fill in the config arrays below.
-ALL_CHANNELS=(telegram discord whatsapp)
+ALL_CHANNELS=(telegram discord whatsapp msteams)
 
 declare -A CHANNEL_DISPLAY=(
     [telegram]="Telegram"
     [discord]="Discord"
     [whatsapp]="WhatsApp"
+    [msteams]="Microsoft Teams"
 )
 declare -A CHANNEL_TOKEN_KEY=(
     [discord]="discord_bot_token"
@@ -40,7 +41,7 @@ declare -A CHANNEL_TOKEN_HELP=(
 )
 
 # Channel selection - simple checklist
-echo "Which messaging channels (Telegram, Discord, WhatsApp) do you want to enable?"
+echo "Which messaging channels (Telegram, Discord, WhatsApp, Microsoft Teams) do you want to enable?"
 echo ""
 
 ENABLED_CHANNELS=()
@@ -77,6 +78,44 @@ for ch in "${ENABLED_CHANNELS[@]}"; do
         echo ""
     fi
 done
+
+# Collect Teams credentials
+TEAMS_APP_ID=""
+TEAMS_APP_PASSWORD=""
+TEAMS_PORT="3978"
+if printf '%s\n' "${ENABLED_CHANNELS[@]}" | grep -qx "msteams"; then
+    echo "Enter your Microsoft Teams App ID:"
+    echo -e "${YELLOW}(From your Microsoft Entra app registration)${NC}"
+    echo ""
+    read -rp "App ID: " TEAMS_APP_ID
+
+    if [ -z "$TEAMS_APP_ID" ]; then
+        echo -e "${RED}Microsoft Teams App ID is required${NC}"
+        exit 1
+    fi
+
+    echo ""
+    echo "Enter your Microsoft Teams App Password (client secret):"
+    read -rs -p "App Password: " TEAMS_APP_PASSWORD
+    echo ""
+
+    if [ -z "$TEAMS_APP_PASSWORD" ]; then
+        echo -e "${RED}Microsoft Teams App Password is required${NC}"
+        exit 1
+    fi
+
+    read -rp "Teams bot port [default: 3978]: " TEAMS_PORT_INPUT
+    if [ -n "$TEAMS_PORT_INPUT" ]; then
+        if [[ "$TEAMS_PORT_INPUT" =~ ^[0-9]+$ ]]; then
+            TEAMS_PORT="$TEAMS_PORT_INPUT"
+        else
+            echo -e "${YELLOW}Invalid port, using default 3978${NC}"
+        fi
+    fi
+
+    echo -e "${GREEN}✓ Microsoft Teams credentials saved${NC}"
+    echo ""
+fi
 
 # Provider selection
 echo "Which AI provider?"
@@ -288,7 +327,12 @@ cat > "$SETTINGS_FILE" <<EOF
     "telegram": {
       "bot_token": "${TELEGRAM_TOKEN}"
     },
-    "whatsapp": {}
+    "whatsapp": {},
+    "teams": {
+      "app_id": "${TEAMS_APP_ID}",
+      "app_password": "${TEAMS_APP_PASSWORD}",
+      "port": ${TEAMS_PORT}
+    }
   },
   ${AGENTS_JSON}
   ${MODELS_SECTION},
