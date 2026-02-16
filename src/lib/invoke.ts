@@ -154,6 +154,10 @@ export async function invokeAgent(
             ? agent.working_directory
             : path.join(workspacePath, agent.working_directory))
         : agentDir;
+    if (!fs.existsSync(workingDir)) {
+        fs.mkdirSync(workingDir, { recursive: true });
+        log('WARN', `Working directory did not exist; created: ${workingDir}`);
+    }
 
     const provider = agent.provider || 'anthropic';
     const providerConfig = getProviderConfig(provider);

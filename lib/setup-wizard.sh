@@ -143,6 +143,15 @@ fi
 
 if [ "${#MODEL_IDS[@]}" -eq 0 ]; then
     MODEL=""
+    echo "Model (optional)?"
+    echo -e "${YELLOW}(No model list available for provider '${PROVIDER}'. Enter a model name or leave blank.)${NC}"
+    echo ""
+    read -rp "Model: " MODEL_INPUT
+    MODEL="${MODEL_INPUT}"
+    if [ -n "$MODEL" ]; then
+        echo -e "${GREEN}✓ Model: $MODEL${NC}"
+        echo ""
+    fi
 elif [ "${#MODEL_IDS[@]}" -eq 1 ]; then
     MODEL="${MODEL_IDS[0]}"
     echo -e "${GREEN}✓ Model: $MODEL${NC}"
