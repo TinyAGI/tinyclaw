@@ -27,7 +27,7 @@
 - ✅ **Multi-team collaboration** - Agents hand off work to teammates via chain execution and fan-out
 - ✅ **Multi-channel** - Discord, WhatsApp, and Telegram
 - ✅ **Team Observation** - You can observe agent teams conversations via `tinyclaw team visualize`
-- ✅ **Multiple AI providers** - Anthropic Claude, OpenAI Codex, and Qoder using existing subscriptions without breaking ToS
+- ✅ **Multiple AI providers** - Use multiple provider coding agents using existing subscriptions without breaking ToS
 - ✅ **Parallel processing** - Agents process messages concurrently
 - ✅ **Live TUI dashboard** - Real-time team visualizer for monitoring agent chains
 - ✅ **Persistent sessions** - Conversation context maintained across restarts
