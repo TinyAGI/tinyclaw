@@ -44,7 +44,6 @@ for ch in "${ALL_CHANNELS[@]}"; do
         echo -e "    ${GREEN}✓ ${display} enabled${NC}"
     fi
 done
-CHANNEL_CONFIG_JSON="${CHANNEL_CONFIG_JSON%,}"
 echo ""
 
 if [ ${#ENABLED_CHANNELS[@]} -eq 0 ]; then
@@ -369,6 +368,7 @@ for ch in "${ALL_CHANNELS[@]}"; do
         CHANNEL_CONFIG_JSON="$CHANNEL_CONFIG_JSON\"${ch}\": {},"
     fi
 done
+CHANNEL_CONFIG_JSON="${CHANNEL_CONFIG_JSON%,}"
 
 cat > "$SETTINGS_FILE" <<EOF
 {
