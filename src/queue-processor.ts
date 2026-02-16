@@ -25,6 +25,7 @@ import {
 import { log, emitEvent } from './lib/logging';
 import { parseAgentRouting, findTeamForAgent, getAgentResetFlag, extractTeammateMentions } from './lib/routing';
 import { invokeAgent } from './lib/invoke';
+import { processAudioInMessage } from './lib/transcription';
 
 // Ensure directories exist
 [QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING, FILES_DIR, path.dirname(LOG_FILE)].forEach(dir => {
@@ -338,6 +339,12 @@ async function processMessage(messageFile: string): Promise<void> {
                     message += `\n\n------\n\n[${othersPending} other teammate response(s) are still being processed and will be delivered when ready. Do not re-mention teammates who haven't responded yet.]`;
                 }
             }
+        }
+
+        // Transcribe audio files if enabled
+        const transcriptionConfig = settings.transcription;
+        if (transcriptionConfig?.enabled) {
+            message = await processAudioInMessage(message, transcriptionConfig);
         }
 
         // Invoke agent
