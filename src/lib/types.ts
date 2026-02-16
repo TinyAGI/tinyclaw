@@ -108,5 +108,13 @@ export const CODEX_MODEL_IDS: Record<string, string> = {
 };
 
 export const QODER_MODEL_IDS: Record<string, string> = {
-    'qoder': 'qoder',
+    'auto': 'auto',
+    'efficient': 'efficient',
+    'gmodel': 'gmodel',
+    'kmodel': 'kmodel',
+    'lite': 'lite',
+    'mmodel': 'mmodel',
+    'performance': 'performance',
+    'qmodel': 'qmodel',
+    'ultimate': 'ultimate',
 };

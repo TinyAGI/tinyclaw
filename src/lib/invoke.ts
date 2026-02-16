@@ -124,7 +124,7 @@ export async function invokeAgent(
 
         const modelId = resolveQoderModel(agent.model);
         const qoderArgs = ['-w', workingDir];
-        if (modelId && modelId !== 'qoder') {
+        if (modelId) {
             qoderArgs.push('--model', modelId);
         }
         if (continueConversation) {

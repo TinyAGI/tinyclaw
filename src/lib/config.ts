@@ -74,7 +74,7 @@ export function getDefaultAgentFromModels(settings: Settings): AgentConfig {
     if (provider === 'openai') {
         model = settings?.models?.openai?.model || 'gpt-5.3-codex';
     } else if (provider === 'qoder') {
-        model = settings?.models?.qoder?.model || 'qoder';
+        model = settings?.models?.qoder?.model || 'auto';
     } else {
         model = settings?.models?.anthropic?.model || 'sonnet';
     }

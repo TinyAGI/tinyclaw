@@ -141,16 +141,32 @@ elif [ "$PROVIDER" = "qoder" ]; then
     while [ -z "$MODEL" ]; do
         echo "Which Qoder model?"
         echo ""
-        echo "  1) Qoder  (default)"
-        echo "  s) Skip (use default)"
+        echo "  1) auto         (automatic selection)"
+        echo "  2) efficient    (fast, cost-effective)"
+        echo "  3) gmodel"
+        echo "  4) kmodel"
+        echo "  5) lite         (lightweight)"
+        echo "  6) mmodel"
+        echo "  7) performance  (balanced)"
+        echo "  8) qmodel"
+        echo "  9) ultimate     (most capable)"
+        echo "  s) Skip (use default: auto)"
         echo ""
-        read -rp "Choose [1, s]: " MODEL_CHOICE
+        read -rp "Choose [1-9, s]: " MODEL_CHOICE
 
         case "$MODEL_CHOICE" in
-            1) MODEL="qoder" ;;
+            1) MODEL="auto" ;;
+            2) MODEL="efficient" ;;
+            3) MODEL="gmodel" ;;
+            4) MODEL="kmodel" ;;
+            5) MODEL="lite" ;;
+            6) MODEL="mmodel" ;;
+            7) MODEL="performance" ;;
+            8) MODEL="qmodel" ;;
+            9) MODEL="ultimate" ;;
             [sS])
-                echo -e "${YELLOW}Using default model: qoder${NC}"
-                MODEL="qoder"
+                echo -e "${YELLOW}Using default model: auto${NC}"
+                MODEL="auto"
                 break
                 ;;
             *)
@@ -310,15 +326,25 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
             done
         elif [ "$NEW_PROVIDER" = "qoder" ]; then
             while [ -z "$NEW_MODEL" ]; do
-                echo "  Model: 1) Qoder  s) Skip (use default: qoder)"
-                read -rp "  Choose [1, s, default: 1]: " NEW_MODEL_CHOICE
+                echo "  Model: 1) auto  2) efficient  3) gmodel  4) kmodel  5) lite"
+                echo "         6) mmodel  7) performance  8) qmodel  9) ultimate"
+                echo "         s) Skip (use default: auto)"
+                read -rp "  Choose [1-9, s, default: 1]: " NEW_MODEL_CHOICE
                 case "$NEW_MODEL_CHOICE" in
+                    2) NEW_MODEL="efficient" ;;
+                    3) NEW_MODEL="gmodel" ;;
+                    4) NEW_MODEL="kmodel" ;;
+                    5) NEW_MODEL="lite" ;;
+                    6) NEW_MODEL="mmodel" ;;
+                    7) NEW_MODEL="performance" ;;
+                    8) NEW_MODEL="qmodel" ;;
+                    9) NEW_MODEL="ultimate" ;;
                     [sS])
-                        echo -e "  ${YELLOW}Using default model: qoder${NC}"
-                        NEW_MODEL="qoder"
+                        echo -e "  ${YELLOW}Using default model: auto${NC}"
+                        NEW_MODEL="auto"
                         break
                         ;;
-                    ""|1) NEW_MODEL="qoder" ;;
+                    ""|1) NEW_MODEL="auto" ;;
                     *)
                         echo -e "  ${RED}Invalid choice, please try again${NC}"
                         echo ""
