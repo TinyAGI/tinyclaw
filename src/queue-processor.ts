@@ -41,6 +41,8 @@ const conversations = new Map<string, Conversation>();
 
 const MAX_CONVERSATION_MESSAGES = 50;
 const LONG_RESPONSE_THRESHOLD = 4000;
+const PARTIAL_STREAM_MIN_INTERVAL_MS = 1200;
+const PARTIAL_STREAM_MIN_DELTA_CHARS = 80;
 
 /**
  * If a response exceeds the threshold, save full text as a .md file
@@ -115,6 +117,61 @@ function collectFiles(response: string, fileSet: Set<string>): void {
         const filePath = match[1].trim();
         if (fs.existsSync(filePath)) fileSet.add(filePath);
     }
+}
+
+function createTelegramPartialEmitter(params: {
+    channel: string;
+    sender: string;
+    rawMessage: string;
+    messageId: string;
+    agentId: string;
+}): (text: string) => void {
+    let lastSent = '';
+    let lastSentAt = 0;
+
+    const sanitizeForPartial = (text: string): string => {
+        const questionTagIndex = text.indexOf('[QUESTION]');
+        const visible = questionTagIndex >= 0 ? text.slice(0, questionTagIndex) : text;
+        return visible.trimEnd();
+    };
+
+    return (text: string): void => {
+        const sanitized = sanitizeForPartial(text);
+        if (!sanitized || sanitized === lastSent) {
+            return;
+        }
+
+        // If stream restarted with shorter text, reset throttling baseline.
+        if (sanitized.length < lastSent.length) {
+            lastSent = '';
+            lastSentAt = 0;
+        }
+
+        const now = Date.now();
+        const grewBy = sanitized.length - lastSent.length;
+        const tooSoon = now - lastSentAt < PARTIAL_STREAM_MIN_INTERVAL_MS;
+        if (tooSoon && grewBy < PARTIAL_STREAM_MIN_DELTA_CHARS) {
+            return;
+        }
+
+        const partialResponse: ResponseData = {
+            channel: params.channel,
+            sender: params.sender,
+            message: sanitized,
+            originalMessage: params.rawMessage,
+            timestamp: now,
+            messageId: `partial_${params.messageId}_r0`,
+            agent: params.agentId,
+        };
+
+        const partialFile = path.join(
+            QUEUE_OUTGOING,
+            `${params.channel}_partial_${params.messageId}_live_${now}.json`,
+        );
+        fs.writeFileSync(partialFile, JSON.stringify(partialResponse, null, 2));
+        lastSent = sanitized;
+        lastSentAt = now;
+    };
 }
 
 /**
@@ -341,10 +398,22 @@ async function processMessage(messageFile: string): Promise<void> {
         }
 
         // Invoke agent
+        const livePartialEmitter = channel === 'telegram' && !teamContext
+            ? createTelegramPartialEmitter({ channel, sender, rawMessage, messageId, agentId })
+            : null;
         emitEvent('chain_step_start', { agentId, agentName: agent.name, fromAgent: messageData.fromAgent || null });
         let response: string;
         try {
-            response = await invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams);
+            response = await invokeAgent(
+                agent,
+                agentId,
+                message,
+                workspacePath,
+                shouldReset,
+                agents,
+                teams,
+                livePartialEmitter ? (partial: string) => livePartialEmitter(partial) : undefined,
+            );
         } catch (error) {
             const provider = agent.provider || 'anthropic';
             log('ERROR', `${provider === 'openai' ? 'Codex' : 'Claude'} error (agent: ${agentId}): ${(error as Error).message}`);

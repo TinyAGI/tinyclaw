@@ -6,7 +6,16 @@ import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel } from './config';
 import { log } from './logging';
 import { ensureAgentDirectory, updateAgentTeammates } from './agent-setup';
 
-export async function runCommand(command: string, args: string[], cwd?: string): Promise<string> {
+export interface RunCommandOptions {
+    onStdoutChunk?: (chunk: string) => void;
+}
+
+export async function runCommand(
+    command: string,
+    args: string[],
+    cwd?: string,
+    options?: RunCommandOptions,
+): Promise<string> {
     return new Promise((resolve, reject) => {
         const child = spawn(command, args, {
             cwd: cwd || SCRIPT_DIR,
@@ -21,6 +30,13 @@ export async function runCommand(command: string, args: string[], cwd?: string):
 
         child.stdout.on('data', (chunk: string) => {
             stdout += chunk;
+            if (options?.onStdoutChunk) {
+                try {
+                    options.onStdoutChunk(chunk);
+                } catch {
+                    // Never let streaming callbacks break command execution.
+                }
+            }
         });
 
         child.stderr.on('data', (chunk: string) => {
@@ -54,7 +70,8 @@ export async function invokeAgent(
     workspacePath: string,
     shouldReset: boolean,
     agents: Record<string, AgentConfig> = {},
-    teams: Record<string, TeamConfig> = {}
+    teams: Record<string, TeamConfig> = {},
+    onPartialResponse?: (text: string) => void
 ): Promise<string> {
     // Ensure agent directory exists with config files
     const agentDir = path.join(workspacePath, agentId);
@@ -130,8 +147,89 @@ export async function invokeAgent(
         if (continueConversation) {
             claudeArgs.push('-c');
         }
+
+        // Stream JSON is required for token-level partial updates.
+        const useStreamJson = typeof onPartialResponse === 'function';
+        if (useStreamJson) {
+            claudeArgs.push(
+                '--output-format', 'stream-json',
+                '--verbose',
+                '--include-partial-messages',
+            );
+        }
+
         claudeArgs.push('-p', message);
 
-        return await runCommand('claude', claudeArgs, workingDir);
+        if (!useStreamJson) {
+            return await runCommand('claude', claudeArgs, workingDir);
+        }
+
+        let streamBuffer = '';
+        let partialText = '';
+        let finalTextFromStream = '';
+
+        const processStreamLine = (line: string): void => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed[0] !== '{') {
+                return;
+            }
+
+            try {
+                const json = JSON.parse(trimmed);
+
+                if (json?.type === 'stream_event') {
+                    const event = json.event;
+                    if (event?.type === 'content_block_delta' && event?.delta?.type === 'text_delta') {
+                        const delta = event.delta.text;
+                        if (typeof delta === 'string' && delta.length > 0) {
+                            partialText += delta;
+                            onPartialResponse?.(partialText);
+                        }
+                    }
+                    return;
+                }
+
+                if (json?.type === 'assistant' && Array.isArray(json?.message?.content)) {
+                    const content = json.message.content
+                        .filter((c: any) => c?.type === 'text' && typeof c?.text === 'string')
+                        .map((c: any) => c.text)
+                        .join('');
+                    if (content) {
+                        finalTextFromStream = content;
+                    }
+                    return;
+                }
+
+                if (json?.type === 'result' && typeof json?.result === 'string') {
+                    finalTextFromStream = json.result;
+                }
+            } catch {
+                // Ignore non-JSON/non-stream lines.
+            }
+        };
+
+        const rawOutput = await runCommand(
+            'claude',
+            claudeArgs,
+            workingDir,
+            {
+                onStdoutChunk: (chunk: string) => {
+                    streamBuffer += chunk;
+                    let newlineIndex = streamBuffer.indexOf('\n');
+                    while (newlineIndex !== -1) {
+                        const line = streamBuffer.slice(0, newlineIndex);
+                        streamBuffer = streamBuffer.slice(newlineIndex + 1);
+                        processStreamLine(line);
+                        newlineIndex = streamBuffer.indexOf('\n');
+                    }
+                },
+            },
+        );
+
+        if (streamBuffer.trim().length > 0) {
+            processStreamLine(streamBuffer);
+        }
+
+        return (finalTextFromStream || partialText || rawOutput).trim();
     }
 }
