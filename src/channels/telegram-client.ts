@@ -650,7 +650,7 @@ async function checkOutgoingQueue(): Promise<void> {
                     }
 
                     // TTS: synthesize and send voice message if enabled
-                    if (responseText && ttsEnabledChats.has(pending.chatId.toString())) {
+                    if (responseText && pending && ttsEnabledChats.has(pending.chatId.toString())) {
                         try {
                             const ttsFile = path.join(FILES_DIR, `tts_${messageId}.mp3`);
                             const audioPath = await synthesizeSpeech(responseText, ttsFile);
