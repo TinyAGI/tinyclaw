@@ -6,5 +6,5 @@ pub mod queue;
 
 pub use channel::ChannelClient;
 pub use config::Settings;
-pub use message::{Channel, IncomingMessage, OutgoingMessage};
+pub use message::{AgentConfig, Channel, IncomingMessage, OutgoingMessage, TeamConfig};
 pub use queue::QueueDir;

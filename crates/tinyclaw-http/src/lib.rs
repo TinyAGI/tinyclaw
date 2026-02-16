@@ -21,12 +21,23 @@ struct AppState {
 #[derive(Debug, Deserialize)]
 struct ChatRequest {
     message: String,
+    /// Optional agent id to route this message to.
+    #[serde(default)]
+    agent: Option<String>,
+    /// Optional sender name override.
+    #[serde(default)]
+    sender: Option<String>,
+    /// Optional sender id override.
+    #[serde(default)]
+    sender_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct ChatResponse {
     message: String,
     message_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -107,11 +118,15 @@ async fn chat_handler(
 
     let incoming = IncomingMessage {
         channel: Channel::Http,
-        sender: "bookmarklet".into(),
-        sender_id: "http".into(),
+        sender: req.sender.unwrap_or_else(|| "bookmarklet".into()),
+        sender_id: req.sender_id.unwrap_or_else(|| "http".into()),
         message: req.message,
         timestamp: now_millis(),
         message_id: message_id.clone(),
+        agent: req.agent,
+        files: None,
+        conversation_id: None,
+        from_agent: None,
     };
 
     state.queue.enqueue(&incoming).await?;
@@ -128,6 +143,7 @@ async fn chat_handler(
             return Ok(Json(ChatResponse {
                 message: "Request timed out waiting for response.".to_string(),
                 message_id,
+                agent: None,
             }));
         }
 
@@ -135,10 +151,12 @@ async fn chat_handler(
         let responses = state.queue.poll_outgoing("http_").await?;
         for (path, response) in responses {
             if response.message_id == message_id {
+                let agent = response.agent.clone();
                 state.queue.ack_outgoing(&path).await?;
                 return Ok(Json(ChatResponse {
                     message: response.message,
                     message_id,
+                    agent,
                 }));
             }
         }

@@ -1,4 +1,6 @@
+use crate::message::{AgentConfig, TeamConfig};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,6 +15,12 @@ pub struct Settings {
     pub http: HttpSettings,
     #[serde(default)]
     pub freehold: FreeholdSettings,
+    /// Named agents — matches upstream `settings.agents`.
+    #[serde(default)]
+    pub agents: HashMap<String, AgentConfig>,
+    /// Named teams — matches upstream `settings.teams`.
+    #[serde(default)]
+    pub teams: HashMap<String, TeamConfig>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

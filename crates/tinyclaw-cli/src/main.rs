@@ -238,6 +238,10 @@ async fn run_heartbeat(
                     message: prompt,
                     timestamp: now_millis(),
                     message_id,
+                    agent: None,
+                    files: None,
+                    conversation_id: None,
+                    from_agent: None,
                 };
 
                 if let Err(e) = queue.enqueue(&msg).await {
@@ -381,6 +385,8 @@ async fn cmd_setup(cli: &Cli) -> anyhow::Result<()> {
             cors_origins: Vec::new(),
         },
         freehold: Default::default(),
+        agents: Default::default(),
+        teams: Default::default(),
     };
 
     settings.save(&settings_path(cli))?;
@@ -436,6 +442,10 @@ async fn cmd_send(cli: &Cli, message: &str) -> anyhow::Result<()> {
         message: message.to_string(),
         timestamp: now_millis(),
         message_id: message_id.clone(),
+        agent: None,
+        files: None,
+        conversation_id: None,
+        from_agent: None,
     };
 
     queue.enqueue(&incoming).await?;

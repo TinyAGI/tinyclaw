@@ -51,6 +51,9 @@ pub async fn run_queue_processor(
                         original_message: msg.message.clone(),
                         timestamp: now_millis(),
                         message_id: msg.message_id.clone(),
+                        agent: msg.agent.clone(),
+                        sender_id: Some(msg.sender_id.clone()),
+                        files: None,
                     };
 
                     if let Err(e) = queue.complete(&processing_path, &response).await {

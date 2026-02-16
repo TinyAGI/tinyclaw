@@ -74,6 +74,8 @@ async fn start_tinyclaw(data_dir: &str, model_id: &str) -> anyhow::Result<()> {
                 cors_origins: Vec::new(),
             },
             freehold: Default::default(),
+            agents: Default::default(),
+            teams: Default::default(),
         }
     };
 

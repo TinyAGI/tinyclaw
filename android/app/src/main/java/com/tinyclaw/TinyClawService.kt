@@ -15,6 +15,8 @@ class TinyClawService : Service() {
         const val TAG = "TinyClawService"
         const val ACTION_STOP = "com.tinyclaw.ACTION_STOP"
         const val EXTRA_MODEL_ID = "com.tinyclaw.EXTRA_MODEL_ID"
+        const val EXTRA_AGENT_ID = "com.tinyclaw.EXTRA_AGENT_ID"
+        const val EXTRA_TEAM_ID = "com.tinyclaw.EXTRA_TEAM_ID"
         const val ACTION_STATUS_CHANGED = "com.tinyclaw.STATUS_CHANGED"
         const val EXTRA_STATUS = "status"
         const val EXTRA_ERROR = "error"
@@ -28,6 +30,8 @@ class TinyClawService : Service() {
     private external fun nativeStop(): Int
 
     private var currentModel: String = "gemma3-1b"
+    private var currentAgent: String = ""
+    private var currentTeam: String = ""
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -42,7 +46,10 @@ class TinyClawService : Service() {
         }
 
         currentModel = intent?.getStringExtra(EXTRA_MODEL_ID) ?: "gemma3-1b"
-        Log.i(TAG, "Starting with model: $currentModel")
+        currentAgent = intent?.getStringExtra(EXTRA_AGENT_ID) ?: ""
+        currentTeam = intent?.getStringExtra(EXTRA_TEAM_ID) ?: ""
+
+        Log.i(TAG, "Starting with model: $currentModel, agent: $currentAgent, team: $currentTeam")
 
         startForeground(1, buildNotification())
         broadcastStatus("starting")
@@ -90,9 +97,16 @@ class TinyClawService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val subtitle = buildString {
+            append(currentModel)
+            if (currentAgent.isNotEmpty()) append(" \u2022 @$currentAgent")
+            if (currentTeam.isNotEmpty()) append(" \u2022 #$currentTeam")
+            append(" \u2022 localhost:8787")
+        }
+
         return NotificationCompat.Builder(this, TinyClawApp.CHANNEL_ID)
             .setContentTitle("TinyClaw")
-            .setContentText("$currentModel \u2022 localhost:8787")
+            .setContentText(subtitle)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(openPending)
             .addAction(0, "Stop", stopPending)

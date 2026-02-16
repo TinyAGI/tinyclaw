@@ -159,6 +159,10 @@ impl EventHandler for DiscordHandler {
             message: msg.content.clone(),
             timestamp: now_millis(),
             message_id: message_id.clone(),
+            agent: None,
+            files: None,
+            conversation_id: None,
+            from_agent: None,
         };
 
         if let Err(e) = self.queue.enqueue(&incoming).await {

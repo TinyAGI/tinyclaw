@@ -7,4 +7,8 @@
     <string name="status_stopped">Status: Stopped</string>
     <string name="status_starting">Status: Starting\u2026</string>
     <string name="port_label">HTTP API: localhost:%1$d</string>
+    <string name="model_label">Model</string>
+    <string name="agent_label">Agent</string>
+    <string name="team_label">Team</string>
+    <string name="none_selected">(none)</string>
 </resources>
