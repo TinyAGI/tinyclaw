@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "providers": {
+    "anthropic": {
+      "display_name": "Claude",
+      "executable": "claude",
+      "args": ["--dangerously-skip-permissions", "{{?model}}--model", "{{model}}", "{{?resume}}-c", "-p", "{{message}}"],
+      "output": { "type": "plain" },
+      "models": {
+        "sonnet": "claude-sonnet-4-5",
+        "opus": "claude-opus-4-6",
+        "claude-sonnet-4-5": "claude-sonnet-4-5",
+        "claude-opus-4-6": "claude-opus-4-6"
+      }
+    },
+    "openai": {
+      "display_name": "Codex",
+      "executable": "codex",
+      "args": ["exec", "{{?resume}}resume", "{{?resume}}--last", "{{?model}}--model", "{{model}}", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", "--json", "{{message}}"],
+      "output": {
+        "type": "jsonl",
+        "select": {
+          "match": {
+            "type": "item.completed",
+            "item.type": "agent_message"
+          },
+          "field": "item.text"
+        }
+      },
+      "models": {
+        "gpt-5.2": "gpt-5.2",
+        "gpt-5.3-codex": "gpt-5.3-codex"
+      }
+    },
+    "qoder": {
+      "display_name": "Qoder",
+      "executable": "qodercli",
+      "args": ["-w", "{{cwd}}", "{{?model}}--model", "{{model}}", "{{?resume}}-c", "-p", "{{message}}"],
+      "output": { "type": "plain" },
+      "models": {
+        "auto": "auto",
+        "efficient": "efficient",
+        "gmodel": "gmodel",
+        "kmodel": "kmodel",
+        "lite": "lite",
+        "mmodel": "mmodel",
+        "performance": "performance",
+        "qmodel": "qmodel",
+        "ultimate": "ultimate"
+      }
+    }
+  }
+}

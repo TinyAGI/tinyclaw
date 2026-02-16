@@ -56,7 +56,15 @@ const DEFAULT_PROVIDER_REGISTRY: ProviderRegistry = {
             args: ['-w', '{{cwd}}', '{{?model}}--model', '{{model}}', '{{?resume}}-c', '-p', '{{message}}'],
             output: { type: 'plain' },
             models: {
-                'qoder': 'qoder',
+                'auto': 'auto',
+                'efficient': 'efficient',
+                'gmodel': 'gmodel',
+                'kmodel': 'kmodel',
+                'lite': 'lite',
+                'mmodel': 'mmodel',
+                'performance': 'performance',
+                'qmodel': 'qmodel',
+                'ultimate': 'ultimate',
             }
         }
     }
