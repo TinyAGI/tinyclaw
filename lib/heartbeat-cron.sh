@@ -3,15 +3,17 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-if [ -f "$PROJECT_ROOT/.tinyclaw/settings.json" ]; then
-    TINYCLAW_HOME="$PROJECT_ROOT/.tinyclaw"
-else
-    TINYCLAW_HOME="$HOME/.tinyclaw"
+if [ -z "$TINYCLAW_HOME" ]; then
+    if [ -f "$PROJECT_ROOT/.tinyclaw/settings.json" ]; then
+        TINYCLAW_HOME="$PROJECT_ROOT/.tinyclaw"
+    else
+        TINYCLAW_HOME="$HOME/.tinyclaw"
+    fi
 fi
 LOG_FILE="$TINYCLAW_HOME/logs/heartbeat.log"
 QUEUE_INCOMING="$TINYCLAW_HOME/queue/incoming"
 QUEUE_OUTGOING="$TINYCLAW_HOME/queue/outgoing"
-SETTINGS_FILE="$PROJECT_ROOT/.tinyclaw/settings.json"
+SETTINGS_FILE="$TINYCLAW_HOME/settings.json"
 
 # Read interval from settings.json, default to 3600
 if [ -f "$SETTINGS_FILE" ]; then
@@ -80,16 +82,20 @@ while true; do
         MESSAGE_ID="heartbeat_${AGENT_ID}_$(date +%s)_$$"
 
         # Write to queue with @agent_id routing prefix
-        cat > "$QUEUE_INCOMING/${MESSAGE_ID}.json" << EOF
-{
-  "channel": "heartbeat",
-  "sender": "System",
-  "senderId": "heartbeat_${AGENT_ID}",
-  "message": "@${AGENT_ID} ${PROMPT}",
-  "timestamp": $(date +%s)000,
-  "messageId": "$MESSAGE_ID"
-}
-EOF
+        TIMESTAMP="$(date +%s)000"
+        jq -n \
+            --arg message "@${AGENT_ID} ${PROMPT}" \
+            --arg senderId "heartbeat_${AGENT_ID}" \
+            --argjson timestamp "$TIMESTAMP" \
+            --arg messageId "$MESSAGE_ID" \
+            '{
+                channel: "heartbeat",
+                sender: "System",
+                senderId: $senderId,
+                message: $message,
+                timestamp: $timestamp,
+                messageId: $messageId
+            }' > "$QUEUE_INCOMING/${MESSAGE_ID}.json"
 
         log "  ✓ Queued for @$AGENT_ID: $MESSAGE_ID"
     done

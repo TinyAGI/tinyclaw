@@ -49,14 +49,24 @@ export function extractTeammateMentions(
     // TODO: Support cross-team communication — allow agents to mention agents
     // on other teams or use [@team_id: message] to route to another team's leader.
 
-    // Tag format: [@agent_id: message]
+    // Tag format: [@agent_id: message] or [@agent1,agent2: message]
     const tagRegex = /\[@(\S+?):\s*([\s\S]*?)\]/g;
     let tagMatch: RegExpExecArray | null;
     while ((tagMatch = tagRegex.exec(response)) !== null) {
-        const candidateId = tagMatch[1].toLowerCase();
-        if (!seen.has(candidateId) && isTeammate(candidateId, currentAgentId, teamId, teams, agents)) {
-            results.push({ teammateId: candidateId, message: tagMatch[2].trim() });
-            seen.add(candidateId);
+        // Strip all [@teammate: ...] tags from the full response to get shared context
+        const sharedContext = response.replace(tagRegex, '').trim();
+        const directMessage = tagMatch[2].trim();
+        const fullMessage = sharedContext
+            ? `${sharedContext}\n\n------\n\nDirected to you:\n${directMessage}`
+            : directMessage;
+
+        // Support comma-separated agent IDs: [@coder,reviewer: message]
+        const candidateIds = tagMatch[1].toLowerCase().split(',').map(id => id.trim()).filter(Boolean);
+        for (const candidateId of candidateIds) {
+            if (!seen.has(candidateId) && isTeammate(candidateId, currentAgentId, teamId, teams, agents)) {
+                results.push({ teammateId: candidateId, message: fullMessage });
+                seen.add(candidateId);
+            }
         }
     }
     return results;
@@ -113,14 +123,14 @@ export function parseAgentRouting(
         return {
             agentId: 'error',
             message: `🚀 **Agent-to-Agent Collaboration - Coming Soon!**\n\n` +
-                     `You mentioned multiple agents: ${agentList}\n\n` +
-                     `Right now, I can only route to one agent at a time. But we're working on something cool:\n\n` +
-                     `✨ **Multi-Agent Coordination** - Agents will be able to collaborate on complex tasks!\n` +
-                     `✨ **Smart Routing** - Send instructions to multiple agents at once!\n` +
-                     `✨ **Agent Handoffs** - One agent can delegate to another!\n\n` +
-                     `For now, please send separate messages to each agent:\n` +
-                     mentionedAgents.map(t => `• \`@${t} [your message]\``).join('\n') + '\n\n' +
-                     `_Stay tuned for updates! 🎉_`
+                `You mentioned multiple agents: ${agentList}\n\n` +
+                `Right now, I can only route to one agent at a time. But we're working on something cool:\n\n` +
+                `✨ **Multi-Agent Coordination** - Agents will be able to collaborate on complex tasks!\n` +
+                `✨ **Smart Routing** - Send instructions to multiple agents at once!\n` +
+                `✨ **Agent Handoffs** - One agent can delegate to another!\n\n` +
+                `For now, please send separate messages to each agent:\n` +
+                mentionedAgents.map(t => `• \`@${t} [your message]\``).join('\n') + '\n\n' +
+                `_Stay tuned for updates! 🎉_`
         };
     }
 

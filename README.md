@@ -17,6 +17,10 @@
   </p>
 </div>
 
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/c5ef5d3c-d9cf-4a00-b619-c31e4380df2e" width="600" controls></video>
+</div>
+
 ## ✨ Features
 
 - ✅ **Multi-agent** - Run multiple isolated AI agents with specialized roles
@@ -131,13 +135,15 @@ Commands work with `tinyclaw` (if CLI installed) or `./tinyclaw.sh` (direct scri
 
 ### Agent Commands
 
-| Command             | Description                 | Example                       |
-| ------------------- | --------------------------- | ----------------------------- |
-| `agent list`        | List all configured agents  | `tinyclaw agent list`         |
-| `agent add`         | Add new agent (interactive) | `tinyclaw agent add`          |
-| `agent show <id>`   | Show agent configuration    | `tinyclaw agent show coder`   |
-| `agent remove <id>` | Remove an agent             | `tinyclaw agent remove coder` |
-| `agent reset <id>`  | Reset agent conversation    | `tinyclaw agent reset coder`  |
+| Command                              | Description                      | Example                                          |
+| ------------------------------------ | -------------------------------- | ------------------------------------------------ |
+| `agent list`                         | List all configured agents       | `tinyclaw agent list`                            |
+| `agent add`                          | Add new agent (interactive)      | `tinyclaw agent add`                             |
+| `agent show <id>`                    | Show agent configuration         | `tinyclaw agent show coder`                      |
+| `agent remove <id>`                  | Remove an agent                  | `tinyclaw agent remove coder`                    |
+| `agent reset <id>`                   | Reset agent conversation         | `tinyclaw agent reset coder`                     |
+| `agent provider <id> [provider]`     | Show or set agent's AI provider  | `tinyclaw agent provider coder anthropic`        |
+| `agent provider <id> <p> --model <m>`| Set agent's provider and model   | `tinyclaw agent provider coder openai --model gpt-5.3-codex` |
 
 ### Team Commands
 
@@ -525,6 +531,7 @@ tinyclaw logs all
 - WhatsApp not connecting → Reset auth: `tinyclaw channels reset whatsapp`
 - Messages stuck → Clear queue: `rm -rf .tinyclaw/queue/processing/*`
 - Agent not found → Check: `tinyclaw agent list`
+- Corrupted settings.json → TinyClaw auto-repairs invalid JSON (trailing commas, comments, BOM) and creates a `.bak` backup
 
 **Need help?**
 

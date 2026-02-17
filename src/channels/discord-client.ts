@@ -15,9 +15,10 @@ import { ensureSenderPaired } from '../lib/pairing';
 
 const SCRIPT_DIR = path.resolve(__dirname, '..', '..');
 const _localTinyclaw = path.join(SCRIPT_DIR, '.tinyclaw');
-const TINYCLAW_HOME = fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
-    ? _localTinyclaw
-    : path.join(require('os').homedir(), '.tinyclaw');
+const TINYCLAW_HOME = process.env.TINYCLAW_HOME
+    || (fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
+        ? _localTinyclaw
+        : path.join(require('os').homedir(), '.tinyclaw'));
 const QUEUE_INCOMING = path.join(TINYCLAW_HOME, 'queue/incoming');
 const QUEUE_OUTGOING = path.join(TINYCLAW_HOME, 'queue/outgoing');
 const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/discord.log');
@@ -58,6 +59,7 @@ interface QueueData {
 interface ResponseData {
     channel: string;
     sender: string;
+    senderId?: string;
     message: string;
     originalMessage: string;
     timestamp: number;
@@ -306,16 +308,35 @@ client.on(Events.MessageCreate, async (message: Message) => {
             return;
         }
 
-        // Check for reset command
+        // Check for reset command: /reset @agent_id [@agent_id2 ...]
+        const resetMatch = messageText.trim().match(/^[!/]reset\s+(.+)$/i);
         if (messageText.trim().match(/^[!/]reset$/i)) {
-            log('INFO', 'Reset command received');
-
-            // Create reset flag
-            const resetFlagPath = path.join(SCRIPT_DIR, '.tinyclaw/reset_flag');
-            fs.writeFileSync(resetFlagPath, 'reset');
-
-            // Reply immediately
-            await message.reply('Conversation reset! Next message will start a fresh conversation.');
+            await message.reply('Usage: `/reset @agent_id [@agent_id2 ...]`\nSpecify which agent(s) to reset.');
+            return;
+        }
+        if (resetMatch) {
+            log('INFO', 'Per-agent reset command received');
+            const agentArgs = resetMatch[1].split(/\s+/).map(a => a.replace(/^@/, '').toLowerCase());
+            try {
+                const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
+                const settings = JSON.parse(settingsData);
+                const agents = settings.agents || {};
+                const workspacePath = settings?.workspace?.path || path.join(require('os').homedir(), 'tinyclaw-workspace');
+                const resetResults: string[] = [];
+                for (const agentId of agentArgs) {
+                    if (!agents[agentId]) {
+                        resetResults.push(`Agent '${agentId}' not found.`);
+                        continue;
+                    }
+                    const flagDir = path.join(workspacePath, agentId);
+                    if (!fs.existsSync(flagDir)) fs.mkdirSync(flagDir, { recursive: true });
+                    fs.writeFileSync(path.join(flagDir, 'reset_flag'), 'reset');
+                    resetResults.push(`Reset @${agentId} (${agents[agentId].name}).`);
+                }
+                await message.reply(resetResults.join('\n'));
+            } catch {
+                await message.reply('Could not process reset command. Check settings.');
+            }
             return;
         }
 
@@ -382,11 +403,22 @@ async function checkOutgoingQueue(): Promise<void> {
 
             try {
                 const responseData: ResponseData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                const { messageId, message: responseText, sender } = responseData;
+                const { messageId, message: responseText, sender, senderId } = responseData;
 
-                // Find pending message
+                // Find pending message, or fall back to senderId for proactive messages
                 const pending = pendingMessages.get(messageId);
-                if (pending) {
+                let channel = pending?.channel ?? null;
+
+                if (!channel && senderId) {
+                    try {
+                        const user = await client.users.fetch(senderId);
+                        channel = await user.createDM();
+                    } catch (err) {
+                        log('ERROR', `Could not open DM for senderId ${senderId}: ${(err as Error).message}`);
+                    }
+                }
+
+                if (channel) {
                     // Send any attached files
                     if (responseData.files && responseData.files.length > 0) {
                         const attachments: AttachmentBuilder[] = [];
@@ -399,7 +431,7 @@ async function checkOutgoingQueue(): Promise<void> {
                             }
                         }
                         if (attachments.length > 0) {
-                            await pending.channel.send({ files: attachments });
+                            await channel.send({ files: attachments });
                             log('INFO', `Sent ${attachments.length} file(s) to Discord`);
                         }
                     }
@@ -408,23 +440,24 @@ async function checkOutgoingQueue(): Promise<void> {
                     if (responseText) {
                         const chunks = splitMessage(responseText);
 
-                        // First chunk as reply, rest as follow-up messages
                         if (chunks.length > 0) {
-                            await pending.message.reply(chunks[0]!);
+                            if (pending) {
+                                await pending.message.reply(chunks[0]!);
+                            } else {
+                                await channel.send(chunks[0]!);
+                            }
                         }
                         for (let i = 1; i < chunks.length; i++) {
-                            await pending.channel.send(chunks[i]!);
+                            await channel.send(chunks[i]!);
                         }
                     }
 
-                    log('INFO', `Sent response to ${sender} (${responseText.length} chars${responseData.files ? `, ${responseData.files.length} file(s)` : ''})`);
+                    log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${sender} (${responseText.length} chars${responseData.files ? `, ${responseData.files.length} file(s)` : ''})`);
 
-                    // Clean up
-                    pendingMessages.delete(messageId);
+                    if (pending) pendingMessages.delete(messageId);
                     fs.unlinkSync(filePath);
                 } else {
-                    // Message too old or already processed
-                    log('WARN', `No pending message for ${messageId}, cleaning up`);
+                    log('WARN', `No pending message for ${messageId} and no senderId, cleaning up`);
                     fs.unlinkSync(filePath);
                 }
             } catch (error) {
