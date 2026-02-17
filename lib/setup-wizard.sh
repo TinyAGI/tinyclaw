@@ -208,8 +208,12 @@ echo ""
 read -rp "Workspace name [default: tinyclaw-workspace]: " WORKSPACE_INPUT
 WORKSPACE_NAME=${WORKSPACE_INPUT:-tinyclaw-workspace}
 # Clean workspace name
-WORKSPACE_NAME=$(echo "$WORKSPACE_NAME" | tr ' ' '-' | tr -cd 'a-zA-Z0-9_-')
-WORKSPACE_PATH="$HOME/$WORKSPACE_NAME"
+WORKSPACE_NAME=$(echo "$WORKSPACE_NAME" | tr ' ' '-' | tr -cd 'a-zA-Z0-9_/~.-')
+if [[ "$WORKSPACE_NAME" == /* || "$WORKSPACE_NAME" == ~* ]]; then
+  WORKSPACE_PATH="${WORKSPACE_NAME/#\~/$HOME}"
+else
+  WORKSPACE_PATH="$HOME/$WORKSPACE_NAME"
+fi
 echo -e "${GREEN}✓ Workspace: $WORKSPACE_PATH${NC}"
 echo ""
 
