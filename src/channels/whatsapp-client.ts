@@ -178,9 +178,7 @@ const client = new Client({
         dataPath: SESSION_DIR
     }),
     puppeteer: {
-        headless: process.env.TINYCLAW_HEADLESS === 'false'
-            ? false
-            : (process.env.TINYCLAW_HEADLESS || 'new') as any,
+        headless: 'new' as any,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
