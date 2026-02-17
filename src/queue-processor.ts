@@ -20,7 +20,7 @@ import { MessageData, ResponseData, QueueFile, ChainStep, Conversation, TeamConf
 import {
     QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING,
     LOG_FILE, EVENTS_DIR, CHATS_DIR, FILES_DIR,
-    getSettings, getAgents, getTeams
+    getSettings, getAgents, getTeams, getProviderDisplayName
 } from './lib/config';
 import { log, emitEvent } from './lib/logging';
 import { parseAgentRouting, findTeamForAgent, getAgentResetFlag, extractTeammateMentions } from './lib/routing';
@@ -347,7 +347,8 @@ async function processMessage(messageFile: string): Promise<void> {
             response = await invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams);
         } catch (error) {
             const provider = agent.provider || 'anthropic';
-            log('ERROR', `${provider === 'openai' ? 'Codex' : 'Claude'} error (agent: ${agentId}): ${(error as Error).message}`);
+            const providerName = getProviderDisplayName(provider);
+            log('ERROR', `${providerName} error (agent: ${agentId}): ${(error as Error).message}`);
             response = "Sorry, I encountered an error processing your request. Please check the queue logs.";
         }
 

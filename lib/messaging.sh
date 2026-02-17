@@ -45,7 +45,7 @@ logs() {
 # Reset a channel's authentication
 channels_reset() {
     local ch="$1"
-    local display="${CHANNEL_DISPLAY[$ch]:-}"
+    local display="${CHANNEL_DISPLAY[$ch]:-$ch}"
 
     if [ -z "$display" ]; then
         local channel_names

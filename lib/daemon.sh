@@ -90,9 +90,15 @@ start_daemon() {
 
     # Validate tokens for channels that need them
     for ch in "${ACTIVE_CHANNELS[@]}"; do
+        local display="${CHANNEL_DISPLAY[$ch]:-$ch}"
+        local script="${CHANNEL_SCRIPT[$ch]:-}"
+        if [ -z "$script" ]; then
+            echo -e "${RED}Channel '${display}' is missing a script entry in its manifest${NC}"
+            return 1
+        fi
         local token_key="${CHANNEL_TOKEN_KEY[$ch]:-}"
         if [ -n "$token_key" ] && [ -z "${CHANNEL_TOKENS[$ch]:-}" ]; then
-            echo -e "${RED}${CHANNEL_DISPLAY[$ch]} is configured but bot token is missing${NC}"
+            echo -e "${RED}${display} is configured but bot token is missing${NC}"
             echo "Run 'tinyclaw setup' to reconfigure"
             return 1
         fi
@@ -119,7 +125,8 @@ start_daemon() {
     # Report channels
     echo -e "${BLUE}Channels:${NC}"
     for ch in "${ACTIVE_CHANNELS[@]}"; do
-        echo -e "  ${GREEN}✓${NC} ${CHANNEL_DISPLAY[$ch]}"
+        local display="${CHANNEL_DISPLAY[$ch]:-$ch}"
+        echo -e "  ${GREEN}✓${NC} ${display}"
     done
     echo ""
 
@@ -146,8 +153,10 @@ start_daemon() {
     local whatsapp_pane=-1
     for ch in "${ACTIVE_CHANNELS[@]}"; do
         [ "$ch" = "whatsapp" ] && whatsapp_pane=$pane_idx
-        tmux send-keys -t "$TMUX_SESSION:0.$pane_idx" "cd '$SCRIPT_DIR' && node ${CHANNEL_SCRIPT[$ch]}" C-m
-        tmux select-pane -t "$TMUX_SESSION:0.$pane_idx" -T "${CHANNEL_DISPLAY[$ch]}"
+        local script="${CHANNEL_SCRIPT[$ch]}"
+        local display="${CHANNEL_DISPLAY[$ch]:-$ch}"
+        tmux send-keys -t "$TMUX_SESSION:0.$pane_idx" "cd '$SCRIPT_DIR' && node ${script}" C-m
+        tmux select-pane -t "$TMUX_SESSION:0.$pane_idx" -T "${display}"
         pane_idx=$((pane_idx + 1))
     done
 
@@ -259,7 +268,10 @@ stop_daemon() {
 
     # Kill any remaining channel processes
     for ch in "${ALL_CHANNELS[@]}"; do
-        pkill -f "${CHANNEL_SCRIPT[$ch]}" || true
+        local script="${CHANNEL_SCRIPT[$ch]:-}"
+        if [ -n "$script" ]; then
+            pkill -f "${script}" || true
+        fi
     done
     pkill -f "dist/queue-processor.js" || true
     pkill -f "heartbeat-cron.sh" || true
@@ -308,13 +320,13 @@ status_daemon() {
     local ready_file="$TINYCLAW_HOME/channels/whatsapp_ready"
 
     for ch in "${ALL_CHANNELS[@]}"; do
-        local display="${CHANNEL_DISPLAY[$ch]}"
-        local script="${CHANNEL_SCRIPT[$ch]}"
+        local display="${CHANNEL_DISPLAY[$ch]:-$ch}"
+        local script="${CHANNEL_SCRIPT[$ch]:-}"
         local pad=""
         # Pad display name to align output
         while [ $((${#display} + ${#pad})) -lt 16 ]; do pad="$pad "; done
 
-        if pgrep -f "$script" > /dev/null; then
+        if [ -n "$script" ] && pgrep -f "$script" > /dev/null; then
             if [ "$ch" = "whatsapp" ] && [ -f "$ready_file" ]; then
                 echo -e "${display}:${pad}${GREEN}Running & Ready${NC}"
             elif [ "$ch" = "whatsapp" ]; then
@@ -344,7 +356,8 @@ status_daemon() {
     for ch in "${ALL_CHANNELS[@]}"; do
         if [ -f "$LOG_DIR/${ch}.log" ]; then
             echo ""
-            echo "Recent ${CHANNEL_DISPLAY[$ch]} Activity:"
+            local display="${CHANNEL_DISPLAY[$ch]:-$ch}"
+            echo "Recent ${display} Activity:"
             printf '%0.s─' {1..24}; echo ""
             tail -n 5 "$LOG_DIR/${ch}.log"
         fi
@@ -358,7 +371,7 @@ status_daemon() {
     echo ""
     echo "Logs:"
     for ch in "${ALL_CHANNELS[@]}"; do
-        local display="${CHANNEL_DISPLAY[$ch]}"
+        local display="${CHANNEL_DISPLAY[$ch]:-$ch}"
         local pad=""
         while [ $((${#display} + ${#pad})) -lt 10 ]; do pad="$pad "; done
         echo "  ${display}:${pad}tail -f $LOG_DIR/${ch}.log"

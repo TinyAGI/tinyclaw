@@ -3,6 +3,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$PROJECT_ROOT"
 SETTINGS_FILE="$HOME/.tinyclaw/settings.json"
 
 GREEN='\033[0;32m'
@@ -18,37 +19,29 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # --- Channel registry ---
-# To add a new channel, add its ID here and fill in the config arrays below.
-ALL_CHANNELS=(telegram discord whatsapp)
-
-declare -A CHANNEL_DISPLAY=(
-    [telegram]="Telegram"
-    [discord]="Discord"
-    [whatsapp]="WhatsApp"
-)
-declare -A CHANNEL_TOKEN_KEY=(
-    [discord]="discord_bot_token"
-    [telegram]="telegram_bot_token"
-)
-declare -A CHANNEL_TOKEN_PROMPT=(
-    [discord]="Enter your Discord bot token:"
-    [telegram]="Enter your Telegram bot token:"
-)
-declare -A CHANNEL_TOKEN_HELP=(
-    [discord]="(Get one at: https://discord.com/developers/applications)"
-    [telegram]="(Create a bot via @BotFather on Telegram to get a token)"
-)
+source "$PROJECT_ROOT/lib/common.sh"
+if ! load_channel_registry; then
+    echo -e "${RED}Failed to load channel registry${NC}"
+    exit 1
+fi
 
 # Channel selection - simple checklist
-echo "Which messaging channels (Telegram, Discord, WhatsApp) do you want to enable?"
+if [ ${#ALL_CHANNELS[@]} -eq 0 ]; then
+    echo -e "${RED}No channels available in registry${NC}"
+    exit 1
+fi
+
+channel_list=$(IFS=', '; echo "${ALL_CHANNELS[*]}")
+echo "Which messaging channels (${channel_list}) do you want to enable?"
 echo ""
 
 ENABLED_CHANNELS=()
 for ch in "${ALL_CHANNELS[@]}"; do
-    read -rp "  Enable ${CHANNEL_DISPLAY[$ch]}? [y/N]: " choice
+    display="${CHANNEL_DISPLAY[$ch]:-$ch}"
+    read -rp "  Enable ${display}? [y/N]: " choice
     if [[ "$choice" =~ ^[yY] ]]; then
         ENABLED_CHANNELS+=("$ch")
-        echo -e "    ${GREEN}✓ ${CHANNEL_DISPLAY[$ch]} enabled${NC}"
+        echo -e "    ${GREEN}✓ ${display} enabled${NC}"
     fi
 done
 echo ""
@@ -63,76 +56,129 @@ declare -A TOKENS
 for ch in "${ENABLED_CHANNELS[@]}"; do
     token_key="${CHANNEL_TOKEN_KEY[$ch]:-}"
     if [ -n "$token_key" ]; then
-        echo "${CHANNEL_TOKEN_PROMPT[$ch]}"
-        echo -e "${YELLOW}${CHANNEL_TOKEN_HELP[$ch]}${NC}"
+        prompt="${CHANNEL_TOKEN_PROMPT[$ch]:-Enter token:}"
+        help="${CHANNEL_TOKEN_HELP[$ch]:-}"
+        display="${CHANNEL_DISPLAY[$ch]:-$ch}"
+        echo "${prompt}"
+        if [ -n "$help" ]; then
+            echo -e "${YELLOW}${help}${NC}"
+        fi
         echo ""
         read -rp "Token: " token_value
 
         if [ -z "$token_value" ]; then
-            echo -e "${RED}${CHANNEL_DISPLAY[$ch]} bot token is required${NC}"
+            echo -e "${RED}${display} bot token is required${NC}"
             exit 1
         fi
         TOKENS[$ch]="$token_value"
-        echo -e "${GREEN}✓ ${CHANNEL_DISPLAY[$ch]} token saved${NC}"
+        echo -e "${GREEN}✓ ${display} token saved${NC}"
         echo ""
     fi
 done
 
 # Provider selection
-echo "Which AI provider?"
-echo ""
-echo "  1) Anthropic (Claude)  (recommended)"
-echo "  2) OpenAI (Codex/GPT)"
-echo ""
-read -rp "Choose [1-2]: " PROVIDER_CHOICE
+PROVIDERS_FILE="$PROJECT_ROOT/config/providers.json"
+PROVIDER_IDS=()
+PROVIDER_NAMES=()
+DEFAULT_PROVIDER="anthropic"
 
-case "$PROVIDER_CHOICE" in
-    1) PROVIDER="anthropic" ;;
-    2) PROVIDER="openai" ;;
-    *)
-        echo -e "${RED}Invalid choice${NC}"
-        exit 1
-        ;;
-esac
+if command -v jq &> /dev/null && [ -f "$PROVIDERS_FILE" ]; then
+    mapfile -t PROVIDER_IDS < <(jq -r '.providers | keys[]' "$PROVIDERS_FILE")
+    for pid in "${PROVIDER_IDS[@]}"; do
+        pname=$(jq -r --arg id "$pid" '.providers[$id].display_name // $id' "$PROVIDERS_FILE")
+        PROVIDER_NAMES+=("$pname")
+    done
+    for pid in "${PROVIDER_IDS[@]}"; do
+        if [ "$pid" = "anthropic" ]; then
+            DEFAULT_PROVIDER="anthropic"
+            break
+        fi
+        DEFAULT_PROVIDER="${PROVIDER_IDS[0]}"
+    done
+else
+    PROVIDER_IDS=("anthropic" "openai" "qoder")
+    PROVIDER_NAMES=("Anthropic (Claude)" "OpenAI (Codex/GPT)" "Qoder")
+fi
+
+PROVIDER=""
+while [ -z "$PROVIDER" ]; do
+    echo "Which AI provider?"
+    echo ""
+    for i in "${!PROVIDER_IDS[@]}"; do
+        idx=$((i + 1))
+        label="${PROVIDER_NAMES[$i]} (${PROVIDER_IDS[$i]})"
+        if [ "${PROVIDER_IDS[$i]}" = "$DEFAULT_PROVIDER" ]; then
+            label="${label}  (recommended)"
+        fi
+        echo "  ${idx}) ${label}"
+    done
+    echo "  s) Skip (use default: ${DEFAULT_PROVIDER})"
+    echo ""
+    read -rp "Choose [1-${#PROVIDER_IDS[@]}, s]: " PROVIDER_CHOICE
+
+    if [[ "$PROVIDER_CHOICE" =~ ^[sS]$ ]]; then
+        echo -e "${YELLOW}Skipping provider selection (will use defaults)${NC}"
+        PROVIDER="$DEFAULT_PROVIDER"
+        break
+    fi
+    if [[ "$PROVIDER_CHOICE" =~ ^[0-9]+$ ]] && [ "$PROVIDER_CHOICE" -ge 1 ] && [ "$PROVIDER_CHOICE" -le "${#PROVIDER_IDS[@]}" ]; then
+        PROVIDER="${PROVIDER_IDS[$((PROVIDER_CHOICE - 1))]}"
+    else
+        echo -e "${RED}Invalid choice, please try again${NC}"
+        echo ""
+    fi
+done
+
 echo -e "${GREEN}✓ Provider: $PROVIDER${NC}"
 echo ""
 
-# Model selection based on provider
-if [ "$PROVIDER" = "anthropic" ]; then
-    echo "Which Claude model?"
-    echo ""
-    echo "  1) Sonnet  (fast, recommended)"
-    echo "  2) Opus    (smartest)"
-    echo ""
-    read -rp "Choose [1-2]: " MODEL_CHOICE
+# Model selection based on provider (from registry)
+MODEL=""
+if command -v jq &> /dev/null && [ -f "$PROVIDERS_FILE" ]; then
+    mapfile -t MODEL_IDS < <(jq -r --arg id "$PROVIDER" '.providers[$id].models // {} | keys[]' "$PROVIDERS_FILE")
+else
+    MODEL_IDS=()
+fi
 
-    case "$MODEL_CHOICE" in
-        1) MODEL="sonnet" ;;
-        2) MODEL="opus" ;;
-        *)
-            echo -e "${RED}Invalid choice${NC}"
-            exit 1
-            ;;
-    esac
+if [ "${#MODEL_IDS[@]}" -eq 0 ]; then
+    MODEL=""
+    echo "Model (optional)?"
+    echo -e "${YELLOW}(No model list available for provider '${PROVIDER}'. Enter a model name or leave blank.)${NC}"
+    echo ""
+    read -rp "Model: " MODEL_INPUT
+    MODEL="${MODEL_INPUT}"
+    if [ -n "$MODEL" ]; then
+        echo -e "${GREEN}✓ Model: $MODEL${NC}"
+        echo ""
+    fi
+elif [ "${#MODEL_IDS[@]}" -eq 1 ]; then
+    MODEL="${MODEL_IDS[0]}"
     echo -e "${GREEN}✓ Model: $MODEL${NC}"
     echo ""
 else
-    # OpenAI models
-    echo "Which OpenAI model?"
-    echo ""
-    echo "  1) GPT-5.3 Codex  (recommended)"
-    echo "  2) GPT-5.2"
-    echo ""
-    read -rp "Choose [1-2]: " MODEL_CHOICE
+    while [ -z "$MODEL" ]; do
+        echo "Which model?"
+        echo ""
+        for i in "${!MODEL_IDS[@]}"; do
+            idx=$((i + 1))
+            echo "  ${idx}) ${MODEL_IDS[$i]}"
+        done
+        echo "  s) Skip (use default: ${MODEL_IDS[0]})"
+        echo ""
+        read -rp "Choose [1-${#MODEL_IDS[@]}, s]: " MODEL_CHOICE
 
-    case "$MODEL_CHOICE" in
-        1) MODEL="gpt-5.3-codex" ;;
-        2) MODEL="gpt-5.2" ;;
-        *)
-            echo -e "${RED}Invalid choice${NC}"
-            exit 1
-            ;;
-    esac
+        if [[ "$MODEL_CHOICE" =~ ^[sS]$ ]]; then
+            echo -e "${YELLOW}Using default model: ${MODEL_IDS[0]}${NC}"
+            MODEL="${MODEL_IDS[0]}"
+            break
+        fi
+        if [[ "$MODEL_CHOICE" =~ ^[0-9]+$ ]] && [ "$MODEL_CHOICE" -ge 1 ] && [ "$MODEL_CHOICE" -le "${#MODEL_IDS[@]}" ]; then
+            MODEL="${MODEL_IDS[$((MODEL_CHOICE - 1))]}"
+        else
+            echo -e "${RED}Invalid choice, please try again${NC}"
+            echo ""
+        fi
+    done
     echo -e "${GREEN}✓ Model: $MODEL${NC}"
     echo ""
 fi
@@ -216,27 +262,73 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
         read -rp "  Display name: " NEW_AGENT_NAME
         [ -z "$NEW_AGENT_NAME" ] && NEW_AGENT_NAME="$NEW_AGENT_ID"
 
-        echo "  Provider: 1) Anthropic  2) OpenAI"
-        read -rp "  Choose [1-2, default: 1]: " NEW_PROVIDER_CHOICE
-        case "$NEW_PROVIDER_CHOICE" in
-            2) NEW_PROVIDER="openai" ;;
-            *) NEW_PROVIDER="anthropic" ;;
-        esac
+        NEW_PROVIDER=""
+        while [ -z "$NEW_PROVIDER" ]; do
+            echo "  Provider:"
+            for i in "${!PROVIDER_IDS[@]}"; do
+                idx=$((i + 1))
+                label="${PROVIDER_NAMES[$i]} (${PROVIDER_IDS[$i]})"
+                if [ "${PROVIDER_IDS[$i]}" = "$DEFAULT_PROVIDER" ]; then
+                    label="${label}  (recommended)"
+                fi
+                echo "  ${idx}) ${label}"
+            done
+            echo "           s) Skip (use default: ${DEFAULT_PROVIDER})"
+            read -rp "  Choose [1-${#PROVIDER_IDS[@]}, s, default: 1]: " NEW_PROVIDER_CHOICE
+            if [[ "$NEW_PROVIDER_CHOICE" =~ ^[sS]$ ]]; then
+                echo -e "  ${YELLOW}Using default provider: ${DEFAULT_PROVIDER}${NC}"
+                NEW_PROVIDER="$DEFAULT_PROVIDER"
+                break
+            fi
+            if [[ -z "$NEW_PROVIDER_CHOICE" ]]; then
+                NEW_PROVIDER="${PROVIDER_IDS[0]}"
+                break
+            fi
+            if [[ "$NEW_PROVIDER_CHOICE" =~ ^[0-9]+$ ]] && [ "$NEW_PROVIDER_CHOICE" -ge 1 ] && [ "$NEW_PROVIDER_CHOICE" -le "${#PROVIDER_IDS[@]}" ]; then
+                NEW_PROVIDER="${PROVIDER_IDS[$((NEW_PROVIDER_CHOICE - 1))]}"
+            else
+                echo -e "  ${RED}Invalid choice, please try again${NC}"
+                echo ""
+            fi
+        done
 
-        if [ "$NEW_PROVIDER" = "anthropic" ]; then
-            echo "  Model: 1) Sonnet  2) Opus"
-            read -rp "  Choose [1-2, default: 1]: " NEW_MODEL_CHOICE
-            case "$NEW_MODEL_CHOICE" in
-                2) NEW_MODEL="opus" ;;
-                *) NEW_MODEL="sonnet" ;;
-            esac
+        NEW_MODEL=""
+        if command -v jq &> /dev/null && [ -f "$PROVIDERS_FILE" ]; then
+            mapfile -t NEW_MODEL_IDS < <(jq -r --arg id "$NEW_PROVIDER" '.providers[$id].models // {} | keys[]' "$PROVIDERS_FILE")
         else
-            echo "  Model: 1) GPT-5.3 Codex  2) GPT-5.2"
-            read -rp "  Choose [1-2, default: 1]: " NEW_MODEL_CHOICE
-            case "$NEW_MODEL_CHOICE" in
-                2) NEW_MODEL="gpt-5.2" ;;
-                *) NEW_MODEL="gpt-5.3-codex" ;;
-            esac
+            NEW_MODEL_IDS=()
+        fi
+
+        if [ "${#NEW_MODEL_IDS[@]}" -eq 0 ]; then
+            NEW_MODEL=""
+        elif [ "${#NEW_MODEL_IDS[@]}" -eq 1 ]; then
+            NEW_MODEL="${NEW_MODEL_IDS[0]}"
+            echo -e "  ${GREEN}✓ Model: $NEW_MODEL${NC}"
+        else
+            while [ -z "$NEW_MODEL" ]; do
+                echo "  Model:"
+                for i in "${!NEW_MODEL_IDS[@]}"; do
+                    idx=$((i + 1))
+                    echo "  ${idx}) ${NEW_MODEL_IDS[$i]}"
+                done
+                echo "  s) Skip (use default: ${NEW_MODEL_IDS[0]})"
+                read -rp "  Choose [1-${#NEW_MODEL_IDS[@]}, s, default: 1]: " NEW_MODEL_CHOICE
+                if [[ "$NEW_MODEL_CHOICE" =~ ^[sS]$ ]]; then
+                    echo -e "  ${YELLOW}Using default model: ${NEW_MODEL_IDS[0]}${NC}"
+                    NEW_MODEL="${NEW_MODEL_IDS[0]}"
+                    break
+                fi
+                if [[ -z "$NEW_MODEL_CHOICE" ]]; then
+                    NEW_MODEL="${NEW_MODEL_IDS[0]}"
+                    break
+                fi
+                if [[ "$NEW_MODEL_CHOICE" =~ ^[0-9]+$ ]] && [ "$NEW_MODEL_CHOICE" -ge 1 ] && [ "$NEW_MODEL_CHOICE" -le "${#NEW_MODEL_IDS[@]}" ]; then
+                    NEW_MODEL="${NEW_MODEL_IDS[$((NEW_MODEL_CHOICE - 1))]}"
+                else
+                    echo -e "  ${RED}Invalid choice, please try again${NC}"
+                    echo ""
+                fi
+            done
         fi
 
         NEW_AGENT_DIR="$WORKSPACE_PATH/$NEW_AGENT_ID"
@@ -262,17 +354,21 @@ for i in "${!ENABLED_CHANNELS[@]}"; do
 done
 CHANNELS_JSON="${CHANNELS_JSON}]"
 
-# Build channel configs with tokens
-DISCORD_TOKEN="${TOKENS[discord]:-}"
-TELEGRAM_TOKEN="${TOKENS[telegram]:-}"
-
 # Write settings.json with layered structure
 # Use jq to build valid JSON to avoid escaping issues with agent prompts
-if [ "$PROVIDER" = "anthropic" ]; then
-    MODELS_SECTION='"models": { "provider": "anthropic", "anthropic": { "model": "'"${MODEL}"'" } }'
-else
-    MODELS_SECTION='"models": { "provider": "openai", "openai": { "model": "'"${MODEL}"'" } }'
-fi
+MODELS_SECTION='"models": { "provider": "'"${PROVIDER}"'", "'"${PROVIDER}"'": { "model": "'"${MODEL}"'" } }'
+
+CHANNEL_CONFIG_JSON=""
+for ch in "${ALL_CHANNELS[@]}"; do
+    token_key="${CHANNEL_TOKEN_KEY[$ch]:-}"
+    if [ -n "$token_key" ]; then
+        token_value="${TOKENS[$ch]:-}"
+        CHANNEL_CONFIG_JSON="$CHANNEL_CONFIG_JSON\"${ch}\": { \"${token_key}\": \"${token_value}\" },"
+    else
+        CHANNEL_CONFIG_JSON="$CHANNEL_CONFIG_JSON\"${ch}\": {},"
+    fi
+done
+CHANNEL_CONFIG_JSON="${CHANNEL_CONFIG_JSON%,}"
 
 cat > "$SETTINGS_FILE" <<EOF
 {
@@ -282,13 +378,7 @@ cat > "$SETTINGS_FILE" <<EOF
   },
   "channels": {
     "enabled": ${CHANNELS_JSON},
-    "discord": {
-      "bot_token": "${DISCORD_TOKEN}"
-    },
-    "telegram": {
-      "bot_token": "${TELEGRAM_TOKEN}"
-    },
-    "whatsapp": {}
+    ${CHANNEL_CONFIG_JSON}
   },
   ${AGENTS_JSON}
   ${MODELS_SECTION},
@@ -312,6 +402,13 @@ echo -e "${GREEN}✓ Created workspace: $WORKSPACE_PATH${NC}"
 TINYCLAW_HOME="$HOME/.tinyclaw"
 mkdir -p "$TINYCLAW_HOME"
 mkdir -p "$TINYCLAW_HOME/logs"
+touch "$TINYCLAW_HOME/logs/daemon.log" \
+      "$TINYCLAW_HOME/logs/queue.log" \
+      "$TINYCLAW_HOME/logs/heartbeat.log"
+# Touch per-channel logs so status/logs commands work immediately
+for ch in "${ALL_CHANNELS[@]}"; do
+    touch "$TINYCLAW_HOME/logs/${ch}.log"
+done
 if [ -d "$PROJECT_ROOT/.claude" ]; then
     cp -r "$PROJECT_ROOT/.claude" "$TINYCLAW_HOME/"
 fi

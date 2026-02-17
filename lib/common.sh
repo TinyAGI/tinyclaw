@@ -29,33 +29,88 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # --- Channel registry ---
-# Single source of truth. Add new channels here and everything else adapts.
+# Source of truth is channels/*.json manifests.
 
-ALL_CHANNELS=(discord whatsapp telegram)
+CHANNELS_DIR="$SCRIPT_DIR/channels"
 
-declare -A CHANNEL_DISPLAY=(
-    [discord]="Discord"
-    [whatsapp]="WhatsApp"
-    [telegram]="Telegram"
-)
-declare -A CHANNEL_SCRIPT=(
-    [discord]="dist/channels/discord-client.js"
-    [whatsapp]="dist/channels/whatsapp-client.js"
-    [telegram]="dist/channels/telegram-client.js"
-)
-declare -A CHANNEL_ALIAS=(
-    [discord]="dc"
-    [whatsapp]="wa"
-    [telegram]="tg"
-)
-declare -A CHANNEL_TOKEN_KEY=(
-    [discord]="discord_bot_token"
-    [telegram]="telegram_bot_token"
-)
-declare -A CHANNEL_TOKEN_ENV=(
-    [discord]="DISCORD_BOT_TOKEN"
-    [telegram]="TELEGRAM_BOT_TOKEN"
-)
+ALL_CHANNELS=()
+declare -A CHANNEL_DISPLAY=()
+declare -A CHANNEL_SCRIPT=()
+declare -A CHANNEL_ALIAS=()
+declare -A CHANNEL_TOKEN_KEY=()
+declare -A CHANNEL_TOKEN_ENV=()
+declare -A CHANNEL_TOKEN_PROMPT=()
+declare -A CHANNEL_TOKEN_HELP=()
+
+load_channel_registry() {
+    ALL_CHANNELS=()
+    CHANNEL_DISPLAY=()
+    CHANNEL_SCRIPT=()
+    CHANNEL_ALIAS=()
+    CHANNEL_TOKEN_KEY=()
+    CHANNEL_TOKEN_ENV=()
+    CHANNEL_TOKEN_PROMPT=()
+    CHANNEL_TOKEN_HELP=()
+
+    if [ ! -d "$CHANNELS_DIR" ]; then
+        echo -e "${RED}Channel registry not found: ${CHANNELS_DIR}${NC}"
+        return 1
+    fi
+
+    if ! command -v jq &> /dev/null; then
+        echo -e "${RED}Error: jq is required for channel registry parsing${NC}"
+        echo "Install with: brew install jq (macOS) or apt-get install jq (Linux)"
+        return 1
+    fi
+
+    local files=()
+    while IFS= read -r f; do
+        files+=("$f")
+    done < <(find "$CHANNELS_DIR" -maxdepth 1 -type f -name '*.json' | sort)
+
+    if [ ${#files[@]} -eq 0 ]; then
+        echo -e "${RED}No channel manifests found in ${CHANNELS_DIR}${NC}"
+        return 1
+    fi
+
+    local file id display script alias token_key token_env token_prompt token_help
+    for file in "${files[@]}"; do
+        id=$(jq -r '.id // empty' "$file")
+        if [ -z "$id" ] || [ "$id" = "null" ]; then
+            echo -e "${YELLOW}Skipping invalid channel manifest (missing id): ${file}${NC}"
+            continue
+        fi
+        ALL_CHANNELS+=("$id")
+
+        display=$(jq -r '.display_name // .id // empty' "$file")
+        [ -n "$display" ] && CHANNEL_DISPLAY["$id"]="$display"
+
+        script=$(jq -r '.script // empty' "$file")
+        [ -n "$script" ] && CHANNEL_SCRIPT["$id"]="$script"
+
+        alias=$(jq -r '.alias // empty' "$file")
+        [ -n "$alias" ] && CHANNEL_ALIAS["$id"]="$alias"
+
+        token_key=$(jq -r '.token.settings_key // empty' "$file")
+        [ -n "$token_key" ] && CHANNEL_TOKEN_KEY["$id"]="$token_key"
+
+        token_env=$(jq -r '.token.env_var // empty' "$file")
+        [ -n "$token_env" ] && CHANNEL_TOKEN_ENV["$id"]="$token_env"
+
+        token_prompt=$(jq -r '.token.prompt // empty' "$file")
+        [ -n "$token_prompt" ] && CHANNEL_TOKEN_PROMPT["$id"]="$token_prompt"
+
+        token_help=$(jq -r '.token.help // empty' "$file")
+        [ -n "$token_help" ] && CHANNEL_TOKEN_HELP["$id"]="$token_help"
+    done
+
+    if [ ${#ALL_CHANNELS[@]} -eq 0 ]; then
+        echo -e "${RED}Channel registry loaded zero channels from ${CHANNELS_DIR}${NC}"
+        return 1
+    fi
+
+    return 0
+}
 
 # Runtime state: filled by load_settings
 ACTIVE_CHANNELS=()
@@ -111,7 +166,7 @@ load_settings() {
     for ch in "${ALL_CHANNELS[@]}"; do
         local token_key="${CHANNEL_TOKEN_KEY[$ch]:-}"
         if [ -n "$token_key" ]; then
-            CHANNEL_TOKENS[$ch]=$(jq -r ".channels.${ch}.bot_token // empty" "$SETTINGS_FILE" 2>/dev/null)
+            CHANNEL_TOKENS[$ch]=$(jq -r ".channels.${ch}.${token_key} // empty" "$SETTINGS_FILE" 2>/dev/null)
         fi
     done
 

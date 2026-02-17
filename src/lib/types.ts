@@ -1,7 +1,7 @@
 export interface AgentConfig {
     name: string;
-    provider: string;       // 'anthropic' or 'openai'
-    model: string;           // e.g. 'sonnet', 'opus', 'gpt-5.3-codex'
+    provider: string;       // provider id (from providers registry)
+    model: string;           // provider-specific model name or id
     working_directory: string;
 }
 
@@ -16,6 +16,11 @@ export interface ChainStep {
     response: string;
 }
 
+export interface ChannelConfig {
+    bot_token?: string;
+    [key: string]: unknown;
+}
+
 export interface Settings {
     workspace?: {
         path?: string;
@@ -23,16 +28,17 @@ export interface Settings {
     };
     channels?: {
         enabled?: string[];
-        discord?: { bot_token?: string };
-        telegram?: { bot_token?: string };
-        whatsapp?: {};
+        [channelId: string]: ChannelConfig | string[] | undefined;
     };
     models?: {
-        provider?: string; // 'anthropic' or 'openai'
+        provider?: string; // 'anthropic', 'openai', or 'qoder'
         anthropic?: {
             model?: string;
         };
         openai?: {
+            model?: string;
+        };
+        qoder?: {
             model?: string;
         };
     };
@@ -41,6 +47,30 @@ export interface Settings {
     monitoring?: {
         heartbeat_interval?: number;
     };
+}
+
+export interface ProviderOutputSelect {
+    match?: Record<string, string>;
+    field?: string;
+}
+
+export interface ProviderOutputConfig {
+    type: 'plain' | 'jsonl';
+    select?: ProviderOutputSelect;
+}
+
+export interface ProviderConfig {
+    display_name: string;
+    executable: string;
+    args: string[];
+    conditional_args?: Record<string, string[]>;
+    output?: ProviderOutputConfig;
+    models?: Record<string, string>;
+}
+
+export interface ProviderRegistry {
+    version: number;
+    providers: Record<string, ProviderConfig>;
 }
 
 export interface MessageData {
@@ -90,16 +120,3 @@ export interface QueueFile {
     path: string;
     time: number;
 }
-
-// Model name mapping
-export const CLAUDE_MODEL_IDS: Record<string, string> = {
-    'sonnet': 'claude-sonnet-4-5',
-    'opus': 'claude-opus-4-6',
-    'claude-sonnet-4-5': 'claude-sonnet-4-5',
-    'claude-opus-4-6': 'claude-opus-4-6'
-};
-
-export const CODEX_MODEL_IDS: Record<string, string> = {
-    'gpt-5.2': 'gpt-5.2',
-    'gpt-5.3-codex': 'gpt-5.3-codex',
-};
