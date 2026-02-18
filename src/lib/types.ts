@@ -50,6 +50,7 @@ export interface Settings {
             min_score?: number;
             max_chars?: number;
             update_interval_seconds?: number;
+            embed_interval_seconds?: number;
             use_semantic_search?: boolean;
             disable_query_expansion?: boolean;
             allow_unsafe_vsearch?: boolean;

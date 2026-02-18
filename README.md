@@ -395,6 +395,7 @@ Located at `.tinyclaw/settings.json`:
       "min_score": 0.05,
       "max_chars": 2500,
       "update_interval_seconds": 120,
+      "embed_interval_seconds": 120,
       "use_semantic_search": false,
       "disable_query_expansion": true,
       "allow_unsafe_vsearch": false,
@@ -433,6 +434,7 @@ Safety note:
 - If `use_semantic_search` is enabled, TinyClaw defaults to safe mode and will fall back to BM25 unless disable-expansion support is detected.
 - Set `memory.qmd.allow_unsafe_vsearch: true` only if you explicitly want to allow unguarded `vsearch`.
 - Set `memory.qmd.debug_logging: true` to print QMD memory debug logs (command/mode/timeout) in `queue.log`.
+- When semantic search is enabled, TinyClaw periodically runs `qmd embed` (interval controlled by `memory.qmd.embed_interval_seconds`).
 
 ### Heartbeat Configuration
 

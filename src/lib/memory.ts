@@ -27,6 +27,7 @@ let qmdUnsafeFallbackLogged = false;
 
 const collectionPrepared = new Set<string>();
 const lastCollectionUpdateMs = new Map<string, number>();
+const lastCollectionEmbedMs = new Map<string, number>();
 const MEMORY_CHANNELS = new Set(['telegram', 'discord', 'whatsapp']);
 
 interface QmdResult {
@@ -42,6 +43,7 @@ interface QmdConfig {
     minScore: number;
     maxChars: number;
     updateIntervalSeconds: number;
+    embedIntervalSeconds: number;
     useSemanticSearch: boolean;
     disableQueryExpansion: boolean;
     allowUnsafeVsearch: boolean;
@@ -79,6 +81,11 @@ function getQmdConfig(settings: Settings): QmdConfig {
         updateIntervalSeconds: Number.isFinite(memoryCfg?.update_interval_seconds)
             ? Math.max(10, Number(memoryCfg?.update_interval_seconds))
             : DEFAULT_UPDATE_INTERVAL_SECONDS,
+        embedIntervalSeconds: Number.isFinite(memoryCfg?.embed_interval_seconds)
+            ? Math.max(10, Number(memoryCfg?.embed_interval_seconds))
+            : (Number.isFinite(memoryCfg?.update_interval_seconds)
+                ? Math.max(10, Number(memoryCfg?.update_interval_seconds))
+                : DEFAULT_UPDATE_INTERVAL_SECONDS),
         useSemanticSearch: memoryCfg?.use_semantic_search === true,
         disableQueryExpansion: memoryCfg?.disable_query_expansion !== false,
         allowUnsafeVsearch: memoryCfg?.allow_unsafe_vsearch === true,
@@ -266,6 +273,16 @@ async function maybeUpdateCollection(collectionName: string, updateIntervalSecon
     }
     await runCommand(qmdCommandPath || 'qmd', ['update', '--collections', collectionName], undefined, 15000);
     lastCollectionUpdateMs.set(collectionName, now);
+}
+
+async function maybeEmbedCollection(collectionName: string, embedIntervalSeconds: number): Promise<void> {
+    const now = Date.now();
+    const last = lastCollectionEmbedMs.get(collectionName) || 0;
+    if (now - last < embedIntervalSeconds * 1000) {
+        return;
+    }
+    await runCommand(qmdCommandPath || 'qmd', ['embed', '--collections', collectionName], undefined, 30000);
+    lastCollectionEmbedMs.set(collectionName, now);
 }
 
 function buildLexicalQueryVariants(message: string): string[] {
@@ -565,6 +582,15 @@ export async function enrichMessageWithMemory(
         }
 
         const mode = resolveRetrievalMode(qmdCfg);
+        if (mode.useVsearch) {
+            try {
+                await maybeEmbedCollection(collectionName, qmdCfg.embedIntervalSeconds);
+                logQmdDebug(agentId, qmdCfg, 'embed', `interval=${qmdCfg.embedIntervalSeconds}s`);
+            } catch (error) {
+                log('WARN', `Memory embed skipped for @${agentId}: ${(error as Error).message}`);
+                logQmdDebug(agentId, qmdCfg, 'embed', 'failed; continuing with existing vectors');
+            }
+        }
         const queryArgs = mode.useVsearch
             ? ['vsearch', message, '--json', '-c', collectionName, '-n', String(qmdCfg.topK), '--min-score', String(qmdCfg.minScore)]
             : ['search', message, '--json', '-c', collectionName, '-n', String(qmdCfg.topK), '--min-score', String(qmdCfg.minScore)];

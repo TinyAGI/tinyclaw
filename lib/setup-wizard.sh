@@ -308,7 +308,7 @@ else
 fi
 
 if [ "$MEMORY_ENABLED" = true ]; then
-    MEMORY_SECTION='"memory": { "enabled": true, "qmd": { "enabled": true, "command": "'"${QMD_COMMAND}"'", "top_k": 4, "min_score": 0.05, "max_chars": 2500, "update_interval_seconds": 300, "use_semantic_search": '"${USE_SEMANTIC_SEARCH}"', "disable_query_expansion": true, "allow_unsafe_vsearch": false, "debug_logging": false } },'
+    MEMORY_SECTION='"memory": { "enabled": true, "qmd": { "enabled": true, "command": "'"${QMD_COMMAND}"'", "top_k": 4, "min_score": 0.05, "max_chars": 2500, "update_interval_seconds": 300, "embed_interval_seconds": 300, "use_semantic_search": '"${USE_SEMANTIC_SEARCH}"', "disable_query_expansion": true, "allow_unsafe_vsearch": false, "debug_logging": false } },'
 else
     MEMORY_SECTION='"memory": { "enabled": false },'
 fi
