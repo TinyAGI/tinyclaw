@@ -25,7 +25,7 @@ import {
 import { log, emitEvent } from './lib/logging';
 import { parseAgentRouting, findTeamForAgent, getAgentResetFlag, extractTeammateMentions } from './lib/routing';
 import { invokeAgent } from './lib/invoke';
-import { startApiServer } from './api-server';
+import { startApiServer } from './lib/api-server';
 import { jsonrepair } from 'jsonrepair';
 
 /** Parse JSON with automatic repair for malformed content (e.g. bad escapes). */

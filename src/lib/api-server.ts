@@ -10,13 +10,13 @@
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
-import { MessageData, ResponseData, Settings, Conversation } from './lib/types';
+import { MessageData, ResponseData, Settings, Conversation } from './types';
 import {
     QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING,
     LOG_FILE, EVENTS_DIR, CHATS_DIR, SETTINGS_FILE,
     getSettings, getAgents, getTeams
-} from './lib/config';
-import { log, emitEvent, onEvent } from './lib/logging';
+} from './config';
+import { log, emitEvent, onEvent } from './logging';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3001', 10);
 
@@ -107,7 +107,7 @@ export function startApiServer(
                     agent: agent || undefined,
                 };
 
-                const filename = `web_${messageData.messageId}.json`;
+                const filename = `${messageData.messageId}.json`;
                 fs.writeFileSync(
                     path.join(QUEUE_INCOMING, filename),
                     JSON.stringify(messageData, null, 2)
