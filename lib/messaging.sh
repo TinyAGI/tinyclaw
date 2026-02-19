@@ -27,8 +27,38 @@ send_message() {
 QEOF
 
     log "[$channel] Queued message: ${message:0:50}..."
-    echo -e "${GREEN}✓ Message queued${NC} (id: $msg_id)"
-    echo "The queue processor will handle it. Check logs with: tinyclaw logs queue"
+    echo -e "${GREEN}✓ Message queued${NC}"
+
+    # Poll outgoing queue for the response
+    local queue_outgoing="$TINYCLAW_HOME/queue/outgoing"
+    local timeout=300  # 5 minutes
+    local elapsed=0
+    local interval=1
+
+    echo -n "Waiting for response..."
+
+    while [ "$elapsed" -lt "$timeout" ]; do
+        # Queue processor writes: {channel}_{messageId}_{timestamp}.json
+        local response_file
+        response_file=$(find "$queue_outgoing" -name "${channel}_${msg_id}_*.json" -print -quit 2>/dev/null)
+
+        if [ -n "$response_file" ]; then
+            echo ""
+            echo ""
+            local response
+            response=$(jq -r '.message' "$response_file" 2>/dev/null)
+            echo "$response"
+            rm -f "$response_file"
+            return
+        fi
+
+        sleep "$interval"
+        elapsed=$((elapsed + interval))
+        echo -n "."
+    done
+
+    echo ""
+    echo -e "${YELLOW}Timed out waiting for response. Check logs with: tinyclaw logs queue${NC}"
 }
 
 # View logs
