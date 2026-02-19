@@ -41,30 +41,43 @@ export function ChatView({
   const [sending, setSending] = useState(false);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [connected, setConnected] = useState(false);
-  const feedRef = useRef<HTMLDivElement>(null);
+  const feedEndRef = useRef<HTMLDivElement>(null);
+  const seenRef = useRef(new Set<string>());
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    feedEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [feed.length]);
 
   useEffect(() => {
     const unsub = subscribeToEvents(
       (event: EventData) => {
         setConnected(true);
+
+        // Deduplicate by fingerprint (type + timestamp + key data)
+        const fp = `${event.type}:${event.timestamp}:${(event as Record<string, unknown>).messageId ?? ""}:${(event as Record<string, unknown>).agentId ?? ""}`;
+        if (seenRef.current.has(fp)) return;
+        seenRef.current.add(fp);
+        // Keep the set from growing unbounded
+        if (seenRef.current.size > 500) {
+          const entries = [...seenRef.current];
+          seenRef.current = new Set(entries.slice(entries.length - 300));
+        }
+
         setFeed((prev) => [
+          ...prev,
           {
             id: `${event.timestamp}-${Math.random().toString(36).slice(2, 6)}`,
             type: "event" as const,
             timestamp: event.timestamp,
             data: event as unknown as Record<string, unknown>,
           },
-          ...prev,
-        ].slice(0, 200));
+        ].slice(-200));
       },
       () => setConnected(false)
     );
     return unsub;
   }, []);
-
-  useEffect(() => {
-    feedRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-  }, [feed.length]);
 
   const handleSend = useCallback(async () => {
     if (!message.trim() || sending) return;
@@ -80,25 +93,25 @@ export function ChatView({
       });
 
       setFeed((prev) => [
+        ...prev,
         {
           id: result.messageId,
           type: "sent" as const,
           timestamp: Date.now(),
           data: { message: finalMessage, messageId: result.messageId, target },
         },
-        ...prev,
       ]);
 
       setMessage("");
     } catch (err) {
       setFeed((prev) => [
+        ...prev,
         {
           id: `err-${Date.now()}`,
           type: "event" as const,
           timestamp: Date.now(),
           data: { type: "error", message: (err as Error).message },
         },
-        ...prev,
       ]);
     } finally {
       setSending(false);
@@ -130,8 +143,8 @@ export function ChatView({
         </div>
       </div>
 
-      {/* Feed */}
-      <div ref={feedRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
+      {/* Feed — messages flow top to bottom, auto-scroll to newest */}
+      <div className="flex-1 overflow-y-auto px-6 py-4">
         {feed.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Radio className="h-8 w-8 text-muted-foreground/30 mb-3" />
@@ -143,9 +156,12 @@ export function ChatView({
             </p>
           </div>
         ) : (
-          feed.map((item) => (
-            <FeedEntry key={item.id} item={item} />
-          ))
+          <div className="space-y-2">
+            {feed.map((item) => (
+              <FeedEntry key={item.id} item={item} />
+            ))}
+            <div ref={feedEndRef} />
+          </div>
         )}
       </div>
 
