@@ -67,6 +67,7 @@ interface ResponseData {
     timestamp: number;
     messageId: string;
     files?: string[];
+    metadata?: { parseMode?: string; [key: string]: unknown };
 }
 
 function sanitizeFileName(fileName: string): string {
@@ -520,15 +521,17 @@ async function checkOutgoingQueue(): Promise<void> {
                     // Split message if needed (Telegram 4096 char limit)
                     if (responseText) {
                         const chunks = splitMessage(responseText);
+                        const parseMode = responseData.metadata?.parseMode as TelegramBot.ParseMode | undefined;
 
                         if (chunks.length > 0) {
-                            await bot.sendMessage(targetChatId, chunks[0]!, pending
+                            const opts: TelegramBot.SendMessageOptions = pending
                                 ? { reply_to_message_id: pending.messageId }
-                                : {},
-                            );
+                                : {};
+                            if (parseMode) opts.parse_mode = parseMode;
+                            await bot.sendMessage(targetChatId, chunks[0]!, opts);
                         }
                         for (let i = 1; i < chunks.length; i++) {
-                            await bot.sendMessage(targetChatId, chunks[i]!);
+                            await bot.sendMessage(targetChatId, chunks[i]!, parseMode ? { parse_mode: parseMode } : {});
                         }
                     }
 
