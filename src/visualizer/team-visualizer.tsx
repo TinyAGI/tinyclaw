@@ -25,7 +25,7 @@ const _localTinyclaw = path.join(__dirname_, '..', '..', '.tinyclaw');
 const TINYCLAW_HOME = fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
     ? _localTinyclaw
     : path.join(os.homedir(), '.tinyclaw');
-const QUEUE_DB_PATH = path.join(TINYCLAW_HOME, 'queue.db');
+const QUEUE_DB_PATH = path.join(TINYCLAW_HOME, 'tinyclaw.db');
 const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 
 // ─── SQLite helper ──────────────────────────────────────────────────────────
