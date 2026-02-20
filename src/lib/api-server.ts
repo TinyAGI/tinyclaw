@@ -1,7 +1,7 @@
 /**
  * API Server — HTTP endpoints for Mission Control and external integrations.
  *
- * Runs on a configurable port (env TINYCLAW_API_PORT, default 3001) and
+ * Runs on a configurable port (env TINYCLAW_API_PORT, default 3777) and
  * provides REST + SSE access to agents, teams, settings, queue status,
  * events, logs, and chat histories.  Incoming messages are enqueued via
  * POST /api/message just like any other channel client.
@@ -10,16 +10,19 @@
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
-import { MessageData, ResponseData, Settings, AgentConfig, TeamConfig, Conversation, Task, TaskStatus } from './types';
+import { Settings, AgentConfig, TeamConfig, Conversation, Task, TaskStatus } from './types';
 import {
     SCRIPT_DIR, TINYCLAW_HOME,
-    QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING,
-    LOG_FILE, EVENTS_DIR, CHATS_DIR, SETTINGS_FILE,
+    LOG_FILE, CHATS_DIR, SETTINGS_FILE,
     getSettings, getAgents, getTeams
 } from './config';
 import { log, emitEvent, onEvent } from './logging';
+import {
+    enqueueMessage, getQueueStatus, getRecentResponses,
+    getDeadMessages, retryDeadMessage, deleteDeadMessage,
+} from './queue-db';
 
-const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3001', 10);
+const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 
 // ── SSE ──────────────────────────────────────────────────────────────────────
 
@@ -113,7 +116,7 @@ function symlinkIfMissing(target: string, linkPath: string): boolean {
  * Creates the agent directory and copies/symlinks configuration files:
  *   .claude/, heartbeat.md, AGENTS.md, CLAUDE.md, skills, SOUL.md
  */
-function provisionAgentWorkspace(agentDir: string, agentId: string): string[] {
+function provisionAgentWorkspace(agentDir: string, _agentId: string): string[] {
     const steps: string[] = [];
     fs.mkdirSync(agentDir, { recursive: true });
     steps.push(`Created directory ${agentDir}`);
@@ -210,29 +213,24 @@ export function startApiServer(
                     return jsonResponse(res, 400, { error: 'message is required' });
                 }
 
-                const messageData: MessageData = {
+                const messageId = `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+                enqueueMessage({
                     channel: channel || 'web',
                     sender: sender || 'Web',
                     message,
-                    timestamp: Date.now(),
-                    messageId: `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                    messageId,
                     agent: agent || undefined,
-                };
-
-                const filename = `${messageData.messageId}.json`;
-                fs.writeFileSync(
-                    path.join(QUEUE_INCOMING, filename),
-                    JSON.stringify(messageData, null, 2)
-                );
+                });
 
                 log('INFO', `[API] Message enqueued: ${message.substring(0, 60)}...`);
                 emitEvent('message_enqueued', {
-                    messageId: messageData.messageId,
+                    messageId,
                     agent: agent || null,
                     message: message.substring(0, 120),
                 });
 
-                return jsonResponse(res, 200, { ok: true, messageId: messageData.messageId });
+                return jsonResponse(res, 200, { ok: true, messageId });
             }
 
             // ── GET /api/agents ──────────────────────────────────────────
@@ -262,13 +260,12 @@ export function startApiServer(
 
             // ── GET /api/queue/status ────────────────────────────────────
             if (req.method === 'GET' && pathname === '/api/queue/status') {
-                const incoming = fs.readdirSync(QUEUE_INCOMING).filter(f => f.endsWith('.json')).length;
-                const processing = fs.readdirSync(QUEUE_PROCESSING).filter(f => f.endsWith('.json')).length;
-                const outgoing = fs.readdirSync(QUEUE_OUTGOING).filter(f => f.endsWith('.json')).length;
+                const status = getQueueStatus();
                 return jsonResponse(res, 200, {
-                    incoming,
-                    processing,
-                    outgoing,
+                    incoming: status.pending,
+                    processing: status.processing,
+                    outgoing: status.responsesPending,
+                    dead: status.dead,
                     activeConversations: conversations.size,
                 });
             }
@@ -276,19 +273,41 @@ export function startApiServer(
             // ── GET /api/responses ───────────────────────────────────────
             if (req.method === 'GET' && pathname === '/api/responses') {
                 const limit = parseInt(url.searchParams.get('limit') || '20', 10);
-                const files = fs.readdirSync(QUEUE_OUTGOING)
-                    .filter(f => f.endsWith('.json'))
-                    .map(f => ({ name: f, time: fs.statSync(path.join(QUEUE_OUTGOING, f)).mtimeMs }))
-                    .sort((a, b) => b.time - a.time)
-                    .slice(0, limit);
+                const responses = getRecentResponses(limit);
+                return jsonResponse(res, 200, responses.map(r => ({
+                    channel: r.channel,
+                    sender: r.sender,
+                    senderId: r.sender_id,
+                    message: r.message,
+                    originalMessage: r.original_message,
+                    timestamp: r.created_at,
+                    messageId: r.message_id,
+                    agent: r.agent,
+                    files: r.files ? JSON.parse(r.files) : undefined,
+                })));
+            }
 
-                const responses: ResponseData[] = [];
-                for (const file of files) {
-                    try {
-                        responses.push(JSON.parse(fs.readFileSync(path.join(QUEUE_OUTGOING, file.name), 'utf8')));
-                    } catch { /* skip bad files */ }
-                }
-                return jsonResponse(res, 200, responses);
+            // ── GET /api/queue/dead ──────────────────────────────────────
+            if (req.method === 'GET' && pathname === '/api/queue/dead') {
+                return jsonResponse(res, 200, getDeadMessages());
+            }
+
+            // ── POST /api/queue/dead/:id/retry ───────────────────────────
+            if (req.method === 'POST' && pathname.match(/^\/api\/queue\/dead\/(\d+)\/retry$/)) {
+                const id = parseInt(pathname.match(/^\/api\/queue\/dead\/(\d+)\/retry$/)![1], 10);
+                const ok = retryDeadMessage(id);
+                if (!ok) return jsonResponse(res, 404, { error: 'dead message not found' });
+                log('INFO', `[API] Dead message ${id} retried`);
+                return jsonResponse(res, 200, { ok: true });
+            }
+
+            // ── DELETE /api/queue/dead/:id ────────────────────────────────
+            if (req.method === 'DELETE' && pathname.match(/^\/api\/queue\/dead\/(\d+)$/)) {
+                const id = parseInt(pathname.match(/^\/api\/queue\/dead\/(\d+)$/)![1], 10);
+                const ok = deleteDeadMessage(id);
+                if (!ok) return jsonResponse(res, 404, { error: 'dead message not found' });
+                log('INFO', `[API] Dead message ${id} deleted`);
+                return jsonResponse(res, 200, { ok: true });
             }
 
             // ── GET /api/events/stream (SSE) ─────────────────────────────
@@ -303,27 +322,6 @@ export function startApiServer(
                 sseClients.add(res);
                 req.on('close', () => sseClients.delete(res));
                 return;
-            }
-
-            // ── GET /api/events (polling) ────────────────────────────────
-            if (req.method === 'GET' && pathname === '/api/events') {
-                const since = parseInt(url.searchParams.get('since') || '0', 10);
-                const limit = parseInt(url.searchParams.get('limit') || '50', 10);
-
-                const eventFiles = fs.readdirSync(EVENTS_DIR)
-                    .filter(f => f.endsWith('.json'))
-                    .map(f => ({ name: f, ts: parseInt(f.split('-')[0], 10) }))
-                    .filter(f => f.ts > since)
-                    .sort((a, b) => b.ts - a.ts)
-                    .slice(0, limit);
-
-                const events: unknown[] = [];
-                for (const file of eventFiles) {
-                    try {
-                        events.push(JSON.parse(fs.readFileSync(path.join(EVENTS_DIR, file.name), 'utf8')));
-                    } catch { /* skip */ }
-                }
-                return jsonResponse(res, 200, events);
             }
 
             // ── GET /api/logs ────────────────────────────────────────────

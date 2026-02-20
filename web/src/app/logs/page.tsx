@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { usePolling, timeAgo } from "@/lib/hooks";
-import { getLogs, getEvents, type EventData } from "@/lib/api";
+import { usePolling, useSSE, timeAgo } from "@/lib/hooks";
+import { getLogs, type EventData } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,10 +14,7 @@ export default function LogsPage() {
     () => getLogs(200),
     5000
   );
-  const { data: events, refresh: refreshEvents } = usePolling<EventData[]>(
-    () => getEvents(0, 100),
-    3000
-  );
+  const { events } = useSSE(100);
 
   return (
     <div className="p-8 space-y-6">
@@ -34,7 +31,7 @@ export default function LogsPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => (tab === "logs" ? refreshLogs() : refreshEvents())}
+          onClick={() => refreshLogs()}
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Refresh
@@ -63,7 +60,7 @@ export default function LogsPage() {
         >
           <Activity className="h-3.5 w-3.5 inline mr-1.5" />
           Events
-          {events && events.length > 0 && (
+          {events.length > 0 && (
             <Badge variant="secondary" className="ml-1.5 text-[10px]">
               {events.length}
             </Badge>
@@ -99,7 +96,7 @@ export default function LogsPage() {
           </CardHeader>
           <CardContent>
             <div className="max-h-[calc(100vh-320px)] overflow-y-auto space-y-2">
-              {events && events.length > 0 ? (
+              {events.length > 0 ? (
                 events.map((event, i) => (
                   <EventEntry key={`${event.timestamp}-${i}`} event={event} />
                 ))

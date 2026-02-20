@@ -12,6 +12,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
+import { initQueueDb, enqueueMessage, getResponsesForChannel, ackResponse, closeQueueDb } from '../lib/queue-db';
 
 const SCRIPT_DIR = path.resolve(__dirname, '..', '..');
 const _localTinyclaw = path.join(SCRIPT_DIR, '.tinyclaw');
@@ -19,19 +20,20 @@ const TINYCLAW_HOME = process.env.TINYCLAW_HOME
     || (fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
         ? _localTinyclaw
         : path.join(require('os').homedir(), '.tinyclaw'));
-const QUEUE_INCOMING = path.join(TINYCLAW_HOME, 'queue/incoming');
-const QUEUE_OUTGOING = path.join(TINYCLAW_HOME, 'queue/outgoing');
 const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/discord.log');
 const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
 const PAIRING_FILE = path.join(TINYCLAW_HOME, 'pairing.json');
 
 // Ensure directories exist
-[QUEUE_INCOMING, QUEUE_OUTGOING, path.dirname(LOG_FILE), FILES_DIR].forEach(dir => {
+[path.dirname(LOG_FILE), FILES_DIR].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
 });
+
+// Initialize SQLite queue
+initQueueDb();
 
 // Validate bot token
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -44,27 +46,6 @@ interface PendingMessage {
     message: Message;
     channel: DMChannel;
     timestamp: number;
-}
-
-interface QueueData {
-    channel: string;
-    sender: string;
-    senderId: string;
-    message: string;
-    timestamp: number;
-    messageId: string;
-    files?: string[];
-}
-
-interface ResponseData {
-    channel: string;
-    sender: string;
-    senderId?: string;
-    message: string;
-    originalMessage: string;
-    timestamp: number;
-    messageId: string;
-    files?: string[];
 }
 
 function sanitizeFileName(fileName: string): string {
@@ -350,19 +331,15 @@ client.on(Events.MessageCreate, async (message: Message) => {
             fullMessage = fullMessage ? `${fullMessage}\n\n${fileRefs}` : fileRefs;
         }
 
-        // Write to incoming queue
-        const queueData: QueueData = {
+        // Write to queue via SQLite
+        enqueueMessage({
             channel: 'discord',
             sender: sender,
             senderId: message.author.id,
             message: fullMessage,
-            timestamp: Date.now(),
             messageId: messageId,
             files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
-        };
-
-        const queueFile = path.join(QUEUE_INCOMING, `discord_${messageId}.json`);
-        fs.writeFileSync(queueFile, JSON.stringify(queueData, null, 2));
+        });
 
         log('INFO', `Queued message ${messageId}`);
 
@@ -395,15 +372,15 @@ async function checkOutgoingQueue(): Promise<void> {
     processingOutgoingQueue = true;
 
     try {
-        const files = fs.readdirSync(QUEUE_OUTGOING)
-            .filter(f => f.startsWith('discord_') && f.endsWith('.json'));
+        const responses = getResponsesForChannel('discord');
 
-        for (const file of files) {
-            const filePath = path.join(QUEUE_OUTGOING, file);
-
+        for (const resp of responses) {
             try {
-                const responseData: ResponseData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                const { messageId, message: responseText, sender, senderId } = responseData;
+                const responseText = resp.message;
+                const messageId = resp.message_id;
+                const sender = resp.sender;
+                const senderId = resp.sender_id;
+                const files: string[] = resp.files ? JSON.parse(resp.files) : [];
 
                 // Find pending message, or fall back to senderId for proactive messages
                 const pending = pendingMessages.get(messageId);
@@ -420,9 +397,9 @@ async function checkOutgoingQueue(): Promise<void> {
 
                 if (channel) {
                     // Send any attached files
-                    if (responseData.files && responseData.files.length > 0) {
+                    if (files.length > 0) {
                         const attachments: AttachmentBuilder[] = [];
-                        for (const file of responseData.files) {
+                        for (const file of files) {
                             try {
                                 if (!fs.existsSync(file)) continue;
                                 attachments.push(new AttachmentBuilder(file));
@@ -452,17 +429,17 @@ async function checkOutgoingQueue(): Promise<void> {
                         }
                     }
 
-                    log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${sender} (${responseText.length} chars${responseData.files ? `, ${responseData.files.length} file(s)` : ''})`);
+                    log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
 
                     if (pending) pendingMessages.delete(messageId);
-                    fs.unlinkSync(filePath);
+                    ackResponse(resp.id);
                 } else {
-                    log('WARN', `No pending message for ${messageId} and no senderId, cleaning up`);
-                    fs.unlinkSync(filePath);
+                    log('WARN', `No pending message for ${messageId} and no senderId, acking`);
+                    ackResponse(resp.id);
                 }
             } catch (error) {
-                log('ERROR', `Error processing response file ${file}: ${(error as Error).message}`);
-                // Don't delete file on error, might retry
+                log('ERROR', `Error processing response ${resp.id}: ${(error as Error).message}`);
+                // Don't ack on error, will retry next poll
             }
         }
     } catch (error) {
@@ -487,12 +464,14 @@ setInterval(() => {
 // Graceful shutdown
 process.on('SIGINT', () => {
     log('INFO', 'Shutting down Discord client...');
+    closeQueueDb();
     client.destroy();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     log('INFO', 'Shutting down Discord client...');
+    closeQueueDb();
     client.destroy();
     process.exit(0);
 });

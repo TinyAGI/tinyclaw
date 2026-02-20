@@ -16,43 +16,33 @@
 
 import fs from 'fs';
 import path from 'path';
-import { MessageData, ResponseData, QueueFile, ChainStep, Conversation, TeamConfig } from './lib/types';
+import { MessageData, Conversation, TeamConfig } from './lib/types';
 import {
-    QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING,
-    LOG_FILE, EVENTS_DIR, CHATS_DIR, FILES_DIR,
+    LOG_FILE, CHATS_DIR, FILES_DIR,
     getSettings, getAgents, getTeams
 } from './lib/config';
 import { log, emitEvent } from './lib/logging';
 import { parseAgentRouting, findTeamForAgent, getAgentResetFlag, extractTeammateMentions } from './lib/routing';
 import { invokeAgent } from './lib/invoke';
 import { startApiServer } from './lib/api-server';
-import { jsonrepair } from 'jsonrepair';
-
-/** Parse JSON with automatic repair for malformed content (e.g. bad escapes). */
-function safeParseJSON<T = unknown>(raw: string, label?: string): T {
-    try {
-        return JSON.parse(raw);
-    } catch {
-        log('WARN', `Invalid JSON${label ? ` in ${label}` : ''}, attempting auto-repair`);
-        return JSON.parse(jsonrepair(raw));
-    }
-}
-
-// Ensure directories exist
-[QUEUE_INCOMING, QUEUE_OUTGOING, QUEUE_PROCESSING, FILES_DIR, path.dirname(LOG_FILE)].forEach(dir => {
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-});
-
-// Files currently queued in a promise chain — prevents duplicate processing across ticks
-const queuedFiles = new Set<string>();
+import {
+    initQueueDb, enqueueMessage, claimNextMessage, completeMessage as dbCompleteMessage,
+    failMessage, enqueueResponse, getPendingAgents, recoverStaleMessages,
+    pruneAckedResponses, closeQueueDb, queueEvents, DbMessage,
+} from './lib/queue-db';
 
 // Active conversations — tracks in-flight team message passing
 const conversations = new Map<string, Conversation>();
 
 const MAX_CONVERSATION_MESSAGES = 50;
 const LONG_RESPONSE_THRESHOLD = 4000;
+
+// Ensure directories exist
+[FILES_DIR, path.dirname(LOG_FILE), CHATS_DIR].forEach(dir => {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+});
 
 /**
  * If a response exceeds the threshold, save full text as a .md file
@@ -78,42 +68,27 @@ function handleLongResponse(
     return { message: preview, files: [...existingFiles, filePath] };
 }
 
-// Recover orphaned files from processing/ on startup (crash recovery)
-function recoverOrphanedFiles() {
-    for (const f of fs.readdirSync(QUEUE_PROCESSING).filter(f => f.endsWith('.json'))) {
-        try {
-            fs.renameSync(path.join(QUEUE_PROCESSING, f), path.join(QUEUE_INCOMING, f));
-            log('INFO', `Recovered orphaned file: ${f}`);
-        } catch (error) {
-            log('ERROR', `Failed to recover orphaned file ${f}: ${(error as Error).message}`);
-        }
-    }
-}
-
 /**
- * Enqueue an internal (agent-to-agent) message into QUEUE_INCOMING.
+ * Enqueue an internal (agent-to-agent) message into the SQLite queue.
  */
 function enqueueInternalMessage(
     conversationId: string,
     fromAgent: string,
     targetAgent: string,
     message: string,
-    originalData: MessageData
+    originalData: { channel: string; sender: string; senderId?: string | null; messageId: string }
 ): void {
-    const internalMessage: MessageData = {
+    const messageId = `internal_${conversationId}_${targetAgent}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    enqueueMessage({
         channel: originalData.channel,
         sender: originalData.sender,
-        senderId: originalData.senderId,
+        senderId: originalData.senderId ?? undefined,
         message,
-        timestamp: Date.now(),
-        messageId: originalData.messageId,
+        messageId,
         agent: targetAgent,
         conversationId,
         fromAgent,
-    };
-
-    const filename = `internal_${conversationId}_${targetAgent}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.json`;
-    fs.writeFileSync(path.join(QUEUE_INCOMING, filename), JSON.stringify(internalMessage, null, 2));
+    });
     log('INFO', `Enqueued internal message: @${fromAgent} → @${targetAgent}`);
 }
 
@@ -208,21 +183,14 @@ function completeConversation(conv: Conversation): void {
     const { message: responseMessage, files: allFiles } = handleLongResponse(finalResponse, outboundFiles);
 
     // Write to outgoing queue
-    const responseData: ResponseData = {
+    enqueueResponse({
         channel: conv.channel,
         sender: conv.sender,
         message: responseMessage,
         originalMessage: conv.originalMessage,
-        timestamp: Date.now(),
         messageId: conv.messageId,
         files: allFiles.length > 0 ? allFiles : undefined,
-    };
-
-    const responseFile = conv.channel === 'heartbeat'
-        ? path.join(QUEUE_OUTGOING, `${conv.messageId}.json`)
-        : path.join(QUEUE_OUTGOING, `${conv.channel}_${conv.messageId}_${Date.now()}.json`);
-
-    fs.writeFileSync(responseFile, JSON.stringify(responseData, null, 2));
+    });
 
     log('INFO', `✓ Response ready [${conv.channel}] ${conv.sender} (${finalResponse.length} chars)`);
     emitEvent('response_ready', { channel: conv.channel, sender: conv.sender, responseLength: finalResponse.length, responseText: finalResponse, messageId: conv.messageId });
@@ -231,20 +199,31 @@ function completeConversation(conv: Conversation): void {
     conversations.delete(conv.id);
 }
 
-// Process a single message
-async function processMessage(messageFile: string): Promise<void> {
-    const processingFile = path.join(QUEUE_PROCESSING, path.basename(messageFile));
-
+// Process a single message from the DB
+async function processMessage(dbMsg: DbMessage): Promise<void> {
     try {
-        // Move to processing to mark as in-progress
-        fs.renameSync(messageFile, processingFile);
+        const channel = dbMsg.channel;
+        const sender = dbMsg.sender;
+        const rawMessage = dbMsg.message;
+        const messageId = dbMsg.message_id;
+        const isInternal = !!dbMsg.conversation_id;
+        const files: string[] = dbMsg.files ? JSON.parse(dbMsg.files) : [];
 
-        // Read message
-        const messageData: MessageData = safeParseJSON(fs.readFileSync(processingFile, 'utf8'), path.basename(processingFile));
-        const { channel, sender, message: rawMessage, timestamp, messageId } = messageData;
-        const isInternal = !!messageData.conversationId;
+        // Build a MessageData-like object for compatibility
+        const messageData: MessageData = {
+            channel,
+            sender,
+            senderId: dbMsg.sender_id ?? undefined,
+            message: rawMessage,
+            timestamp: dbMsg.created_at,
+            messageId,
+            agent: dbMsg.agent ?? undefined,
+            files: files.length > 0 ? files : undefined,
+            conversationId: dbMsg.conversation_id ?? undefined,
+            fromAgent: dbMsg.from_agent ?? undefined,
+        };
 
-        log('INFO', `Processing [${isInternal ? 'internal' : channel}] ${isInternal ? `@${messageData.fromAgent}→@${messageData.agent}` : `from ${sender}`}: ${rawMessage.substring(0, 50)}...`);
+        log('INFO', `Processing [${isInternal ? 'internal' : channel}] ${isInternal ? `@${dbMsg.from_agent}→@${dbMsg.agent}` : `from ${sender}`}: ${rawMessage.substring(0, 50)}...`);
         if (!isInternal) {
             emitEvent('message_received', { channel, sender, message: rawMessage.substring(0, 120), messageId });
         }
@@ -278,18 +257,16 @@ async function processMessage(messageFile: string): Promise<void> {
         if (!isInternal && agentId === 'error') {
             log('INFO', `Multiple agents detected, sending easter egg message`);
 
-            const responseFile = path.join(QUEUE_OUTGOING, path.basename(processingFile));
-            const responseData: ResponseData = {
+            enqueueResponse({
                 channel,
                 sender,
+                senderId: dbMsg.sender_id ?? undefined,
                 message: message,
                 originalMessage: rawMessage,
-                timestamp: Date.now(),
                 messageId,
-            };
+            });
 
-            fs.writeFileSync(responseFile, JSON.stringify(responseData, null, 2));
-            fs.unlinkSync(processingFile);
+            dbCompleteMessage(dbMsg.id);
             log('INFO', `✓ Easter egg sent to ${sender}`);
             return;
         }
@@ -381,27 +358,21 @@ async function processMessage(messageFile: string): Promise<void> {
             // Handle long responses — send as file attachment
             const { message: responseMessage, files: allFiles } = handleLongResponse(finalResponse, outboundFiles);
 
-            const responseData: ResponseData = {
+            enqueueResponse({
                 channel,
                 sender,
+                senderId: dbMsg.sender_id ?? undefined,
                 message: responseMessage,
                 originalMessage: rawMessage,
-                timestamp: Date.now(),
                 messageId,
                 agent: agentId,
                 files: allFiles.length > 0 ? allFiles : undefined,
-            };
-
-            const responseFile = channel === 'heartbeat'
-                ? path.join(QUEUE_OUTGOING, `${messageId}.json`)
-                : path.join(QUEUE_OUTGOING, `${channel}_${messageId}_${Date.now()}.json`);
-
-            fs.writeFileSync(responseFile, JSON.stringify(responseData, null, 2));
+            });
 
             log('INFO', `✓ Response ready [${channel}] ${sender} via agent:${agentId} (${finalResponse.length} chars)`);
             emitEvent('response_ready', { channel, sender, agentId, responseLength: finalResponse.length, responseText: finalResponse, messageId });
 
-            fs.unlinkSync(processingFile);
+            dbCompleteMessage(dbMsg.id);
             return;
         }
 
@@ -453,7 +424,12 @@ async function processMessage(messageFile: string): Promise<void> {
                 emitEvent('chain_handoff', { teamId: conv.teamContext.teamId, fromAgent: agentId, toAgent: mention.teammateId });
 
                 const internalMsg = `[Message from teammate @${agentId}]:\n${mention.message}`;
-                enqueueInternalMessage(conv.id, agentId, mention.teammateId, internalMsg, messageData);
+                enqueueInternalMessage(conv.id, agentId, mention.teammateId, internalMsg, {
+                    channel: messageData.channel,
+                    sender: messageData.sender,
+                    senderId: messageData.senderId,
+                    messageId: messageData.messageId,
+                });
             }
         } else if (teammateMentions.length > 0) {
             log('WARN', `Conversation ${conv.id} hit max messages (${conv.maxMessages}) — not enqueuing further mentions`);
@@ -468,98 +444,50 @@ async function processMessage(messageFile: string): Promise<void> {
             log('INFO', `Conversation ${conv.id}: ${conv.pending} branch(es) still pending`);
         }
 
-        // Clean up processing file
-        fs.unlinkSync(processingFile);
+        // Mark message as completed in DB
+        dbCompleteMessage(dbMsg.id);
 
     } catch (error) {
         log('ERROR', `Processing error: ${(error as Error).message}`);
-
-        // Move back to incoming for retry
-        if (fs.existsSync(processingFile)) {
-            try {
-                fs.renameSync(processingFile, messageFile);
-            } catch (e) {
-                log('ERROR', `Failed to move file back: ${(e as Error).message}`);
-            }
-        }
+        failMessage(dbMsg.id, (error as Error).message);
     }
 }
 
 // Per-agent processing chains - ensures messages to same agent are sequential
 const agentProcessingChains = new Map<string, Promise<void>>();
 
-/**
- * Peek at a message file to determine which agent it's routed to.
- * Also resolves team IDs to their leader agent.
- */
-function peekAgentId(filePath: string): string {
-    try {
-        const messageData = safeParseJSON<MessageData>(fs.readFileSync(filePath, 'utf8'));
-        const settings = getSettings();
-        const agents = getAgents(settings);
-        const teams = getTeams(settings);
-
-        // Check for pre-routed agent
-        if (messageData.agent && agents[messageData.agent]) {
-            return messageData.agent;
-        }
-
-        // Parse @agent_id or @team_id prefix
-        const routing = parseAgentRouting(messageData.message || '', agents, teams);
-        return routing.agentId || 'default';
-    } catch {
-        return 'default';
-    }
-}
-
 // Main processing loop
 async function processQueue(): Promise<void> {
     try {
-        // Get all files from incoming queue, sorted by timestamp
-        const files: QueueFile[] = fs.readdirSync(QUEUE_INCOMING)
-            .filter(f => f.endsWith('.json'))
-            .map(f => ({
-                name: f,
-                path: path.join(QUEUE_INCOMING, f),
-                time: fs.statSync(path.join(QUEUE_INCOMING, f)).mtimeMs
-            }))
-            .sort((a, b) => a.time - b.time);
+        // Get all agents with pending messages
+        const pendingAgents = getPendingAgents();
 
-        if (files.length > 0) {
-            log('DEBUG', `Found ${files.length} message(s) in queue`);
+        if (pendingAgents.length === 0) return;
 
-            // Process messages in parallel by agent (sequential within each agent)
-            for (const file of files) {
-                // Skip files already queued in a promise chain
-                if (queuedFiles.has(file.name)) continue;
-                queuedFiles.add(file.name);
+        for (const agentId of pendingAgents) {
+            // Claim next message for this agent
+            const dbMsg = claimNextMessage(agentId);
+            if (!dbMsg) continue;
 
-                // Determine target agent
-                const agentId = peekAgentId(file.path);
+            // Get or create promise chain for this agent
+            const currentChain = agentProcessingChains.get(agentId) || Promise.resolve();
 
-                // Get or create promise chain for this agent
-                const currentChain = agentProcessingChains.get(agentId) || Promise.resolve();
-
-                // Chain this message to the agent's promise
-                const newChain = currentChain
-                    .then(() => processMessage(file.path))
-                    .catch(error => {
-                        log('ERROR', `Error processing message for agent ${agentId}: ${error.message}`);
-                    })
-                    .finally(() => {
-                        queuedFiles.delete(file.name);
-                    });
-
-                // Update the chain
-                agentProcessingChains.set(agentId, newChain);
-
-                // Clean up completed chains to avoid memory leaks
-                newChain.finally(() => {
-                    if (agentProcessingChains.get(agentId) === newChain) {
-                        agentProcessingChains.delete(agentId);
-                    }
+            // Chain this message to the agent's promise
+            const newChain = currentChain
+                .then(() => processMessage(dbMsg))
+                .catch(error => {
+                    log('ERROR', `Error processing message for agent ${agentId}: ${error.message}`);
                 });
-            }
+
+            // Update the chain
+            agentProcessingChains.set(agentId, newChain);
+
+            // Clean up completed chains to avoid memory leaks
+            newChain.finally(() => {
+                if (agentProcessingChains.get(agentId) === newChain) {
+                    agentProcessingChains.delete(agentId);
+                }
+            });
         }
     } catch (error) {
         log('ERROR', `Queue processing error: ${(error as Error).message}`);
@@ -587,34 +515,63 @@ function logAgentConfig(): void {
     }
 }
 
-// Ensure events dir exists
-if (!fs.existsSync(EVENTS_DIR)) {
-    fs.mkdirSync(EVENTS_DIR, { recursive: true });
-}
-
 // ─── Start ──────────────────────────────────────────────────────────────────
+
+// Initialize SQLite queue
+initQueueDb();
+
+// Recover stale messages from previous crash
+const recovered = recoverStaleMessages();
+if (recovered > 0) {
+    log('INFO', `Recovered ${recovered} stale message(s) from previous session`);
+}
 
 // Start the API server (passes conversations for queue status reporting)
 const apiServer = startApiServer(conversations);
 
-log('INFO', 'Queue processor started');
-recoverOrphanedFiles();
-log('INFO', `Watching: ${QUEUE_INCOMING}`);
+log('INFO', 'Queue processor started (SQLite-backed)');
 logAgentConfig();
 emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), teams: Object.keys(getTeams(getSettings())) });
 
-// Process queue every 1 second
-setInterval(processQueue, 1000);
+// Event-driven: instant pickup for in-process messages
+queueEvents.on('message:enqueued', () => processQueue());
+
+// Fallback poll for cross-process messages (channel clients writing to DB)
+setInterval(processQueue, 500);
+
+// Periodic maintenance
+setInterval(() => {
+    const count = recoverStaleMessages();
+    if (count > 0) log('INFO', `Recovered ${count} stale message(s)`);
+}, 5 * 60 * 1000); // every 5 min
+
+setInterval(() => {
+    // Clean up old conversations (TTL: 30 min)
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    for (const [id, conv] of conversations.entries()) {
+        if (conv.startTime < cutoff) {
+            log('WARN', `Conversation ${id} timed out after 30 min — cleaning up`);
+            conversations.delete(id);
+        }
+    }
+}, 30 * 60 * 1000); // every 30 min
+
+setInterval(() => {
+    const pruned = pruneAckedResponses();
+    if (pruned > 0) log('INFO', `Pruned ${pruned} acked response(s)`);
+}, 60 * 60 * 1000); // every 1 hr
 
 // Graceful shutdown
 process.on('SIGINT', () => {
     log('INFO', 'Shutting down queue processor...');
+    closeQueueDb();
     apiServer.close();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     log('INFO', 'Shutting down queue processor...');
+    closeQueueDb();
     apiServer.close();
     process.exit(0);
 });

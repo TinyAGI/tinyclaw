@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { subscribeToEvents, type EventData } from "./api";
 
 /** Polls a fetcher at regular intervals. */
 export function usePolling<T>(
@@ -41,6 +42,33 @@ export function usePolling<T>(
   }, [refresh, intervalMs]);
 
   return { data, error, loading, refresh };
+}
+
+/** Subscribe to SSE events and accumulate them in state. */
+export function useSSE(maxEvents = 100): {
+  events: EventData[];
+  connected: boolean;
+} {
+  const [events, setEvents] = useState<EventData[]>([]);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    setConnected(true);
+    const unsubscribe = subscribeToEvents(
+      (event) => {
+        setEvents((prev) => {
+          const next = [event, ...prev];
+          return next.length > maxEvents ? next.slice(0, maxEvents) : next;
+        });
+      },
+      () => {
+        setConnected(false);
+      }
+    );
+    return unsubscribe;
+  }, [maxEvents]);
+
+  return { events, connected };
 }
 
 /** Format a timestamp to relative time. */

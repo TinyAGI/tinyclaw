@@ -1,11 +1,10 @@
 "use client";
 
-import { usePolling, timeAgo } from "@/lib/hooks";
+import { usePolling, useSSE, timeAgo } from "@/lib/hooks";
 import {
   getAgents,
   getTeams,
   getQueueStatus,
-  getEvents,
   type AgentConfig,
   type TeamConfig,
   type QueueStatus,
@@ -27,7 +26,7 @@ export default function DashboardPage() {
   const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 5000);
   const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 5000);
   const { data: queue } = usePolling<QueueStatus>(getQueueStatus, 2000);
-  const { data: events } = usePolling<EventData[]>(() => getEvents(0, 30), 3000);
+  const { events } = useSSE(30);
 
   const agentCount = agents ? Object.keys(agents).length : 0;
   const teamCount = teams ? Object.keys(teams).length : 0;
@@ -89,7 +88,7 @@ export default function DashboardPage() {
         <StatCard
           icon={<Activity className="h-4 w-4" />}
           label="Recent Events"
-          value={events?.length ?? 0}
+          value={events.length}
           sub="events tracked"
         />
       </div>
@@ -179,7 +178,7 @@ export default function DashboardPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {events && events.length > 0 ? (
+          {events.length > 0 ? (
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {events.map((event, i) => (
                 <div

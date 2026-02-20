@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3777";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -96,10 +96,6 @@ export async function getQueueStatus(): Promise<QueueStatus> {
 
 export async function getResponses(limit = 20): Promise<ResponseData[]> {
   return apiFetch(`/api/responses?limit=${limit}`);
-}
-
-export async function getEvents(since = 0, limit = 50): Promise<EventData[]> {
-  return apiFetch(`/api/events?since=${since}&limit=${limit}`);
 }
 
 export async function getLogs(limit = 100): Promise<{ lines: string[] }> {

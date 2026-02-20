@@ -13,7 +13,9 @@
     "visualize": "node dist/visualizer/team-visualizer.js"
   },
   "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^19.2.14",
+    "better-sqlite3": "^12.6.2",
     "discord.js": "^14.16.0",
     "dotenv": "^16.4.0",
     "ink": "^6.7.0",

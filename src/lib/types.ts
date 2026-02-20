@@ -103,12 +103,6 @@ export interface ResponseData {
     files?: string[];
 }
 
-export interface QueueFile {
-    name: string;
-    path: string;
-    time: number;
-}
-
 // Model name mapping
 export const CLAUDE_MODEL_IDS: Record<string, string> = {
     'sonnet': 'claude-sonnet-4-5',
