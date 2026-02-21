@@ -24,8 +24,9 @@ import {
 } from './lib/config';
 import { log, emitEvent } from './lib/logging';
 import { parseAgentRouting, findTeamForAgent, getAgentResetFlag, extractTeammateMentions } from './lib/routing';
-import { invokeAgent } from './lib/invoke';
+import { invokeAgent, runCommand } from './lib/invoke';
 import { jsonrepair } from 'jsonrepair';
+import { SessionTurn, parseSessionTurns, selectRelevantTurns, buildPrefetchBlock } from './lib/openviking-prefetch';
 
 /** Parse JSON with automatic repair for malformed content (e.g. bad escapes). */
 function safeParseJSON<T = unknown>(raw: string, label?: string): T {
@@ -52,6 +53,180 @@ const conversations = new Map<string, Conversation>();
 
 const MAX_CONVERSATION_MESSAGES = 50;
 const LONG_RESPONSE_THRESHOLD = 4000;
+const OPENVIKING_AUTOSYNC_ENABLED = process.env.TINYCLAW_OPENVIKING_AUTOSYNC !== '0';
+const OPENVIKING_PREFETCH_ENABLED = process.env.TINYCLAW_OPENVIKING_PREFETCH !== '0';
+const OPENVIKING_PREFETCH_TIMEOUT_MS = Number(process.env.TINYCLAW_OPENVIKING_PREFETCH_TIMEOUT_MS || 5000);
+const OPENVIKING_PREFETCH_MAX_CHARS = Number(process.env.TINYCLAW_OPENVIKING_PREFETCH_MAX_CHARS || 2800);
+const OPENVIKING_PREFETCH_MAX_TURNS = Number(process.env.TINYCLAW_OPENVIKING_PREFETCH_MAX_TURNS || 4);
+const OPENVIKING_SESSION_ROOT = '/tinyclaw/sessions';
+const openVikingSyncChains = new Map<string, Promise<void>>();
+
+function getOpenVikingToolPath(workspacePath: string, agentId: string): string | null {
+    const toolPath = path.join(workspacePath, agentId, '.tinyclaw', 'tools', 'openviking', 'openviking-tool.js');
+    if (!fs.existsSync(toolPath)) return null;
+    return toolPath;
+}
+
+function getOpenVikingRuntimeDir(workspacePath: string, agentId: string): string {
+    return path.join(workspacePath, agentId, '.tinyclaw', 'runtime', 'openviking');
+}
+
+function getActiveSessionFile(workspacePath: string, agentId: string): string {
+    return path.join(getOpenVikingRuntimeDir(workspacePath, agentId), 'active-session.md');
+}
+
+function ensureActiveSessionFile(workspacePath: string, agentId: string): string {
+    const runtimeDir = getOpenVikingRuntimeDir(workspacePath, agentId);
+    const sessionFile = getActiveSessionFile(workspacePath, agentId);
+    if (!fs.existsSync(runtimeDir)) {
+        fs.mkdirSync(runtimeDir, { recursive: true });
+    }
+    if (!fs.existsSync(sessionFile)) {
+        const header = [
+            `# TinyClaw Session (@${agentId})`,
+            '',
+            `- started_at: ${new Date().toISOString()}`,
+            ''
+        ].join('\n');
+        fs.writeFileSync(sessionFile, header);
+    }
+    return sessionFile;
+}
+
+function enqueueOpenVikingSync(agentId: string, task: () => Promise<void>): void {
+    const current = openVikingSyncChains.get(agentId) || Promise.resolve();
+    const next = current
+        .then(task)
+        .catch((error) => {
+            log('WARN', `OpenViking sync failed for @${agentId}: ${(error as Error).message}`);
+        });
+    openVikingSyncChains.set(agentId, next);
+    next.finally(() => {
+        if (openVikingSyncChains.get(agentId) === next) {
+            openVikingSyncChains.delete(agentId);
+        }
+    });
+}
+
+async function writeSessionFileToOpenViking(
+    workspacePath: string,
+    agentId: string,
+    localFile: string,
+    targetPath: string
+): Promise<void> {
+    if (!OPENVIKING_AUTOSYNC_ENABLED) return;
+    const toolPath = getOpenVikingToolPath(workspacePath, agentId);
+    if (!toolPath) return;
+    await runCommand('node', [toolPath, 'write-file', targetPath, localFile], path.join(workspacePath, agentId));
+}
+
+async function finalizeOpenVikingSession(workspacePath: string, agentId: string): Promise<void> {
+    const sessionFile = getActiveSessionFile(workspacePath, agentId);
+    if (!fs.existsSync(sessionFile)) return;
+
+    const currentContent = fs.readFileSync(sessionFile, 'utf8').trim();
+    if (!currentContent) return;
+
+    const endedAt = new Date().toISOString();
+    const sessionCloseNote = `\n\n- ended_at: ${endedAt}\n`;
+    fs.appendFileSync(sessionFile, sessionCloseNote);
+
+    const safeTimestamp = endedAt.replace(/[:.]/g, '-');
+    await writeSessionFileToOpenViking(
+        workspacePath,
+        agentId,
+        sessionFile,
+        `${OPENVIKING_SESSION_ROOT}/${agentId}/closed/${safeTimestamp}.md`
+    );
+
+    fs.rmSync(sessionFile, { force: true });
+}
+
+async function appendTurnAndSyncOpenViking(
+    workspacePath: string,
+    agentId: string,
+    messageId: string,
+    userMessage: string,
+    assistantResponse: string,
+    isInternal: boolean
+): Promise<void> {
+    const sessionFile = ensureActiveSessionFile(workspacePath, agentId);
+    const turnTime = new Date().toISOString();
+    const turnBlock = [
+        '------',
+        '',
+        `## Turn ${turnTime}`,
+        '',
+        `- message_id: ${messageId}`,
+        `- source: ${isInternal ? 'internal' : 'external'}`,
+        '',
+        '### User',
+        '',
+        userMessage.trim(),
+        '',
+        '### Assistant',
+        '',
+        assistantResponse.trim(),
+        ''
+    ].join('\n');
+    fs.appendFileSync(sessionFile, turnBlock);
+
+    await writeSessionFileToOpenViking(
+        workspacePath,
+        agentId,
+        sessionFile,
+        `${OPENVIKING_SESSION_ROOT}/${agentId}/active.md`
+    );
+}
+
+async function fetchOpenVikingPrefetchContext(workspacePath: string, agentId: string, query: string): Promise<string> {
+    if (!OPENVIKING_PREFETCH_ENABLED) return '';
+    const toolPath = getOpenVikingToolPath(workspacePath, agentId);
+    if (!toolPath) return '';
+
+    const readTargets = [
+        `${OPENVIKING_SESSION_ROOT}/${agentId}/active.md`,
+        `${OPENVIKING_SESSION_ROOT}/${agentId}/closed`,
+    ];
+
+    const allTurns: SessionTurn[] = [];
+    const diagnostics: string[] = [];
+    for (const target of readTargets) {
+        try {
+            const output = await runCommand(
+                'node',
+                [toolPath, 'read', target],
+                path.join(workspacePath, agentId),
+                OPENVIKING_PREFETCH_TIMEOUT_MS
+            );
+            const content = output.trim();
+            if (!content || content.startsWith('[openviking-tool]')) {
+                diagnostics.push(`${target}:empty`);
+                continue;
+            }
+            const parsed = parseSessionTurns(content);
+            diagnostics.push(`${target}:chars=${content.length},turns=${parsed.length}`);
+            allTurns.push(...parsed);
+        } catch {
+            diagnostics.push(`${target}:error`);
+            // Best-effort: ignore missing/unreadable targets.
+        }
+    }
+
+    const dedup = new Map<string, SessionTurn>();
+    for (const turn of allTurns) {
+        const key = `${turn.messageId}|${turn.timestamp}|${turn.user}|${turn.assistant}`;
+        dedup.set(key, turn);
+    }
+    const turns = Array.from(dedup.values());
+    if (!turns.length) {
+        log('INFO', `OpenViking prefetch empty for @${agentId}: ${diagnostics.join(' | ')}`);
+        return '';
+    }
+
+    const selected = selectRelevantTurns(turns, query, OPENVIKING_PREFETCH_MAX_TURNS);
+    return buildPrefetchBlock(selected, OPENVIKING_PREFETCH_MAX_CHARS);
+}
 
 /**
  * If a response exceeds the threshold, save full text as a .md file
@@ -336,6 +511,10 @@ async function processMessage(messageFile: string): Promise<void> {
 
         if (shouldReset) {
             fs.unlinkSync(agentResetFlag);
+            enqueueOpenVikingSync(agentId, async () => {
+                await finalizeOpenVikingSession(workspacePath, agentId);
+                log('INFO', `OpenViking session finalized for @${agentId}`);
+            });
         }
 
         // For internal messages: append pending response indicator so the agent
@@ -348,6 +527,20 @@ async function processMessage(messageFile: string): Promise<void> {
                 if (othersPending > 0) {
                     message += `\n\n------\n\n[${othersPending} other teammate response(s) are still being processed and will be delivered when ready. Do not re-mention teammates who haven't responded yet.]`;
                 }
+            }
+        }
+
+        if (!isInternal) {
+            try {
+                const retrievedContext = await fetchOpenVikingPrefetchContext(workspacePath, agentId, message);
+                if (retrievedContext) {
+                    message += `\n\n------\n\n${retrievedContext}\n[End OpenViking Context]`;
+                    log('INFO', `OpenViking prefetch hit for @${agentId}: injected ${retrievedContext.length} chars`);
+                } else {
+                    log('INFO', `OpenViking prefetch miss for @${agentId}`);
+                }
+            } catch (error) {
+                log('WARN', `OpenViking prefetch skipped for @${agentId}: ${(error as Error).message}`);
             }
         }
 
@@ -364,6 +557,10 @@ async function processMessage(messageFile: string): Promise<void> {
         }
 
         emitEvent('chain_step_done', { agentId, agentName: agent.name, responseLength: response.length, responseText: response });
+
+        enqueueOpenVikingSync(agentId, async () => {
+            await appendTurnAndSyncOpenViking(workspacePath, agentId, messageId, message, response, isInternal);
+        });
 
         // --- No team context: simple response to user ---
         if (!teamContext) {
