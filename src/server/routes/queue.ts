@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { Conversation } from '../../lib/types';
 import { log } from '../../lib/logging';
 import {
-    getQueueStatus, getRecentResponses,
+    getQueueStatus, getRecentResponses, getResponsesForChannel, ackResponse,
     getDeadMessages, retryDeadMessage, deleteDeadMessage,
 } from '../../lib/queue-db';
 
@@ -36,6 +36,31 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
             agent: r.agent,
             files: r.files ? JSON.parse(r.files) : undefined,
         })));
+    });
+
+    // GET /api/responses/pending?channel=whatsapp
+    app.get('/api/responses/pending', (c) => {
+        const channel = c.req.query('channel');
+        if (!channel) return c.json({ error: 'channel query param required' }, 400);
+        const responses = getResponsesForChannel(channel);
+        return c.json(responses.map(r => ({
+            id: r.id,
+            channel: r.channel,
+            sender: r.sender,
+            senderId: r.sender_id,
+            message: r.message,
+            originalMessage: r.original_message,
+            messageId: r.message_id,
+            agent: r.agent,
+            files: r.files ? JSON.parse(r.files) : undefined,
+        })));
+    });
+
+    // POST /api/responses/:id/ack
+    app.post('/api/responses/:id/ack', (c) => {
+        const id = parseInt(c.req.param('id'), 10);
+        ackResponse(id);
+        return c.json({ ok: true });
     });
 
     // GET /api/queue/dead

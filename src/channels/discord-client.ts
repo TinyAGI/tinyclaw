@@ -12,7 +12,6 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
-import { initQueueDb, getResponsesForChannel, ackResponse, closeQueueDb } from '../lib/queue-db';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -34,9 +33,6 @@ const PAIRING_FILE = path.join(TINYCLAW_HOME, 'pairing.json');
         fs.mkdirSync(dir, { recursive: true });
     }
 });
-
-// Initialize SQLite queue
-initQueueDb();
 
 // Validate bot token
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -370,7 +366,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
     }
 });
 
-// Watch for responses in outgoing queue
+// Watch for responses via API
 async function checkOutgoingQueue(): Promise<void> {
     if (processingOutgoingQueue) {
         return;
@@ -379,30 +375,32 @@ async function checkOutgoingQueue(): Promise<void> {
     processingOutgoingQueue = true;
 
     try {
-        const responses = getResponsesForChannel('discord');
+        const res = await fetch(`${API_BASE}/api/responses/pending?channel=discord`);
+        if (!res.ok) return;
+        const responses = await res.json() as any[];
 
         for (const resp of responses) {
             try {
                 const responseText = resp.message;
-                const messageId = resp.message_id;
+                const messageId = resp.messageId;
                 const sender = resp.sender;
-                const senderId = resp.sender_id;
-                const files: string[] = resp.files ? JSON.parse(resp.files) : [];
+                const senderId = resp.senderId;
+                const files: string[] = resp.files || [];
 
                 // Find pending message, or fall back to senderId for proactive messages
                 const pending = pendingMessages.get(messageId);
-                let channel = pending?.channel ?? null;
+                let dmChannel = pending?.channel ?? null;
 
-                if (!channel && senderId) {
+                if (!dmChannel && senderId) {
                     try {
                         const user = await client.users.fetch(senderId);
-                        channel = await user.createDM();
+                        dmChannel = await user.createDM();
                     } catch (err) {
                         log('ERROR', `Could not open DM for senderId ${senderId}: ${(err as Error).message}`);
                     }
                 }
 
-                if (channel) {
+                if (dmChannel) {
                     // Send any attached files
                     if (files.length > 0) {
                         const attachments: AttachmentBuilder[] = [];
@@ -415,7 +413,7 @@ async function checkOutgoingQueue(): Promise<void> {
                             }
                         }
                         if (attachments.length > 0) {
-                            await channel.send({ files: attachments });
+                            await dmChannel.send({ files: attachments });
                             log('INFO', `Sent ${attachments.length} file(s) to Discord`);
                         }
                     }
@@ -428,21 +426,21 @@ async function checkOutgoingQueue(): Promise<void> {
                             if (pending) {
                                 await pending.message.reply(chunks[0]!);
                             } else {
-                                await channel.send(chunks[0]!);
+                                await dmChannel.send(chunks[0]!);
                             }
                         }
                         for (let i = 1; i < chunks.length; i++) {
-                            await channel.send(chunks[i]!);
+                            await dmChannel.send(chunks[i]!);
                         }
                     }
 
                     log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
 
                     if (pending) pendingMessages.delete(messageId);
-                    ackResponse(resp.id);
+                    await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
                 } else {
                     log('WARN', `No pending message for ${messageId} and no senderId, acking`);
-                    ackResponse(resp.id);
+                    await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
                 }
             } catch (error) {
                 log('ERROR', `Error processing response ${resp.id}: ${(error as Error).message}`);
@@ -471,14 +469,12 @@ setInterval(() => {
 // Graceful shutdown
 process.on('SIGINT', () => {
     log('INFO', 'Shutting down Discord client...');
-    closeQueueDb();
     client.destroy();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     log('INFO', 'Shutting down Discord client...');
-    closeQueueDb();
     client.destroy();
     process.exit(0);
 });

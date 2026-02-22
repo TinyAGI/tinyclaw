@@ -10,7 +10,6 @@ import qrcode from 'qrcode-terminal';
 import fs from 'fs';
 import path from 'path';
 import { ensureSenderPaired } from '../lib/pairing';
-import { initQueueDb, getResponsesForChannel, ackResponse, closeQueueDb } from '../lib/queue-db';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -33,9 +32,6 @@ const PAIRING_FILE = path.join(TINYCLAW_HOME, 'pairing.json');
         fs.mkdirSync(dir, { recursive: true });
     }
 });
-
-// Initialize SQLite queue
-initQueueDb();
 
 interface PendingMessage {
     message: Message;
@@ -370,7 +366,7 @@ client.on('message_create', async (message: Message) => {
     }
 });
 
-// Watch for responses in outgoing queue
+// Watch for responses via API
 async function checkOutgoingQueue(): Promise<void> {
     if (processingOutgoingQueue) {
         return;
@@ -379,15 +375,17 @@ async function checkOutgoingQueue(): Promise<void> {
     processingOutgoingQueue = true;
 
     try {
-        const responses = getResponsesForChannel('whatsapp');
+        const res = await fetch(`${API_BASE}/api/responses/pending?channel=whatsapp`);
+        if (!res.ok) return;
+        const responses = await res.json() as any[];
 
         for (const resp of responses) {
             try {
                 const responseText = resp.message;
-                const messageId = resp.message_id;
+                const messageId = resp.messageId;
                 const sender = resp.sender;
-                const senderId = resp.sender_id;
-                const files: string[] = resp.files ? JSON.parse(resp.files) : [];
+                const senderId = resp.senderId;
+                const files: string[] = resp.files || [];
 
                 // Find pending message, or fall back to senderId for proactive messages
                 const pending = pendingMessages.get(messageId);
@@ -429,10 +427,10 @@ async function checkOutgoingQueue(): Promise<void> {
                     log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
 
                     if (pending) pendingMessages.delete(messageId);
-                    ackResponse(resp.id);
+                    await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
                 } else {
                     log('WARN', `No pending message for ${messageId} and no senderId, acking`);
-                    ackResponse(resp.id);
+                    await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
                 }
             } catch (error) {
                 log('ERROR', `Error processing response ${resp.id}: ${(error as Error).message}`);
@@ -475,7 +473,6 @@ process.on('SIGINT', async () => {
         fs.unlinkSync(readyFile);
     }
 
-    closeQueueDb();
     await client.destroy();
     process.exit(0);
 });
@@ -489,7 +486,6 @@ process.on('SIGTERM', async () => {
         fs.unlinkSync(readyFile);
     }
 
-    closeQueueDb();
     await client.destroy();
     process.exit(0);
 });
