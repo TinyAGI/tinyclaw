@@ -53,14 +53,14 @@ const conversations = new Map<string, Conversation>();
 
 const MAX_CONVERSATION_MESSAGES = 50;
 
-// Recover orphaned files from processing/ on startup (crash recovery)
+// Clean up orphaned files from processing/ on startup
 function recoverOrphanedFiles() {
     for (const f of fs.readdirSync(QUEUE_PROCESSING).filter(f => f.endsWith('.json'))) {
         try {
-            fs.renameSync(path.join(QUEUE_PROCESSING, f), path.join(QUEUE_INCOMING, f));
-            log('INFO', `Recovered orphaned file: ${f}`);
+            fs.unlinkSync(path.join(QUEUE_PROCESSING, f));
+            log('INFO', `Cleared orphaned file: ${f}`);
         } catch (error) {
-            log('ERROR', `Failed to recover orphaned file ${f}: ${(error as Error).message}`);
+            log('ERROR', `Failed to clear orphaned file ${f}: ${(error as Error).message}`);
         }
     }
 }
