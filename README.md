@@ -31,7 +31,7 @@
 - ✅ **Parallel processing** - Agents process messages concurrently
 - ✅ **Live TUI dashboard** - Real-time team visualizer for monitoring agent chains
 - ✅ **Persistent sessions** - Conversation context maintained across restarts
-- ✅ **File-based queue** - No race conditions, reliable message handling
+- ✅ **SQLite queue** - Atomic transactions, retry logic, dead-letter management
 - ✅ **24/7 operation** - Runs in tmux for always-on availability
 
 ## Community 
@@ -320,17 +320,15 @@ See [docs/AGENTS.md](docs/AGENTS.md) for:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Message Channels                         │
-│         (Discord, Telegram, WhatsApp, Heartbeat)            │
+│         (Discord, Telegram, WhatsApp, Web, API)             │
 └────────────────────┬────────────────────────────────────────┘
-                     │ Write message.json
+                     │ enqueueMessage()
                      ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   ~/.tinyclaw/queue/                         │
+│               ~/.tinyclaw/tinyclaw.db (SQLite)               │
 │                                                              │
-│  incoming/          processing/         outgoing/           │
-│  ├─ msg1.json  →   ├─ msg1.json   →   ├─ msg1.json        │
-│  ├─ msg2.json       └─ msg2.json       └─ msg2.json        │
-│  └─ msg3.json                                                │
+│  messages: pending → processing → completed / dead          │
+│  responses: pending → acked                                  │
 │                                                              │
 └────────────────────┬────────────────────────────────────────┘
                      │ Queue Processor
@@ -353,9 +351,10 @@ See [docs/AGENTS.md](docs/AGENTS.md) for:
 
 **Key features:**
 
-- **File-based queue** - Atomic operations, no race conditions
+- **SQLite queue** - Atomic transactions via WAL mode, no race conditions
 - **Parallel agents** - Different agents process messages concurrently
 - **Sequential per agent** - Preserves conversation order within each agent
+- **Retry & dead-letter** - Failed messages retry up to 5 times, then enter dead-letter queue
 - **Isolated workspaces** - Each agent has its own directory and context
 
 <details>
