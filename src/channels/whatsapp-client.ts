@@ -10,7 +10,10 @@ import qrcode from 'qrcode-terminal';
 import fs from 'fs';
 import path from 'path';
 import { ensureSenderPaired } from '../lib/pairing';
-import { initQueueDb, enqueueMessage, getResponsesForChannel, ackResponse, closeQueueDb } from '../lib/queue-db';
+import { initQueueDb, getResponsesForChannel, ackResponse, closeQueueDb } from '../lib/queue-db';
+
+const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
+const API_BASE = `http://localhost:${API_PORT}`;
 
 const SCRIPT_DIR = path.resolve(__dirname, '..', '..');
 const _localTinyclaw = path.join(SCRIPT_DIR, '.tinyclaw');
@@ -331,14 +334,18 @@ client.on('message_create', async (message: Message) => {
             fullMessage = fullMessage ? `${fullMessage}\n\n${fileRefs}` : fileRefs;
         }
 
-        // Write to queue via SQLite
-        enqueueMessage({
-            channel: 'whatsapp',
-            sender: sender,
-            senderId: message.from,
-            message: fullMessage,
-            messageId: messageId,
-            files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
+        // Write to queue via API
+        await fetch(`${API_BASE}/api/message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                channel: 'whatsapp',
+                sender,
+                senderId: message.from,
+                message: fullMessage,
+                messageId,
+                files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
+            }),
         });
 
         log('INFO', `✓ Queued message ${messageId}`);

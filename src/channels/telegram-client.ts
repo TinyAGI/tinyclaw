@@ -14,7 +14,10 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
-import { initQueueDb, enqueueMessage, getResponsesForChannel, ackResponse, closeQueueDb } from '../lib/queue-db';
+import { initQueueDb, getResponsesForChannel, ackResponse, closeQueueDb } from '../lib/queue-db';
+
+const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
+const API_BASE = `http://localhost:${API_PORT}`;
 
 const SCRIPT_DIR = path.resolve(__dirname, '..', '..');
 const _localTinyclaw = path.join(SCRIPT_DIR, '.tinyclaw');
@@ -416,14 +419,18 @@ bot.on('message', async (msg: TelegramBot.Message) => {
             fullMessage = fullMessage ? `${fullMessage}\n\n${fileRefs}` : fileRefs;
         }
 
-        // Write to queue via SQLite
-        enqueueMessage({
-            channel: 'telegram',
-            sender: sender,
-            senderId: senderId,
-            message: fullMessage,
-            messageId: queueMessageId,
-            files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
+        // Write to queue via API
+        await fetch(`${API_BASE}/api/message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                channel: 'telegram',
+                sender,
+                senderId,
+                message: fullMessage,
+                messageId: queueMessageId,
+                files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
+            }),
         });
 
         log('INFO', `Queued message ${queueMessageId}`);

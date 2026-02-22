@@ -517,11 +517,8 @@ log('INFO', 'Queue processor started (SQLite-backed)');
 logAgentConfig();
 emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), teams: Object.keys(getTeams(getSettings())) });
 
-// Event-driven: instant pickup for in-process messages
+// Event-driven: all messages come through the API server (same process)
 queueEvents.on('message:enqueued', () => processQueue());
-
-// Fallback poll for cross-process messages (channel clients writing to DB)
-setInterval(processQueue, 500);
 
 // Periodic maintenance
 setInterval(() => {
