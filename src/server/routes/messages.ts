@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { log, emitEvent } from '../../lib/logging';
-import { enqueueMessage } from '../../lib/queue-db';
+import { enqueueMessage } from '../../lib/db';
 
 const app = new Hono();
 

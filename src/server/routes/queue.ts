@@ -3,8 +3,8 @@ import { Conversation } from '../../lib/types';
 import { log } from '../../lib/logging';
 import {
     getQueueStatus, getRecentResponses, getResponsesForChannel, ackResponse,
-    getDeadMessages, retryDeadMessage, deleteDeadMessage,
-} from '../../lib/queue-db';
+    enqueueResponse, getDeadMessages, retryDeadMessage, deleteDeadMessage,
+} from '../../lib/db';
 
 export function createQueueRoutes(conversations: Map<string, Conversation>) {
     const app = new Hono();
@@ -54,6 +54,34 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
             agent: r.agent,
             files: r.files ? JSON.parse(r.files) : undefined,
         })));
+    });
+
+    // POST /api/responses — enqueue a proactive outgoing message
+    app.post('/api/responses', async (c) => {
+        const body = await c.req.json();
+        const { channel, sender, senderId, message, agent, files } = body as {
+            channel?: string; sender?: string; senderId?: string;
+            message?: string; agent?: string; files?: string[];
+        };
+
+        if (!channel || !sender || !message) {
+            return c.json({ error: 'channel, sender, and message are required' }, 400);
+        }
+
+        const messageId = `proactive_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        enqueueResponse({
+            channel,
+            sender,
+            senderId,
+            message,
+            originalMessage: '',
+            messageId,
+            agent,
+            files: files && files.length > 0 ? files : undefined,
+        });
+
+        log('INFO', `[API] Proactive response enqueued for ${channel}/${sender}`);
+        return c.json({ ok: true, messageId });
     });
 
     // POST /api/responses/:id/ack

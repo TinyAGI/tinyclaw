@@ -122,12 +122,14 @@ export function initQueueDb(): void {
             acked_at INTEGER
         );
 
-        CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status);
-        CREATE INDEX IF NOT EXISTS idx_messages_agent ON messages(agent);
+        CREATE INDEX IF NOT EXISTS idx_messages_status_agent_created
+            ON messages(status, agent, created_at);
         CREATE INDEX IF NOT EXISTS idx_responses_channel_status ON responses(channel, status);
     `);
 
-    // Drop legacy events table if it exists
+    // Drop legacy indexes/tables
+    db.exec('DROP INDEX IF EXISTS idx_messages_status');
+    db.exec('DROP INDEX IF EXISTS idx_messages_agent');
     db.exec('DROP TABLE IF EXISTS events');
 }
 
@@ -314,6 +316,18 @@ export function pruneAckedResponses(olderThanMs = 24 * 60 * 60 * 1000): number {
     const result = getDb().prepare(`
         DELETE FROM responses WHERE status = 'acked' AND acked_at < ?
     `).run(cutoff);
+    return result.changes;
+}
+
+/**
+ * Clean up completed messages older than the given threshold (default 24h).
+ * Dead messages are kept for manual review/retry.
+ */
+export function pruneCompletedMessages(olderThanMs = 24 * 60 * 60 * 1000): number {
+    const cutoff = Date.now() - olderThanMs;
+    const result = getDb().prepare(
+        `DELETE FROM messages WHERE status = 'completed' AND updated_at < ?`
+    ).run(cutoff);
     return result.changes;
 }
 

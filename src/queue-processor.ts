@@ -28,8 +28,8 @@ import { startApiServer } from './server';
 import {
     initQueueDb, claimNextMessage, completeMessage as dbCompleteMessage,
     failMessage, enqueueResponse, getPendingAgents, recoverStaleMessages,
-    pruneAckedResponses, closeQueueDb, queueEvents, DbMessage,
-} from './lib/queue-db';
+    pruneAckedResponses, pruneCompletedMessages, closeQueueDb, queueEvents, DbMessage,
+} from './lib/db';
 import { handleLongResponse, collectFiles } from './lib/response';
 import { conversations, MAX_CONVERSATION_MESSAGES, enqueueInternalMessage, completeConversation } from './lib/conversation';
 
@@ -379,6 +379,11 @@ setInterval(() => {
 setInterval(() => {
     const pruned = pruneAckedResponses();
     if (pruned > 0) log('INFO', `Pruned ${pruned} acked response(s)`);
+}, 60 * 60 * 1000); // every 1 hr
+
+setInterval(() => {
+    const pruned = pruneCompletedMessages();
+    if (pruned > 0) log('INFO', `Pruned ${pruned} completed message(s)`);
 }, 60 * 60 * 1000); // every 1 hr
 
 // Graceful shutdown

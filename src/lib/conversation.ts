@@ -3,7 +3,7 @@ import path from 'path';
 import { Conversation } from './types';
 import { CHATS_DIR, getSettings, getAgents } from './config';
 import { log, emitEvent } from './logging';
-import { enqueueMessage, enqueueResponse } from './queue-db';
+import { enqueueMessage, enqueueResponse } from './db';
 import { handleLongResponse, collectFiles } from './response';
 
 // Active conversations — tracks in-flight team message passing
