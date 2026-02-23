@@ -195,7 +195,7 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
             log('INFO', `✓ Response ready [${channel}] ${sender} via agent:${agentId} (${finalResponse.length} chars)`);
             emitEvent('response_ready', { channel, sender, agentId, responseLength: finalResponse.length, responseText: finalResponse, messageId });
 
-            dbCompleteMessage(dbMsg.id);
+            if (dbMsg.id >= 0) dbCompleteMessage(dbMsg.id);
             return;
         }
 
@@ -267,12 +267,11 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
             log('INFO', `Conversation ${conv.id}: ${conv.pending} branch(es) still pending`);
         }
 
-        // Mark message as completed in DB
-        dbCompleteMessage(dbMsg.id);
+        if (dbMsg.id >= 0) dbCompleteMessage(dbMsg.id);
 
     } catch (error) {
         log('ERROR', `Processing error: ${(error as Error).message}`);
-        failMessage(dbMsg.id, (error as Error).message);
+        if (dbMsg.id >= 0) failMessage(dbMsg.id, (error as Error).message);
     }
 }
 
@@ -356,8 +355,27 @@ log('INFO', 'Queue processor started (SQLite-backed)');
 logAgentConfig();
 emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), teams: Object.keys(getTeams(getSettings())) });
 
-// Event-driven: all messages come through the API server (same process)
+// Event-driven: external messages come through the API server (SQLite-backed)
 queueEvents.on('message:enqueued', () => processQueue());
+
+// In-memory dispatch: inter-agent messages bypass SQLite entirely
+queueEvents.on('internal:dispatch', (data) => {
+    const agentId = data.agent || 'default';
+    const dbMsg: DbMessage = {
+        id: -1, message_id: data.messageId, channel: data.channel,
+        sender: data.sender, sender_id: data.senderId ?? null,
+        message: data.message, agent: data.agent, files: null,
+        conversation_id: data.conversationId, from_agent: data.fromAgent,
+        status: 'processing', retry_count: 0, last_error: null,
+        created_at: Date.now(), updated_at: Date.now(), claimed_by: null,
+    };
+    const chain = agentProcessingChains.get(agentId) || Promise.resolve();
+    const next = chain.then(() => processMessage(dbMsg)).catch(e =>
+        log('ERROR', `Internal dispatch error for ${agentId}: ${e.message}`)
+    );
+    agentProcessingChains.set(agentId, next);
+    next.finally(() => { if (agentProcessingChains.get(agentId) === next) agentProcessingChains.delete(agentId); });
+});
 
 // Periodic maintenance
 setInterval(() => {

@@ -3,7 +3,7 @@ import path from 'path';
 import { Conversation } from './types';
 import { CHATS_DIR, getSettings, getAgents } from './config';
 import { log, emitEvent } from './logging';
-import { enqueueMessage, enqueueResponse } from './db';
+import { enqueueResponse, queueEvents } from './db';
 import { handleLongResponse, collectFiles } from './response';
 
 // Active conversations — tracks in-flight team message passing
@@ -12,7 +12,8 @@ export const conversations = new Map<string, Conversation>();
 export const MAX_CONVERSATION_MESSAGES = 50;
 
 /**
- * Enqueue an internal (agent-to-agent) message into the SQLite queue.
+ * Dispatch an internal (agent-to-agent) message in-memory via event emitter.
+ * Bypasses SQLite — these messages are ephemeral and don't need persistence.
  */
 export function enqueueInternalMessage(
     conversationId: string,
@@ -21,18 +22,17 @@ export function enqueueInternalMessage(
     message: string,
     originalData: { channel: string; sender: string; senderId?: string | null; messageId: string }
 ): void {
-    const messageId = `internal_${conversationId}_${targetAgent}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    enqueueMessage({
+    queueEvents.emit('internal:dispatch', {
         channel: originalData.channel,
         sender: originalData.sender,
         senderId: originalData.senderId ?? undefined,
         message,
-        messageId,
+        messageId: `internal_${conversationId}_${targetAgent}_${Date.now()}`,
         agent: targetAgent,
         conversationId,
         fromAgent,
     });
-    log('INFO', `Enqueued internal message: @${fromAgent} → @${targetAgent}`);
+    log('INFO', `Internal dispatch: @${fromAgent} → @${targetAgent}`);
 }
 
 /**
