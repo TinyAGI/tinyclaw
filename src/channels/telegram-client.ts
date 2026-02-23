@@ -167,6 +167,27 @@ function splitMessage(text: string, maxLength = 4096): string[] {
     return chunks;
 }
 
+async function sendTelegramMessage(
+    chatId: number,
+    text: string,
+    options: TelegramBot.SendMessageOptions = {},
+): Promise<void> {
+    try {
+        await bot.sendMessage(chatId, text, {
+            ...options,
+            parse_mode: 'Markdown',
+        });
+    } catch (error) {
+        const message = (error as Error).message || '';
+        if (!message.toLowerCase().includes("can't parse entities")) {
+            throw error;
+        }
+
+        log('WARN', 'Failed to parse Telegram Markdown, retrying without Markdown parsing');
+        await bot.sendMessage(chatId, text, options);
+    }
+}
+
 // Download a file from URL to local path
 function downloadFile(url: string, destPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -188,7 +209,7 @@ function downloadFile(url: string, destPath: string): Promise<void> {
         }
 
         request.on('error', (err) => {
-            fs.unlink(destPath, () => {}); // Clean up on error
+            fs.unlink(destPath, () => { }); // Clean up on error
             reject(err);
         });
     });
@@ -504,13 +525,13 @@ async function checkOutgoingQueue(): Promise<void> {
                         const chunks = splitMessage(responseText);
 
                         if (chunks.length > 0) {
-                            await bot.sendMessage(targetChatId, chunks[0]!, pending
+                            await sendTelegramMessage(targetChatId, chunks[0]!, pending
                                 ? { reply_to_message_id: pending.messageId }
                                 : {},
                             );
                         }
                         for (let i = 1; i < chunks.length; i++) {
-                            await bot.sendMessage(targetChatId, chunks[i]!);
+                            await sendTelegramMessage(targetChatId, chunks[i]!);
                         }
                     }
 
