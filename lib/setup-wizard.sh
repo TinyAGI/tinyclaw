@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # TinyClaw Setup Wizard
+# Usage: ./setup-wizard.sh [--cli-only]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -10,6 +11,112 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
+
+# Check for --cli-only flag
+CLI_ONLY=false
+if [ "$1" = "--cli-only" ]; then
+    CLI_ONLY=true
+fi
+
+if [ "$CLI_ONLY" = true ]; then
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}  TinyClaw - CLI-Only Quick Setup${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # Set defaults
+    WORKSPACE_PATH="${TINYCLAW_WORKSPACE:-$HOME/tinyclaw-workspace}"
+    WORKSPACE_NAME="$(basename "$WORKSPACE_PATH")"
+    PROVIDER="opencode"
+    MODEL="sonnet"
+    DEFAULT_AGENT_NAME="assistant"
+    HEARTBEAT_INTERVAL=3600
+    
+    echo -e "${BLUE}Quick Setup Configuration:${NC}"
+    echo "  Workspace: $WORKSPACE_PATH"
+    echo "  Provider: OpenCode"
+    echo "  Model: sonnet"
+    echo "  Mode: CLI-only (no messaging channels)"
+    echo ""
+    
+    # Create settings.json directly
+    mkdir -p "$HOME/.tinyclaw"
+    
+    cat > "$SETTINGS_FILE" <<EOF
+{
+  "workspace": {
+    "path": "${WORKSPACE_PATH}",
+    "name": "${WORKSPACE_NAME}"
+  },
+  "channels": {
+    "enabled": [],
+    "discord": { "bot_token": "" },
+    "telegram": { "bot_token": "" },
+    "whatsapp": {}
+  },
+  "agents": {
+    "default": {
+      "name": "${DEFAULT_AGENT_NAME}",
+      "provider": "${PROVIDER}",
+      "model": "${MODEL}",
+      "working_directory": "${WORKSPACE_PATH}/default"
+    }
+  },
+  "models": {
+    "provider": "${PROVIDER}",
+    "${PROVIDER}": { "model": "${MODEL}" }
+  },
+  "monitoring": {
+    "heartbeat_interval": ${HEARTBEAT_INTERVAL}
+  }
+}
+EOF
+    
+    # Create workspace and agent directories
+    mkdir -p "$WORKSPACE_PATH"
+    mkdir -p "$WORKSPACE_PATH/default"
+    mkdir -p "$HOME/.tinyclaw/files"
+    mkdir -p "$HOME/.tinyclaw/logs"
+    
+    # Copy templates
+    if [ -d "$PROJECT_ROOT/.claude" ]; then
+        cp -r "$PROJECT_ROOT/.claude" "$HOME/.tinyclaw/"
+        cp -r "$PROJECT_ROOT/.claude" "$WORKSPACE_PATH/default/"
+    fi
+    if [ -f "$PROJECT_ROOT/heartbeat.md" ]; then
+        cp "$PROJECT_ROOT/heartbeat.md" "$HOME/.tinyclaw/"
+        cp "$PROJECT_ROOT/heartbeat.md" "$WORKSPACE_PATH/default/"
+    fi
+    if [ -f "$PROJECT_ROOT/AGENTS.md" ]; then
+        cp "$PROJECT_ROOT/AGENTS.md" "$HOME/.tinyclaw/"
+        cp "$PROJECT_ROOT/AGENTS.md" "$WORKSPACE_PATH/default/"
+    fi
+    
+    # Create .opencode structure
+    mkdir -p "$WORKSPACE_PATH/default/.opencode/skills"
+    if [ -d "$PROJECT_ROOT/.agents/skills" ]; then
+        for skill in "$PROJECT_ROOT/.agents/skills"/*/; do
+            skill_name=$(basename "$skill")
+            ln -sf "$skill" "$WORKSPACE_PATH/default/.opencode/skills/$skill_name" 2>/dev/null || true
+        done
+    fi
+    
+    # Copy opencode.json if it exists
+    if [ -f "$PROJECT_ROOT/opencode.json" ]; then
+        cp "$PROJECT_ROOT/opencode.json" "$WORKSPACE_PATH/default/"
+    fi
+    
+    echo -e "${GREEN}✓ CLI-only configuration created${NC}"
+    echo ""
+    echo -e "${BLUE}Next steps:${NC}"
+    echo "  1. Start TinyClaw: ./tinyclaw.sh start"
+    echo "  2. Send messages:   ./tinyclaw.sh send 'Hello!'"
+    echo "  3. Add more agents: ./tinyclaw.sh agent add"
+    echo ""
+    echo "Configuration saved to: $SETTINGS_FILE"
+    exit 0
+fi
 
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -41,6 +148,7 @@ declare -A CHANNEL_TOKEN_HELP=(
 
 # Channel selection - simple checklist
 echo "Which messaging channels (Telegram, Discord, WhatsApp) do you want to enable?"
+echo "(You can skip all and use CLI-only mode)"
 echo ""
 
 ENABLED_CHANNELS=()
@@ -54,8 +162,9 @@ done
 echo ""
 
 if [ ${#ENABLED_CHANNELS[@]} -eq 0 ]; then
-    echo -e "${RED}No channels selected. At least one channel is required.${NC}"
-    exit 1
+    echo -e "${YELLOW}No channels selected. Running in CLI-only mode.${NC}"
+    echo "You can still use: tinyclaw send, API, and TinyOffice web portal."
+    echo ""
 fi
 
 # Collect tokens for channels that need them

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "agent": {
+    "build": {
+      "mode": "primary",
+      "description": "Build agent with full tool access for development work",
+      "prompt": "You are a helpful AI assistant working on the TinyClaw project. You have access to all tools including file operations, bash commands, and skills. Use skills when appropriate for specialized tasks.",
+      "tools": {
+        "skill": true,
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    },
+    "plan": {
+      "mode": "primary",
+      "description": "Planning agent for analysis without making changes",
+      "prompt": "You are a planning agent for the TinyClaw project. Analyze code, suggest changes, and create implementation plans without making modifications. Focus on understanding requirements and providing actionable recommendations.",
+      "tools": {
+        "skill": true,
+        "write": false,
+        "edit": false,
+        "bash": false
+      },
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "coder": {
+      "mode": "primary",
+      "description": "Specialized agent for code development and debugging",
+      "prompt": "You are a specialized coding agent. Focus on writing clean, well-tested code. Use the skill tool for browser automation (agent-browser) and other specialized tasks when needed.",
+      "tools": {
+        "skill": true,
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    },
+    "reviewer": {
+      "mode": "primary",
+      "description": "Code review agent focused on quality and best practices",
+      "prompt": "You are a code reviewer. Focus on security, performance, and maintainability. Provide constructive feedback without making direct changes.",
+      "tools": {
+        "skill": true,
+        "write": false,
+        "edit": false,
+        "bash": false
+      },
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "writer": {
+      "mode": "primary",
+      "description": "Technical writer for documentation and content",
+      "prompt": "You are a technical writer. Create clear, comprehensive documentation. Focus on clear explanations, proper structure, code examples, and user-friendly language.",
+      "tools": {
+        "skill": true,
+        "write": true,
+        "edit": true,
+        "bash": false
+      },
+      "permission": {
+        "bash": "deny"
+      }
+    },
+    "assistant": {
+      "mode": "primary",
+      "description": "General purpose assistant for everyday tasks",
+      "prompt": "You are a helpful general-purpose assistant. Handle a variety of tasks including answering questions, helping with configuration, and providing guidance. Use skills when appropriate.",
+      "tools": {
+        "skill": true,
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    }
+  },
+  "permission": {
+    "skill": {
+      "*": "allow",
+      "agent-browser": "allow",
+      "imagegen": "allow",
+      "schedule": "allow",
+      "send-user-message": "allow",
+      "skill-creator": "allow"
+    }
+  },
+  "tools": {
+    "skill": true
+  }
+}

@@ -24,20 +24,27 @@ export function copyDirSync(src: string, dest: string): void {
 
 /**
  * Ensure agent directory exists with template files copied from TINYCLAW_HOME.
- * Creates directory if it doesn't exist and copies .claude/, heartbeat.md, and AGENTS.md.
+ * Creates directory if it doesn't exist and copies .claude/, .opencode/, heartbeat.md, and AGENTS.md.
  */
-export function ensureAgentDirectory(agentDir: string): void {
+export function ensureAgentDirectory(agentDir: string, provider?: string): void {
     if (fs.existsSync(agentDir)) {
         return; // Directory already exists
     }
 
     fs.mkdirSync(agentDir, { recursive: true });
 
-    // Copy .claude directory
+    // Copy .claude directory (for Claude Code CLI compatibility)
     const sourceClaudeDir = path.join(SCRIPT_DIR, '.claude');
     const targetClaudeDir = path.join(agentDir, '.claude');
     if (fs.existsSync(sourceClaudeDir)) {
         copyDirSync(sourceClaudeDir, targetClaudeDir);
+    }
+
+    // Copy .opencode directory (for Opencode CLI compatibility)
+    const sourceOpencodeDir = path.join(SCRIPT_DIR, '.opencode');
+    const targetOpencodeDir = path.join(agentDir, '.opencode');
+    if (fs.existsSync(sourceOpencodeDir)) {
+        copyDirSync(sourceOpencodeDir, targetOpencodeDir);
     }
 
     // Copy heartbeat.md
@@ -60,6 +67,12 @@ export function ensureAgentDirectory(agentDir: string): void {
         fs.copyFileSync(sourceAgents, path.join(agentDir, '.claude', 'CLAUDE.md'));
     }
 
+    // Copy AGENTS.md as .opencode/AGENTS.md (Opencode format)
+    if (fs.existsSync(sourceAgents)) {
+        fs.mkdirSync(path.join(agentDir, '.opencode'), { recursive: true });
+        fs.copyFileSync(sourceAgents, path.join(agentDir, '.opencode', 'AGENTS.md'));
+    }
+
     // Symlink skills directory into .claude/skills
     // Prefer .agent/skills, fall back to .agents/skills
     const sourceSkills = fs.existsSync(path.join(SCRIPT_DIR, '.agent', 'skills'))
@@ -69,6 +82,13 @@ export function ensureAgentDirectory(agentDir: string): void {
     if (fs.existsSync(sourceSkills) && !fs.existsSync(targetClaudeSkills)) {
         fs.mkdirSync(path.join(agentDir, '.claude'), { recursive: true });
         fs.symlinkSync(sourceSkills, targetClaudeSkills);
+    }
+
+    // Symlink skills directory into .opencode/skills (Opencode format)
+    const targetOpencodeSkills = path.join(agentDir, '.opencode', 'skills');
+    if (fs.existsSync(sourceSkills) && !fs.existsSync(targetOpencodeSkills)) {
+        fs.mkdirSync(path.join(agentDir, '.opencode'), { recursive: true });
+        fs.symlinkSync(sourceSkills, targetOpencodeSkills);
     }
 
     // Symlink .agent/skills to .claude/skills for agent-level access
@@ -85,6 +105,28 @@ export function ensureAgentDirectory(agentDir: string): void {
     const sourceSoul = path.join(SCRIPT_DIR, 'SOUL.md');
     if (fs.existsSync(sourceSoul)) {
         fs.copyFileSync(sourceSoul, path.join(targetTinyclaw, 'SOUL.md'));
+    }
+
+    // Create per-agent opencode.json if provider is opencode
+    if (provider === 'opencode') {
+        const opencodeConfigPath = path.join(agentDir, 'opencode.json');
+        if (!fs.existsSync(opencodeConfigPath)) {
+            const opencodeConfig = {
+                $schema: 'https://opencode.ai/config.json',
+                instructions: ['AGENTS.md'],
+                agent: {
+                    build: {
+                        mode: 'primary',
+                        prompt: 'You are a helpful AI assistant. Use available skills when appropriate.',
+                        tools: { skill: true }
+                    }
+                },
+                permission: {
+                    skill: { '*': 'allow' }
+                }
+            };
+            fs.writeFileSync(opencodeConfigPath, JSON.stringify(opencodeConfig, null, 2));
+        }
     }
 }
 

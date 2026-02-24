@@ -95,17 +95,25 @@ load_settings() {
 
     # Read enabled channels array
     local channels_json
-    channels_json=$(jq -r '.channels.enabled[]' "$SETTINGS_FILE" 2>/dev/null)
-
-    if [ -z "$channels_json" ]; then
+    # Check if enabled field exists (even if empty array) - returns "null" if missing
+    local enabled_exists
+    enabled_exists=$(jq -r '.channels.enabled // "MISSING"' "$SETTINGS_FILE" 2>/dev/null)
+    
+    if [ "$enabled_exists" = "MISSING" ]; then
+        # Field doesn't exist - old config format
         return 1
     fi
-
-    # Parse into array
+    
+    # Field exists - read the array (may be empty for CLI-only mode)
+    channels_json=$(jq -r '.channels.enabled[]' "$SETTINGS_FILE" 2>/dev/null)
+    
+    # Parse into array (empty is OK for CLI-only mode)
     ACTIVE_CHANNELS=()
-    while IFS= read -r ch; do
-        ACTIVE_CHANNELS+=("$ch")
-    done <<< "$channels_json"
+    if [ -n "$channels_json" ]; then
+        while IFS= read -r ch; do
+            ACTIVE_CHANNELS+=("$ch")
+        done <<< "$channels_json"
+    fi
 
     # Load tokens for each channel from nested structure
     for ch in "${ALL_CHANNELS[@]}"; do

@@ -40,7 +40,11 @@ source "$SCRIPT_DIR/lib/update.sh"
 
 case "${1:-}" in
     start)
-        start_daemon
+        if [ "$2" = "--no-tmux" ]; then
+            NO_TMUX=true start_daemon
+        else
+            start_daemon
+        fi
         ;;
     stop)
         stop_daemon
@@ -50,7 +54,11 @@ case "${1:-}" in
         ;;
     __delayed_start)
         sleep 2
-        start_daemon
+        if [ "$2" = "--no-tmux" ]; then
+            NO_TMUX=true start_daemon
+        else
+            start_daemon
+        fi
         ;;
     status)
         status_daemon
@@ -61,6 +69,22 @@ case "${1:-}" in
             exit 1
         fi
         send_message "$2" "cli"
+        ;;
+    receive)
+        # Check for --wait flag
+        if [ "$2" = "--wait" ] || [ "$2" = "-w" ]; then
+            receive_message true "${3:-30}"
+        else
+            receive_message false
+        fi
+        ;;
+    chat)
+        # Send message and wait for response
+        if [ -z "$2" ]; then
+            echo "Usage: $0 chat <message>"
+            exit 1
+        fi
+        send_and_receive "$2" "cli"
         ;;
     logs)
         logs "$2"
@@ -382,7 +406,11 @@ case "${1:-}" in
         tmux attach -t "$TMUX_SESSION"
         ;;
     setup)
-        "$SCRIPT_DIR/lib/setup-wizard.sh"
+        if [ "$2" = "--cli-only" ]; then
+            "$SCRIPT_DIR/lib/setup-wizard.sh" --cli-only
+        else
+            "$SCRIPT_DIR/lib/setup-wizard.sh"
+        fi
         ;;
     update)
         do_update
@@ -395,11 +423,15 @@ case "${1:-}" in
         echo ""
         echo "Commands:"
         echo "  start                    Start TinyClaw"
+        echo "  start --no-tmux          Start without tmux (background mode)"
         echo "  stop                     Stop all processes"
         echo "  restart                  Restart TinyClaw"
         echo "  status                   Show current status"
         echo "  setup                    Run setup wizard (change channels/provider/model/heartbeat)"
-        echo "  send <msg>               Send message to AI manually"
+        echo "  setup --cli-only         Quick setup for CLI-only mode (no messaging channels)"
+        echo "  send <msg>               Send message to AI"
+        echo "  receive [--wait] [secs]  Receive pending responses"
+        echo "  chat <msg>               Send message and wait for response"
         echo "  logs [type]              View logs ($local_names|heartbeat|daemon|queue|all)"
         echo "  reset <id> [id2 ...]     Reset specific agent conversation(s)"
         echo "  channels reset <channel> Reset channel auth ($local_names)"
@@ -413,6 +445,8 @@ case "${1:-}" in
         echo ""
         echo "Examples:"
         echo "  $0 start"
+        echo "  $0 start --no-tmux        # Start without tmux (for CLI-only)"
+        echo "  $0 setup --cli-only       # Quick CLI-only setup"
         echo "  $0 status"
         echo "  $0 provider openai --model gpt-5.3-codex"
         echo "  $0 model opus"
@@ -425,6 +459,9 @@ case "${1:-}" in
         echo "  $0 pairing pending"
         echo "  $0 pairing approve ABCD1234"
         echo "  $0 pairing unpair telegram 123456789"
+        echo "  $0 send 'Hello!'"
+        echo "  $0 chat 'What can you do?'"
+        echo "  $0 receive --wait 60"
         echo "  $0 send '@coder fix the bug'"
         echo "  $0 send '@dev fix the auth bug'"
         echo "  $0 channels reset whatsapp"
