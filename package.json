@@ -1,38 +1,13 @@
 {
-  "name": "tinyclaw",
-  "version": "0.0.6",
-  "description": "Multi-agent, multi-team, multi-channel 24/7 AI assistant",
+  "name": "tinyagi",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.visualizer.json && echo '{\"type\":\"module\"}' > dist/visualizer/package.json",
-    "build:main": "tsc",
-    "build:visualizer": "tsc -p tsconfig.visualizer.json && echo '{\"type\":\"module\"}' > dist/visualizer/package.json",
-    "whatsapp": "node dist/channels/whatsapp-client.js",
-    "discord": "node dist/channels/discord-client.js",
-    "telegram": "node dist/channels/telegram-client.js",
-    "queue": "node dist/queue-processor.js",
-    "visualize": "node dist/visualizer/team-visualizer.js"
-  },
-  "dependencies": {
-    "@hono/node-server": "^1.19.9",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/react": "^19.2.14",
-    "better-sqlite3": "^12.6.2",
-    "discord.js": "^14.16.0",
-    "dotenv": "^16.4.0",
-    "hono": "^4.12.1",
-    "ink": "^6.7.0",
-    "ink-gradient": "^4.0.0",
-    "ink-spinner": "^5.0.0",
-    "jsonrepair": "^3.13.2",
-    "node-telegram-bot-api": "^0.67.0",
-    "qrcode-terminal": "^0.12.0",
-    "react": "^19.2.4",
-    "whatsapp-web.js": "^1.34.6"
-  },
-  "devDependencies": {
-    "@types/node": "^25.2.2",
-    "@types/node-telegram-bot-api": "^0.64.13",
-    "@types/qrcode-terminal": "^0.12.2",
-    "typescript": "^5.9.3"
+    "build": "npm run build -w packages/tinyclaw",
+    "build:tinyclaw": "npm run build -w packages/tinyclaw",
+    "build:tinyoffice": "npm run build -w packages/tinyoffice",
+    "dev:tinyoffice": "npm run dev -w packages/tinyoffice"
   }
 }

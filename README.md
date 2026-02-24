@@ -412,36 +412,39 @@ See [docs/QUEUE.md](docs/QUEUE.md) for:
 ## 📁 Directory Structure
 
 ```
-tinyclaw/
-├── .tinyclaw/            # TinyClaw data
-│   ├── settings.json     # Configuration
-│   ├── queue/            # Message queue
-│   │   ├── incoming/
-│   │   ├── processing/
-│   │   └── outgoing/
-│   ├── logs/             # All logs
-│   ├── channels/         # Channel state
-│   ├── files/            # Uploaded files
-│   ├── pairing.json      # Sender allowlist state (pending + approved)
-│   ├── chats/            # Team chain chat history
-│   │   └── {team_id}/    # Per-team chat logs
-│   ├── events/           # Real-time event files
-│   ├── .claude/          # Template for agents
-│   ├── heartbeat.md      # Template for agents
-│   └── AGENTS.md         # Template for agents
-├── ~/tinyclaw-workspace/ # Agent workspaces
-│   ├── coder/
-│   │   ├── .claude/
-│   │   ├── heartbeat.md
-│   │   └── AGENTS.md
-│   ├── writer/
-│   └── assistant/
-├── src/                  # TypeScript sources
-├── dist/                 # Compiled output
-├── lib/                  # Runtime scripts
-├── scripts/              # Installation scripts
-├── tinyoffice/           # TinyOffice web portal (Next.js)
-└── tinyclaw.sh           # Main script
+tinyagi/                          # Monorepo root
+├── packages/
+│   ├── tinyclaw/                 # Core CLI/daemon
+│   │   ├── src/                  # TypeScript sources
+│   │   ├── dist/                 # Compiled output
+│   │   ├── lib/                  # Runtime bash scripts
+│   │   ├── bin/                  # CLI wrapper
+│   │   ├── scripts/              # Installation scripts
+│   │   ├── .agents/              # Agent skill definitions
+│   │   └── tinyclaw.sh           # Main script
+│   └── tinyoffice/               # Web portal (Next.js)
+│       └── src/                  # Next.js app
+├── docs/                         # Shared documentation
+├── .github/                      # CI/CD workflows
+├── package.json                  # Workspace root
+└── README.md
+```
+
+**Runtime data** (not in repo):
+```
+~/.tinyclaw/                      # TinyClaw data directory
+├── settings.json                 # Configuration
+├── tinyclaw.db                   # SQLite queue database
+├── logs/                         # All logs
+├── channels/                     # Channel state
+├── pairing.json                  # Sender allowlist
+├── chats/                        # Team chain chat history
+└── events/                       # Real-time event files
+
+~/tinyclaw-workspace/             # Agent workspaces
+├── coder/
+├── writer/
+└── assistant/
 ```
 
 ## ⚙️ Configuration

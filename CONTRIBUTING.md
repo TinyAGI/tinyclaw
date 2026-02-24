@@ -14,23 +14,31 @@ npm run build
 ## Development
 
 ```bash
-# Build TypeScript
-npm run build
+# Build TinyClaw
+npm run build -w packages/tinyclaw
 
 # Run locally
-./tinyclaw.sh start
+./packages/tinyclaw/tinyclaw.sh start
 
 # View logs
-./tinyclaw.sh logs all
+./packages/tinyclaw/tinyclaw.sh logs all
+
+# Run TinyOffice dev server
+npm run dev -w packages/tinyoffice
 ```
 
 ### Project Structure
 
-- `src/` - TypeScript source (queue processor, channel clients, routing)
-- `lib/` - Bash scripts (daemon, setup wizard, messaging)
-- `scripts/` - Installation and bundling scripts
-- `.agents/skills/` - Agent skill definitions
-- `docs/` - Documentation
+This is a monorepo with two packages:
+
+- `packages/tinyclaw/` - Core CLI and daemon
+  - `src/` - TypeScript source (queue processor, channel clients, routing)
+  - `lib/` - Bash scripts (daemon, setup wizard, messaging)
+  - `scripts/` - Installation and bundling scripts
+  - `.agents/skills/` - Agent skill definitions
+- `packages/tinyoffice/` - Web portal (Next.js)
+  - `src/` - Next.js app with React components
+- `docs/` - Shared documentation
 
 ## Submitting Changes
 

@@ -1,9 +1,11 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # TypeScript build output
 dist/
+
+# Next.js build output
+.next/
 
 # TinyClaw runtime files
 .tinyclaw
@@ -13,6 +15,7 @@ dist/
 
 # Environment variables
 .env
+.env.local
 
 # OS files
 .DS_Store
@@ -21,3 +24,6 @@ dist/
 .vscode/
 .idea/
 *.swp
+
+# Lock files (tracked per-package)
+/package-lock.json

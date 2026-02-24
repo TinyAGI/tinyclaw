@@ -12,6 +12,9 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/tinyclaw
 
     steps:
       - name: Checkout code
@@ -25,6 +28,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
+          cache-dependency-path: packages/tinyclaw/package-lock.json
 
       - name: Get version from tag
         id: get_version
@@ -56,15 +60,17 @@ jobs:
 
           mkdir -p "$BUNDLE_DIR"
 
-          # Copy necessary files
+          # Copy necessary files from packages/tinyclaw/
           cp -r bin/ "$BUNDLE_DIR/"
           cp -r src/ "$BUNDLE_DIR/"
           cp -r dist/ "$BUNDLE_DIR/"
           cp -r node_modules/ "$BUNDLE_DIR/"
           cp -r scripts/ "$BUNDLE_DIR/"
           cp -r lib/ "$BUNDLE_DIR/"
-          cp -r docs/ "$BUNDLE_DIR/"
           cp -r .agents/ "$BUNDLE_DIR/"
+
+          # Copy docs from repo root
+          cp -r "$GITHUB_WORKSPACE/docs/" "$BUNDLE_DIR/"
 
           cp tinyclaw.sh "$BUNDLE_DIR/"
 
@@ -72,11 +78,11 @@ jobs:
           cp package-lock.json "$BUNDLE_DIR/"
           cp tsconfig.json "$BUNDLE_DIR/"
           cp tsconfig.visualizer.json "$BUNDLE_DIR/"
-          cp README.md "$BUNDLE_DIR/"
+          cp "$GITHUB_WORKSPACE/README.md" "$BUNDLE_DIR/"
           cp AGENTS.md "$BUNDLE_DIR/"
           cp SOUL.md "$BUNDLE_DIR/"
           cp heartbeat.md "$BUNDLE_DIR/"
-          cp .gitignore "$BUNDLE_DIR/"
+          cp "$GITHUB_WORKSPACE/.gitignore" "$BUNDLE_DIR/"
 
           # Make scripts executable
           chmod +x "$BUNDLE_DIR/bin/tinyclaw"
@@ -101,6 +107,7 @@ jobs:
 
       - name: Extract release notes from tag
         id: release_notes
+        working-directory: ${{ github.workspace }}
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           # Use for-each-ref to reliably get the annotated tag message (not the commit message)
