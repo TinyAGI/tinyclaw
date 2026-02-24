@@ -59,7 +59,7 @@ export async function invokeAgent(
     // Ensure agent directory exists with config files
     const agentDir = path.join(workspacePath, agentId);
     const isNewAgent = !fs.existsSync(agentDir);
-    ensureAgentDirectory(agentDir);
+    ensureAgentDirectory(agentDir, agent.provider);
     if (isNewAgent) {
         log('INFO', `Initialized agent directory with config files: ${agentDir}`);
     }
@@ -117,8 +117,9 @@ export async function invokeAgent(
         // Outputs JSONL with --format json; extract "text" type events for the response.
         // Model passed via --model in provider/model format (e.g. opencode/claude-sonnet-4-5).
         // Supports -c flag for conversation continuation (resumes last session).
+        // Uses --agent to specify a custom agent configuration from opencode.json
         const modelId = resolveOpenCodeModel(agent.model);
-        log('INFO', `Using OpenCode CLI (agent: ${agentId}, model: ${modelId})`);
+        log('INFO', `Using OpenCode CLI (agent: ${agentId}, model: ${modelId || 'default'})`);
 
         const continueConversation = !shouldReset;
 
@@ -133,6 +134,8 @@ export async function invokeAgent(
         if (continueConversation) {
             opencodeArgs.push('-c');
         }
+        // Use agentId as the agent name for custom agent configuration
+        opencodeArgs.push('--agent', agentId);
         opencodeArgs.push(message);
 
         const opencodeOutput = await runCommand('opencode', opencodeArgs, workingDir);

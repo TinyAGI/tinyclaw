@@ -2,8 +2,22 @@
 # Daemon lifecycle management for TinyClaw
 # Handles starting, stopping, restarting, and status checking
 
+# Global flag for no-tmux mode
+NO_TMUX=false
+
 # Start daemon
 start_daemon() {
+    if [ "$NO_TMUX" = true ]; then
+        start_daemon_no_tmux
+        return $?
+    fi
+    
+    if ! command -v tmux &> /dev/null; then
+        echo -e "${YELLOW}tmux not found. Running in no-tmux mode...${NC}"
+        start_daemon_no_tmux
+        return $?
+    fi
+    
     if session_exists; then
         echo -e "${YELLOW}Session already running${NC}"
         return 1
@@ -81,8 +95,9 @@ start_daemon() {
     fi
 
     if [ ${#ACTIVE_CHANNELS[@]} -eq 0 ]; then
-        echo -e "${RED}No channels configured. Run 'tinyclaw setup' to reconfigure${NC}"
-        return 1
+        echo -e "${YELLOW}No messaging channels configured. Running in CLI-only mode.${NC}"
+        echo "Use 'tinyclaw send' or the API to interact with agents."
+        echo ""
     fi
 
     # Ensure all agent workspaces have .agents/skills symlink
@@ -133,37 +148,41 @@ start_daemon() {
     # Total panes = N channels + 3 (queue, heartbeat, logs)
     local total_panes=$(( ${#ACTIVE_CHANNELS[@]} + 3 ))
 
+    # Create session with window name "tinyclaw"
     tmux new-session -d -s "$TMUX_SESSION" -n "tinyclaw" -c "$SCRIPT_DIR"
-
-    # Create remaining panes (pane 0 already exists)
+    
+    # Use window name for targeting (works regardless of base-index)
+    local window_target="$TMUX_SESSION:tinyclaw"
+    
+    # Create remaining panes using window name
     for ((i=1; i<total_panes; i++)); do
-        tmux split-window -t "$TMUX_SESSION" -c "$SCRIPT_DIR"
-        tmux select-layout -t "$TMUX_SESSION" tiled  # rebalance after each split
+        tmux split-window -t "$window_target" -c "$SCRIPT_DIR"
+        tmux select-layout -t "$window_target" tiled
     done
 
-    # Assign channel panes
+    # Assign channel panes using window name and pane indices
     local pane_idx=0
     local whatsapp_pane=-1
     for ch in "${ACTIVE_CHANNELS[@]}"; do
         [ "$ch" = "whatsapp" ] && whatsapp_pane=$pane_idx
-        tmux send-keys -t "$TMUX_SESSION:0.$pane_idx" "cd '$SCRIPT_DIR' && node ${CHANNEL_SCRIPT[$ch]}" C-m
-        tmux select-pane -t "$TMUX_SESSION:0.$pane_idx" -T "${CHANNEL_DISPLAY[$ch]}"
+        tmux send-keys -t "$window_target.$pane_idx" "cd '$SCRIPT_DIR' && node ${CHANNEL_SCRIPT[$ch]}" C-m
+        tmux select-pane -t "$window_target.$pane_idx" -T "${CHANNEL_DISPLAY[$ch]}"
         pane_idx=$((pane_idx + 1))
     done
 
     # Queue pane
-    tmux send-keys -t "$TMUX_SESSION:0.$pane_idx" "cd '$SCRIPT_DIR' && node dist/queue-processor.js" C-m
-    tmux select-pane -t "$TMUX_SESSION:0.$pane_idx" -T "Queue"
+    tmux send-keys -t "$window_target.$pane_idx" "cd '$SCRIPT_DIR' && node dist/queue-processor.js" C-m
+    tmux select-pane -t "$window_target.$pane_idx" -T "Queue"
     pane_idx=$((pane_idx + 1))
 
     # Heartbeat pane
-    tmux send-keys -t "$TMUX_SESSION:0.$pane_idx" "cd '$SCRIPT_DIR' && ./lib/heartbeat-cron.sh" C-m
-    tmux select-pane -t "$TMUX_SESSION:0.$pane_idx" -T "Heartbeat"
+    tmux send-keys -t "$window_target.$pane_idx" "cd '$SCRIPT_DIR' && ./lib/heartbeat-cron.sh" C-m
+    tmux select-pane -t "$window_target.$pane_idx" -T "Heartbeat"
     pane_idx=$((pane_idx + 1))
 
     # Logs pane
-    tmux send-keys -t "$TMUX_SESSION:0.$pane_idx" "cd '$SCRIPT_DIR' && $log_tail_cmd" C-m
-    tmux select-pane -t "$TMUX_SESSION:0.$pane_idx" -T "Logs"
+    tmux send-keys -t "$window_target.$pane_idx" "cd '$SCRIPT_DIR' && $log_tail_cmd" C-m
+    tmux select-pane -t "$window_target.$pane_idx" -T "Logs"
 
     echo ""
     echo -e "${GREEN}✓ TinyClaw started${NC}"
@@ -249,12 +268,138 @@ start_daemon() {
     log "Daemon started with $total_panes panes (channels=$ch_list)"
 }
 
+# Start daemon without tmux (background mode)
+start_daemon_no_tmux() {
+    # Check if already running
+    if pgrep -f "dist/queue-processor.js" > /dev/null 2>&1; then
+        echo -e "${YELLOW}Queue processor already running${NC}"
+        return 1
+    fi
+
+    log "Starting TinyClaw daemon (no-tmux mode)..."
+
+    # Check if Node.js dependencies are installed
+    if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
+        echo -e "${YELLOW}Installing Node.js dependencies...${NC}"
+        cd "$SCRIPT_DIR"
+        PUPPETEER_SKIP_DOWNLOAD=true npm install
+    fi
+
+    # Build TypeScript if needed
+    local needs_build=false
+    if [ ! -d "$SCRIPT_DIR/dist" ]; then
+        needs_build=true
+    else
+        for ts_file in "$SCRIPT_DIR"/src/*.ts; do
+            local js_file="$SCRIPT_DIR/dist/$(basename "${ts_file%.ts}.js")"
+            if [ ! -f "$js_file" ] || [ "$ts_file" -nt "$js_file" ]; then
+                needs_build=true
+                break
+            fi
+        done
+    fi
+    if [ "$needs_build" = true ]; then
+        echo -e "${YELLOW}Building TypeScript...${NC}"
+        cd "$SCRIPT_DIR"
+        npm run build
+    fi
+
+    # Load settings
+    load_settings
+    local load_rc=$?
+
+    if [ $load_rc -ne 0 ]; then
+        echo -e "${YELLOW}No configuration found. Run setup first:${NC}"
+        echo "  ./tinyclaw.sh setup --cli-only"
+        return 1
+    fi
+
+    if [ ${#ACTIVE_CHANNELS[@]} -eq 0 ]; then
+        echo -e "${YELLOW}No messaging channels configured. CLI-only mode active.${NC}"
+    fi
+
+    # Ensure agent workspaces have skills
+    ensure_agent_skills_links
+
+    # Write tokens to .env
+    local env_file="$SCRIPT_DIR/.env"
+    : > "$env_file"
+    for ch in "${ACTIVE_CHANNELS[@]}"; do
+        local env_var="${CHANNEL_TOKEN_ENV[$ch]:-}"
+        if [ -n "$env_var" ] && [ -n "${CHANNEL_TOKENS[$ch]:-}" ]; then
+            echo "${env_var}=${CHANNEL_TOKENS[$ch]}" >> "$env_file"
+        fi
+    done
+
+    # Create PID directory
+    mkdir -p "$TINYCLAW_HOME/pids"
+
+    # Start queue processor in background
+    echo -e "${BLUE}Starting queue processor...${NC}"
+    cd "$SCRIPT_DIR"
+    nohup node dist/queue-processor.js > "$LOG_DIR/queue.log" 2>&1 &
+    local qp_pid=$!
+    echo $qp_pid > "$TINYCLAW_HOME/pids/queue-processor.pid"
+    
+    # Wait a moment to check if it started successfully
+    sleep 2
+    if ! kill -0 $qp_pid 2>/dev/null; then
+        echo -e "${RED}Queue processor failed to start${NC}"
+        return 1
+    fi
+    
+    # Start heartbeat in background
+    echo -e "${BLUE}Starting heartbeat...${NC}"
+    nohup "$SCRIPT_DIR/lib/heartbeat-cron.sh" > "$LOG_DIR/heartbeat.log" 2>&1 &
+    local hb_pid=$!
+    echo $hb_pid > "$TINYCLAW_HOME/pids/heartbeat.pid"
+
+    # Report channels
+    echo -e "${BLUE}Channels:${NC}"
+    for ch in "${ACTIVE_CHANNELS[@]}"; do
+        echo -e "  ${GREEN}✓${NC} ${CHANNEL_DISPLAY[$ch]}"
+    done
+    echo ""
+
+    echo ""
+    echo -e "${GREEN}✓ TinyClaw started (no-tmux mode)${NC}"
+    echo ""
+    echo -e "${BLUE}Commands:${NC}"
+    echo "  Status:   tinyclaw status"
+    echo "  Logs:     tinyclaw logs queue"
+    echo "  Stop:     tinyclaw stop"
+    echo ""
+
+    local ch_list
+    ch_list=$(IFS=','; echo "${ACTIVE_CHANNELS[*]}")
+    log "Daemon started in no-tmux mode (channels=$ch_list)"
+}
+
 # Stop daemon
 stop_daemon() {
     log "Stopping TinyClaw..."
 
     if session_exists; then
         tmux kill-session -t "$TMUX_SESSION"
+    fi
+
+    # Kill no-tmux processes if PID files exist
+    if [ -f "$TINYCLAW_HOME/pids/queue-processor.pid" ]; then
+        local qp_pid
+        qp_pid=$(cat "$TINYCLAW_HOME/pids/queue-processor.pid")
+        if kill -0 "$qp_pid" 2>/dev/null; then
+            kill "$qp_pid" 2>/dev/null
+        fi
+        rm -f "$TINYCLAW_HOME/pids/queue-processor.pid"
+    fi
+    
+    if [ -f "$TINYCLAW_HOME/pids/heartbeat.pid" ]; then
+        local hb_pid
+        hb_pid=$(cat "$TINYCLAW_HOME/pids/heartbeat.pid")
+        if kill -0 "$hb_pid" 2>/dev/null; then
+            kill "$hb_pid" 2>/dev/null
+        fi
+        rm -f "$TINYCLAW_HOME/pids/heartbeat.pid"
     fi
 
     # Kill any remaining channel processes
@@ -300,6 +445,17 @@ status_daemon() {
     else
         echo -e "Tmux Session: ${RED}Not Running${NC}"
         echo "  Start: tinyclaw start"
+    fi
+    
+    # Check no-tmux mode
+    if [ -f "$TINYCLAW_HOME/pids/queue-processor.pid" ]; then
+        local qp_pid
+        qp_pid=$(cat "$TINYCLAW_HOME/pids/queue-processor.pid")
+        if kill -0 "$qp_pid" 2>/dev/null; then
+            echo -e "No-Tmux Mode: ${GREEN}Running (PID: $qp_pid)${NC}"
+        else
+            echo -e "No-Tmux Mode: ${YELLOW}PID file exists but process not running${NC}"
+        fi
     fi
 
     echo ""
@@ -365,4 +521,5 @@ status_daemon() {
     done
     echo "  Heartbeat: tail -f $LOG_DIR/heartbeat.log"
     echo "  Daemon:    tail -f $LOG_DIR/daemon.log"
+    echo "  Queue:     tail -f $LOG_DIR/queue.log"
 }

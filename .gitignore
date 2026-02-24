@@ -8,6 +8,9 @@ dist/
 # TinyClaw runtime files
 .tinyclaw
 
+# OpenCode runtime files (symlinks created during setup)
+.opencode/
+
 .wwebjs_cache
 *.log
 

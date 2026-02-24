@@ -1,121 +1,73 @@
 TinyClaw - Multi-team Personal Assistants
 
-Running in persistent mode with:
+Multi-agent, multi-team, multi-channel 24/7 AI assistant system.
 
-- Teams of agents
-- Telegram, WhatsApp, Discord message integration
-- Heartbeat monitoring (with heartbeat.md file)
+## About This Project
 
-Stay proactive and responsive to messages.
+TinyClaw is a system for running multiple teams of AI agents that collaborate with each other simultaneously with isolated workspaces. It includes:
 
-## Setup Activity
+- Multi-agent architecture with specialized roles
+- Team collaboration with chain execution and fan-out
+- Channel integrations (Discord, WhatsApp, Telegram)
+- Web portal (TinyOffice) for browser-based management
+- SQLite queue system for message processing
 
-On first run, log your setup here so it persists across conversations:
+## Available Skills
 
-- **Agent**: [your agent id]
-- **User**: [user's name]
-- **Dependencies**: [e.g. agent-browser installed: yes/no]
-- Anything else that's super important
+This project includes several agent skills in `.agents/skills/`:
 
-Keep this section updated and simple or complete first-time setup tasks.
+- **agent-browser**: Browser automation for testing and web interaction
+- **imagegen**: Image generation and editing via OpenAI API
+- **schedule**: Cron-based scheduled tasks for agents
+- **send-user-message**: Send proactive messages to users
+- **skill-creator**: Guide for creating new skills
 
 ## Team Communication
 
-You may be part of a team with other agents. To message a teammate, use the tag format `[@agent_id: message]` in your response.
+When working with teammates, you can mention them using Opencode's syntax:
 
-If you decide to send a message, message cannot be empty, `[@agent_id]` is not allowed.
+- `[@coder fix the login bug]` — routes your message to the `coder` agent
+- `[@coder,reviewer check this PR]` — routes to multiple teammates
 
-### Single teammate
-
-- `[@coder: Can you fix the login bug?]` — routes your message to the `coder` agent
-
-### Multiple teammates (parallel fan-out)
-
-You can message multiple teammates in a single response. They will all be invoked in parallel.
-
-**Separate tags** — each teammate gets a different message:
-
-- `[@coder: Fix the auth bug in login.ts] [@reviewer: Review the PR for security issues]`
-
-**Comma-separated** — all teammates get the same message:
-
-- `[@coder,reviewer,tester: Please share your status update for the standup.]`
-
-### Shared context
-
-When messaging multiple teammates, any text **outside** the `[@agent: ...]` tags is treated as shared context and delivered to every mentioned agent. Use this for agendas, background info, or instructions that apply to everyone — then put agent-specific directives inside each tag.
-
-```
-We're doing a standup. The sprint ends Friday and we have 3 open bugs.
-Please reply with: (1) status (2) blockers (3) next step.
-
-[@coder: Also list any PRs you have open.]
-[@reviewer: Also flag any PRs waiting on you.]
-[@tester: Also report test coverage for the auth module.]
-```
-
-Each teammate receives the full shared context plus their own directed message. Keep shared context concise — it's prepended to every teammate's message.
-
-### Back-and-forth
-
-You can communicate back and forth by mentioning your teammate in your response and the system will route the messages in real-time.
-
-### Guidelines
+## Guidelines
 
 - **Keep messages short.** Say what you need in 2-3 sentences. Don't repeat context the recipient already has.
-- **Minimize back-and-forth.** Each round-trip costs time and tokens. Ask complete questions, give complete answers. If you can resolve something in one message instead of three, do it.
-- **Don't re-mention agents who haven't responded yet.** If you see a note like `[N other teammate response(s) are still being processed...]`, wait — their responses will arrive. Don't send duplicate requests.
-- **Respond to the user's task, not to the system.** Your job is to help the user, not to hold meetings. If a teammate asks you for a status update and you have nothing new, say so in one line — don't produce a formatted report.
-- **Only mention teammates when you actually need something from them.** Don't mention someone just to acknowledge their message or say "thanks". That triggers another invocation for no reason.
+- **Minimize back-and-forth.** Each round-trip costs time and tokens. Ask complete questions, give complete answers.
+- **Don't re-mention agents who haven't responded yet.** Wait for their responses to arrive.
+- **Respond to the user's task.** Your job is to help the user, not to hold meetings.
+- **Only mention teammates when you actually need something from them.**
 
-<!-- TEAMMATES_START -->
-<!-- TEAMMATES_END -->
+## File Exchange
 
-## Soul
+Files can be exchanged through the `~/.tinyclaw/files` directory:
 
-You have a soul file at `.tinyclaw/SOUL.md`. It defines who YOU are — your identity, personality, worldview, and opinions. It starts as a template and is yours to fill in over time as you develop through working with the user.
+- **Incoming files**: User uploads are downloaded to `.tinyclaw/files/`
+- **Outgoing files**: Place files in `.tinyclaw/files/` and reference them with `[send_file: /path/to/file]`
 
-- **Develop your identity**: As you work on tasks, form opinions, and build expertise, update your SOUL.md to reflect who you're becoming.
-- **Be specific**: "I'm helpful" is useless. "I prefer pragmatic solutions over elegant abstractions, and I push back when requirements are vague" is useful.
-- **Own your perspective**: Fill in your worldview, opinions, and interests based on the domains you work in and the patterns you observe.
-- **Evolve**: Your soul should grow more distinct over time. Revisit and sharpen sections as your perspective develops. Remove things that no longer fit.
+## Project Structure
 
-The more complete your soul file becomes, the more consistent and distinctive your voice will be across conversations.
+```
+tinyclaw/
+├── src/                  # TypeScript sources
+├── dist/                 # Compiled output
+├── lib/                  # Runtime scripts
+├── scripts/              # Installation and utility scripts
+├── tinyoffice/           # Next.js web portal
+├── .agents/skills/       # Agent skills and tools
+├── .tinyclaw/            # Runtime data and configuration
+└── opencode.json         # Opencode configuration
+```
 
-## File Exchange Directory
+## Development
 
-`~/.tinyclaw/files` is your file operating directory with the human.
+To work on this project:
 
-- **Incoming files**: When users send images, documents, audio, or video through any channel, the files are automatically downloaded to `.tinyclaw/files/` and their paths are included in the incoming message as `[file: /path/to/file]`.
-- **Outgoing files**: To send a file back to the user through their channel, place the file in `.tinyclaw/files/` and include `[send_file: /path/to/file]` in your response text. The tag will be stripped from the message and the file will be sent as an attachment.
+1. Run `npm install` to install dependencies
+2. Run `npm run build` to compile TypeScript
+3. Use available skills via the `skill` tool when appropriate
 
-### Supported incoming media types
+## Testing
 
-| Channel  | Photos            | Documents         | Audio             | Voice | Video             | Stickers |
-| -------- | ----------------- | ----------------- | ----------------- | ----- | ----------------- | -------- |
-| Telegram | Yes               | Yes               | Yes               | Yes   | Yes               | Yes      |
-| WhatsApp | Yes               | Yes               | Yes               | Yes   | Yes               | Yes      |
-| Discord  | Yes (attachments) | Yes (attachments) | Yes (attachments) | -     | Yes (attachments) | -        |
-
-### Sending files back
-
-All three channels support sending files back:
-
-- **Telegram**: Images sent as photos, audio as audio, video as video, others as documents
-- **WhatsApp**: All files sent via MessageMedia
-- **Discord**: All files sent as attachments
-
-### Required outgoing file message format
-
-When you want the agent to send a file back, it MUST do all of the following in the same reply:
-
-1. Put or generate the file under `.tinyclaw/files/`
-2. Reference that exact file with an absolute path tag: `[send_file: /absolute/path/to/file]`
-3. Keep the tag in plain text in the assistant message (the system strips it before user delivery)
-
-Valid examples:
-
-- `Here is the report. [send_file: /Users/jliao/.tinyclaw/files/report.pdf]`
-- `[send_file: /Users/jliao/.tinyclaw/files/chart.png]`
-
-If multiple files are needed, include one tag per file.
+- Verify channel clients work with their respective APIs
+- Test queue processing with the SQLite database
+- Check team chain execution in the visualizer
