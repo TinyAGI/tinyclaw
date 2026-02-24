@@ -5,7 +5,7 @@
 The fastest way to install TinyClaw:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jlia0/tinyclaw/main/scripts/remote-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 ```
 
 This one-line command:
@@ -39,7 +39,7 @@ Before installing, ensure you have:
 Best for most users. Downloads and installs everything automatically:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jlia0/tinyclaw/main/scripts/remote-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 ```
 
 **What it does:**
@@ -58,7 +58,7 @@ Download the pre-built bundle manually:
 
 ```bash
 # Download latest release
-wget https://github.com/jlia0/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
+wget https://github.com/TinyAGI/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
 
 # Extract
 tar -xzf tinyclaw-bundle.tar.gz
@@ -77,7 +77,7 @@ Clone the repository and build locally:
 
 ```bash
 # Clone
-git clone https://github.com/jlia0/tinyclaw.git
+git clone https://github.com/TinyAGI/tinyclaw.git
 cd tinyclaw
 
 # Install dependencies (may take a few minutes)
@@ -95,7 +95,7 @@ tinyclaw start
 Run without installing the global command:
 
 ```bash
-git clone https://github.com/jlia0/tinyclaw.git
+git clone https://github.com/TinyAGI/tinyclaw.git
 cd tinyclaw
 
 npm install
@@ -171,7 +171,7 @@ If `/usr/local/bin` is not writable:
 
 ```bash
 # Option 1: Use sudo for system install
-curl -fsSL https://raw.githubusercontent.com/jlia0/tinyclaw/main/scripts/remote-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | sudo bash
 
 # Option 2: Let it install to ~/.local/bin instead
 # (installer will do this automatically)

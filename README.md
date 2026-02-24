@@ -11,8 +11,8 @@
     <a href="https://discord.gg/jH6AcEChuD">
       <img src="https://img.shields.io/discord/1353722981163208785?logo=discord&logoColor=white&label=Discord&color=7289DA" alt="Discord" />
     </a>
-    <a href="https://github.com/jlia0/tinyclaw/releases/latest">
-      <img src="https://img.shields.io/github/v/release/jlia0/tinyclaw?label=Latest&color=green" alt="Latest Release" />
+    <a href="https://github.com/TinyAGI/tinyclaw/releases/latest">
+      <img src="https://img.shields.io/github/v/release/TinyAGI/tinyclaw?label=Latest&color=green" alt="Latest Release" />
     </a>
   </p>
 </div>
@@ -57,13 +57,13 @@ We are actively looking for contributors. Please reach out.
 **Option 1: One-line Install (Recommended)**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jlia0/tinyclaw/main/scripts/remote-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 ```
 
 **Option 2: From Release**
 
 ```bash
-wget https://github.com/jlia0/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
+wget https://github.com/TinyAGI/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
 tar -xzf tinyclaw-bundle.tar.gz
 cd tinyclaw && ./scripts/install.sh
 ```
@@ -71,7 +71,7 @@ cd tinyclaw && ./scripts/install.sh
 **Option 3: From Source**
 
 ```bash
-git clone https://github.com/jlia0/tinyclaw.git
+git clone https://github.com/TinyAGI/tinyclaw.git
 cd tinyclaw && npm install && ./scripts/install.sh
 ```
 
@@ -238,7 +238,7 @@ Pairing behavior:
 > **Note:** If you are on v0.0.1 or v0.0.2, the update script was broken. Please re-install instead:
 >
 > ```bash
-> curl -fsSL https://raw.githubusercontent.com/jlia0/tinyclaw/main/scripts/remote-install.sh | bash
+> curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 > ```
 >
 > Your settings and user data will be preserved.
@@ -582,7 +582,7 @@ tinyclaw logs all
 
 **Need help?**
 
-- [GitHub Issues](https://github.com/jlia0/tinyclaw/issues)
+- [GitHub Issues](https://github.com/TinyAGI/tinyclaw/issues)
 - Check logs: `tinyclaw logs all`
 
 ## 🙏 Credits
@@ -599,4 +599,4 @@ MIT
 
 **TinyClaw - Tiny but mighty!** 🦞✨
 
-[![Star History Chart](https://api.star-history.com/svg?repos=jlia0/tinyclaw&type=date&legend=top-left)](https://www.star-history.com/#jlia0/tinyclaw&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=TinyAGI/tinyclaw&type=date&legend=top-left)](https://www.star-history.com/#TinyAGI/tinyclaw&type=date&legend=top-left)

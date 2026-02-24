@@ -351,14 +351,14 @@ If you see "Could not fetch latest version":
 If bundle download fails during update:
 
 1. **Check release exists:**
-   - Visit: <https://github.com/jlia0/tinyclaw/releases>
+   - Visit: <https://github.com/TinyAGI/tinyclaw/releases>
    - Verify bundle file is attached
 
 2. **Manual update:**
 
    ```bash
    # Download bundle manually
-   wget https://github.com/jlia0/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
+   wget https://github.com/TinyAGI/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
 
    # Extract to temp directory
    mkdir temp-update
@@ -496,7 +496,7 @@ grep "Heartbeat" .tinyclaw/logs/heartbeat.log
    ```
 
 4. **Report issue:**
-   - GitHub Issues: <https://github.com/jlia0/tinyclaw/issues>
+   - GitHub Issues: <https://github.com/TinyAGI/tinyclaw/issues>
    - Include logs and error messages
    - Describe steps to reproduce
 
@@ -517,7 +517,7 @@ cd ~/tinyclaw
 ./scripts/uninstall.sh
 cd ..
 rm -rf tinyclaw
-curl -fsSL https://raw.githubusercontent.com/jlia0/tinyclaw/main/scripts/remote-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 
 # Reset single agent
 tinyclaw agent reset coder
