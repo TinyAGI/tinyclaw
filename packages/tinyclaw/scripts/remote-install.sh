@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # TinyClaw Remote Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/packages/tinyclaw/scripts/remote-install.sh | bash
 
 set -e
 

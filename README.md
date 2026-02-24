@@ -57,7 +57,7 @@ We are actively looking for contributors. Please reach out.
 **Option 1: One-line Install (Recommended)**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/packages/tinyclaw/scripts/remote-install.sh | bash
 ```
 
 **Option 2: From Release**
@@ -65,14 +65,14 @@ curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remot
 ```bash
 wget https://github.com/TinyAGI/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
 tar -xzf tinyclaw-bundle.tar.gz
-cd tinyclaw && ./scripts/install.sh
+cd tinyclaw && ./packages/tinyclaw/scripts/install.sh
 ```
 
 **Option 3: From Source**
 
 ```bash
 git clone https://github.com/TinyAGI/tinyclaw.git
-cd tinyclaw && npm install && ./scripts/install.sh
+cd tinyclaw && npm install && ./packages/tinyclaw/scripts/install.sh
 ```
 
 ### First Run
@@ -128,7 +128,7 @@ After starting TinyClaw, scan the QR code:
 
 ## 🌐 TinyOffice Web Portal
 
-TinyClaw includes `tinyoffice/`, a Next.js web portal for operating TinyClaw from the browser.
+TinyClaw includes `packages/tinyoffice/`, a Next.js web portal for operating TinyClaw from the browser.
 
 <div align="center">
   <img src="./docs/images/tinyoffice.png" alt="TinyOffice Office View" width="700" />
@@ -149,7 +149,7 @@ TinyClaw includes `tinyoffice/`, a Next.js web portal for operating TinyClaw fro
 Start TinyClaw first (API default: `http://localhost:3777`), then:
 
 ```bash
-cd tinyoffice
+cd packages/tinyoffice
 npm install
 npm run dev
 ```
@@ -159,13 +159,13 @@ Open `http://localhost:3000`.
 If TinyClaw API is on a different host/port, set:
 
 ```bash
-cd tinyoffice
+cd packages/tinyoffice
 echo 'NEXT_PUBLIC_API_URL=http://localhost:3777' > .env.local
 ```
 
 ## 📋 Commands
 
-Commands work with `tinyclaw` (if CLI installed) or `./tinyclaw.sh` (direct script).
+Commands work with `tinyclaw` (if CLI installed) or `./packages/tinyclaw/tinyclaw.sh` (direct script).
 
 ### Core Commands
 
@@ -238,7 +238,7 @@ Pairing behavior:
 > **Note:** If you are on v0.0.1 or v0.0.2, the update script was broken. Please re-install instead:
 >
 > ```bash
-> curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
+> curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/packages/tinyclaw/scripts/remote-install.sh | bash
 > ```
 >
 > Your settings and user data will be preserved.
@@ -552,7 +552,7 @@ All channels share agent conversations!
 - [AGENTS.md](docs/AGENTS.md) - Agent management and routing
 - [TEAMS.md](docs/TEAMS.md) - Team collaboration, chain execution, and visualizer
 - [QUEUE.md](docs/QUEUE.md) - Queue system and message flow
-- [tinyoffice/README.md](tinyoffice/README.md) - TinyOffice web portal
+- [TinyOffice README](packages/tinyoffice/README.md) - TinyOffice web portal
 - [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues and solutions
 
 ## 🐛 Troubleshooting

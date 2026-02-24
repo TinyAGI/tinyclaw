@@ -443,7 +443,7 @@ cd ~/tinyclaw
 ./scripts/uninstall.sh
 cd ..
 rm -rf tinyclaw
-curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/packages/tinyclaw/scripts/remote-install.sh | bash
 
 # Reset single agent
 tinyclaw agent reset coder
