@@ -48,7 +48,7 @@ pairing_print_approved() {
     fi
 
     echo "Approved (${approved_count}):"
-    jq -r '(.approved // [])[] | "- \(.channel) | \(.sender) (\(.senderId)) | approved \(.approvedAt | todateiso8601)\(if .approvedCode then \" | via \(.approvedCode)\" else \"\" end)"' "$pairing_file" 2>/dev/null
+    jq -r '(.approved // [])[] | "- \(.channel) | \(.sender) (\(.senderId)) | approved \(.approvedAt / 1000 | todateiso8601)\(if .approvedCode then " | via \(.approvedCode)" else "" end)"' "$pairing_file" 2>/dev/null
 }
 
 pairing_approve_code() {

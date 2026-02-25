@@ -104,12 +104,14 @@ start_daemon() {
         fi
     done
 
-    # Write tokens to .env for the Node.js clients
+    # Write tokens to .env for the Node.js clients (preserve existing entries)
     local env_file="$SCRIPT_DIR/.env"
-    : > "$env_file"
+    touch "$env_file"
     for ch in "${ACTIVE_CHANNELS[@]}"; do
         local env_var="${CHANNEL_TOKEN_ENV[$ch]:-}"
         if [ -n "$env_var" ] && [ -n "${CHANNEL_TOKENS[$ch]:-}" ]; then
+            # Remove existing line for this var, then append updated value
+            sed -i "/^${env_var}=/d" "$env_file"
             echo "${env_var}=${CHANNEL_TOKENS[$ch]}" >> "$env_file"
         fi
     done

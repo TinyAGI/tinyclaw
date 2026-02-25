@@ -10,10 +10,19 @@ import { estimateTokens, insertTokenUsage, updateTokenUsageResponse, insertRateL
 
 export async function runCommand(command: string, args: string[], cwd?: string, env?: Record<string, string>): Promise<string> {
     return new Promise((resolve, reject) => {
+        // Build a clean environment: strip CLAUDECODE vars so the claude CLI
+        // doesn't refuse to run thinking it's inside a nested session.
+        // Also strip ANTHROPIC_API_KEY so the CLI uses the Max subscription
+        // OAuth login instead of consuming API credits.
+        const baseEnv = { ...process.env };
+        delete baseEnv.CLAUDECODE;
+        delete baseEnv.CLAUDE_CODE_ENTRYPOINT;
+        delete baseEnv.ANTHROPIC_API_KEY;
+
         const child = spawn(command, args, {
             cwd: cwd || SCRIPT_DIR,
             stdio: ['ignore', 'pipe', 'pipe'],
-            env: env ? { ...process.env, ...env } : undefined,
+            env: env ? { ...baseEnv, ...env } : baseEnv,
         });
 
         let stdout = '';
@@ -40,7 +49,9 @@ export async function runCommand(command: string, args: string[], cwd?: string, 
                 return;
             }
 
-            const errorMessage = stderr.trim() || `Command exited with code ${code}`;
+            const errorMessage = stderr.trim()
+                || stdout.trim().slice(0, 500)
+                || `Command exited with code ${code}`;
             reject(new Error(errorMessage));
         });
     });
