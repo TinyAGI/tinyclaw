@@ -5,7 +5,7 @@
  * Does NOT call Claude directly - that's handled by queue-processor
  */
 
-import { Client, Events, GatewayIntentBits, Partials, Message, DMChannel, AttachmentBuilder } from 'discord.js';
+import { Client, Events, GatewayIntentBits, Partials, Message, DMChannel, TextChannel, AttachmentBuilder } from 'discord.js';
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
@@ -43,7 +43,7 @@ if (!DISCORD_BOT_TOKEN || DISCORD_BOT_TOKEN === 'your_token_here') {
 
 interface PendingMessage {
     message: Message;
-    channel: DMChannel;
+    channel: DMChannel | TextChannel;
     timestamp: number;
 }
 
@@ -194,11 +194,32 @@ function pairingMessage(code: string): string {
     ].join('\n');
 }
 
+// Guild channel configuration
+type GuildChannelConfig = Record<string, { default_agent?: string }>;
+let guildChannels: GuildChannelConfig = {};
+
+function loadGuildChannels(): void {
+    try {
+        const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
+        const settings = JSON.parse(settingsData);
+        guildChannels = settings?.channels?.discord?.guild_channels || {};
+    } catch {
+        guildChannels = {};
+    }
+}
+
+// Load on startup
+loadGuildChannels();
+
+// Reload every 30 seconds to pick up config changes
+setInterval(loadGuildChannels, 30_000);
+
 // Initialize Discord client
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
     ],
     partials: [
@@ -221,8 +242,12 @@ client.on(Events.MessageCreate, async (message: Message) => {
             return;
         }
 
-        // Skip non-DM messages (guild = server channel)
-        if (message.guild) {
+        // Determine if this is a guild (server) message and whether to process it
+        const isGuild = !!message.guild;
+        const botMentioned = isGuild && client.user ? message.mentions.has(client.user) : false;
+        const isDesignatedChannel = isGuild && Object.prototype.hasOwnProperty.call(guildChannels, message.channel.id);
+
+        if (isGuild && !botMentioned && !isDesignatedChannel) {
             return;
         }
 
@@ -259,7 +284,15 @@ client.on(Events.MessageCreate, async (message: Message) => {
 
         let messageText = message.content || '';
 
-        log('INFO', `Message from ${sender}: ${messageText.substring(0, 50)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}...`);
+        // Strip bot @mention and role mentions from guild messages
+        if (isGuild) {
+            if (client.user) {
+                messageText = messageText.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '');
+            }
+            messageText = messageText.replace(/<@&\d+>/g, '').trim();
+        }
+
+        log('INFO', `Message from ${sender}${isGuild ? ` in #${(message.channel as TextChannel).name}` : ''}: ${messageText.substring(0, 50)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}...`);
 
         const pairing = ensureSenderPaired(PAIRING_FILE, 'discord', message.author.id, sender);
         if (!pairing.approved && pairing.code) {
@@ -273,7 +306,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
         }
 
         // Check for agent list command
-        if (message.content.trim().match(/^[!/]agent$/i)) {
+        if (messageText.trim().match(/^[!/]agent$/i)) {
             log('INFO', 'Agent list command received');
             const agentList = getAgentListText();
             await message.reply(agentList);
@@ -281,7 +314,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
         }
 
         // Check for team list command
-        if (message.content.trim().match(/^[!/]team$/i)) {
+        if (messageText.trim().match(/^[!/]team$/i)) {
             log('INFO', 'Team list command received');
             const teamList = getTeamListText();
             await message.reply(teamList);
@@ -321,13 +354,29 @@ client.on(Events.MessageCreate, async (message: Message) => {
         }
 
         // Show typing indicator
-        await (message.channel as DMChannel).sendTyping();
+        if ('sendTyping' in message.channel) {
+            await message.channel.sendTyping();
+        }
 
         // Build message text with file references
         let fullMessage = messageText;
         if (downloadedFiles.length > 0) {
             const fileRefs = downloadedFiles.map(f => `[file: ${f}]`).join('\n');
             fullMessage = fullMessage ? `${fullMessage}\n\n${fileRefs}` : fileRefs;
+        }
+
+        // Encode senderId: for guild messages use userId:channelId, for DMs just userId
+        const senderId = isGuild
+            ? `${message.author.id}:${message.channel.id}`
+            : message.author.id;
+
+        // Determine default agent for designated channels (if no explicit @agent prefix)
+        let agent: string | undefined;
+        if (isDesignatedChannel) {
+            const channelConfig = guildChannels[message.channel.id];
+            if (channelConfig?.default_agent && !fullMessage.match(/^@\S+/)) {
+                agent = channelConfig.default_agent;
+            }
         }
 
         // Write to queue via API
@@ -337,19 +386,20 @@ client.on(Events.MessageCreate, async (message: Message) => {
             body: JSON.stringify({
                 channel: 'discord',
                 sender,
-                senderId: message.author.id,
+                senderId,
                 message: fullMessage,
                 messageId,
+                agent,
                 files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
             }),
         });
 
-        log('INFO', `Queued message ${messageId}`);
+        log('INFO', `Queued message ${messageId}${agent ? ` (default agent: ${agent})` : ''}`);
 
         // Store pending message for response
         pendingMessages.set(messageId, {
             message: message,
-            channel: message.channel as DMChannel,
+            channel: message.channel as DMChannel | TextChannel,
             timestamp: Date.now(),
         });
 
@@ -389,18 +439,28 @@ async function checkOutgoingQueue(): Promise<void> {
 
                 // Find pending message, or fall back to senderId for proactive messages
                 const pending = pendingMessages.get(messageId);
-                let dmChannel = pending?.channel ?? null;
+                let targetChannel: DMChannel | TextChannel | null = pending?.channel ?? null;
 
-                if (!dmChannel && senderId) {
+                if (!targetChannel && senderId) {
                     try {
-                        const user = await client.users.fetch(senderId);
-                        dmChannel = await user.createDM();
+                        if (senderId.includes(':')) {
+                            // Guild message: senderId is userId:channelId
+                            const channelId = senderId.split(':')[1];
+                            const ch = await client.channels.fetch(channelId);
+                            if (ch && ch.isTextBased() && !ch.isDMBased()) {
+                                targetChannel = ch as TextChannel;
+                            }
+                        } else {
+                            // DM: senderId is just userId
+                            const user = await client.users.fetch(senderId);
+                            targetChannel = await user.createDM();
+                        }
                     } catch (err) {
-                        log('ERROR', `Could not open DM for senderId ${senderId}: ${(err as Error).message}`);
+                        log('ERROR', `Could not resolve channel for senderId ${senderId}: ${(err as Error).message}`);
                     }
                 }
 
-                if (dmChannel) {
+                if (targetChannel) {
                     // Send any attached files
                     if (files.length > 0) {
                         const attachments: AttachmentBuilder[] = [];
@@ -413,7 +473,7 @@ async function checkOutgoingQueue(): Promise<void> {
                             }
                         }
                         if (attachments.length > 0) {
-                            await dmChannel.send({ files: attachments });
+                            await targetChannel.send({ files: attachments });
                             log('INFO', `Sent ${attachments.length} file(s) to Discord`);
                         }
                     }
@@ -426,11 +486,11 @@ async function checkOutgoingQueue(): Promise<void> {
                             if (pending) {
                                 await pending.message.reply(chunks[0]!);
                             } else {
-                                await dmChannel.send(chunks[0]!);
+                                await targetChannel.send(chunks[0]!);
                             }
                         }
                         for (let i = 1; i < chunks.length; i++) {
-                            await dmChannel.send(chunks[i]!);
+                            await targetChannel.send(chunks[i]!);
                         }
                     }
 

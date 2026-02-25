@@ -215,6 +215,7 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
                 id: convId,
                 channel,
                 sender,
+                senderId: dbMsg.sender_id ?? undefined,
                 originalMessage: rawMessage,
                 messageId,
                 pending: 1, // this initial message
