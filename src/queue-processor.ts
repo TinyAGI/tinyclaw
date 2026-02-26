@@ -22,12 +22,12 @@ import {
     getSettings, getAgents, getTeams
 } from './lib/config';
 import { log, emitEvent } from './lib/logging';
-import { parseAgentRouting, findTeamForAgent, getAgentResetFlag, extractTeammateMentions } from './lib/routing';
+import { parseAgentRouting, findTeamForAgent, getAgentResetFlag, extractTeammateMentions, parseResponseHandoff } from './lib/routing';
 import { invokeAgent } from './lib/invoke';
 import { startApiServer } from './server';
 import {
     initQueueDb, claimNextMessage, completeMessage as dbCompleteMessage,
-    failMessage, enqueueResponse, getPendingAgents, recoverStaleMessages,
+    failMessage, enqueueMessage, enqueueResponse, getPendingAgents, recoverStaleMessages,
     pruneAckedResponses, pruneCompletedMessages, closeQueueDb, queueEvents, DbMessage,
 } from './lib/db';
 import { handleLongResponse, collectFiles } from './lib/response';
@@ -35,6 +35,8 @@ import {
     conversations, MAX_CONVERSATION_MESSAGES, enqueueInternalMessage, completeConversation,
     withConversationLock, incrementPending, decrementPending,
 } from './lib/conversation';
+
+const MAX_HANDOFF_DEPTH = 5;
 
 // Ensure directories exist
 [FILES_DIR, path.dirname(LOG_FILE), CHATS_DIR].forEach(dir => {
@@ -184,6 +186,29 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
             // Handle long responses — send as file attachment
             const { message: responseMessage, files: allFiles } = handleLongResponse(finalResponse, outboundFiles);
 
+            // Check for agent-to-agent handoff (@agent_id prefix in response)
+            const handoffDepth = dbMsg.handoff_depth ?? 0;
+            const handoff = parseResponseHandoff(response, agentId, agents);
+
+            if (handoff && handoffDepth < MAX_HANDOFF_DEPTH) {
+                const handoffMessageId = `handoff_${agentId}_${handoff.targetAgentId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+                enqueueMessage({
+                    channel,
+                    sender,
+                    senderId: dbMsg.sender_id ?? undefined,
+                    message: handoff.message,
+                    messageId: handoffMessageId,
+                    agent: handoff.targetAgentId,
+                    fromAgent: agentId,
+                    handoffDepth: handoffDepth + 1,
+                });
+                log('INFO', `Agent handoff: @${agentId} → @${handoff.targetAgentId} (depth ${handoffDepth + 1})`);
+                emitEvent('agent_handoff', { fromAgent: agentId, toAgent: handoff.targetAgentId, depth: handoffDepth + 1 });
+            } else if (handoff && handoffDepth >= MAX_HANDOFF_DEPTH) {
+                log('WARN', `Agent handoff depth limit reached (${MAX_HANDOFF_DEPTH}): @${agentId} → @${handoff.targetAgentId} — skipping re-enqueue`);
+            }
+
+            // Always deliver the response to the user
             enqueueResponse({
                 channel,
                 sender,
@@ -215,6 +240,7 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
                 id: convId,
                 channel,
                 sender,
+                senderId: dbMsg.sender_id ?? undefined,
                 originalMessage: rawMessage,
                 messageId,
                 pending: 1, // this initial message
@@ -310,11 +336,14 @@ async function processQueue(): Promise<void> {
             // Update the chain
             agentProcessingChains.set(agentId, newChain);
 
-            // Clean up completed chains to avoid memory leaks
+            // Clean up completed chains and re-check for pending messages
             newChain.finally(() => {
                 if (agentProcessingChains.get(agentId) === newChain) {
                     agentProcessingChains.delete(agentId);
                 }
+                // Re-trigger queue processing in case more messages arrived
+                // while this agent was busy
+                processQueue();
             });
         }
     } catch (error) {
@@ -363,6 +392,12 @@ emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), te
 
 // Event-driven: all messages come through the API server (same process)
 queueEvents.on('message:enqueued', () => processQueue());
+
+// Process any pending messages left over from before restart
+processQueue();
+
+// Safety-net: periodically check for stranded pending messages
+setInterval(() => processQueue(), 30 * 1000); // every 30s
 
 // Periodic maintenance
 setInterval(() => {

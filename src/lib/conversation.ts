@@ -178,6 +178,7 @@ export function completeConversation(conv: Conversation): void {
     enqueueResponse({
         channel: conv.channel,
         sender: conv.sender,
+        senderId: conv.senderId,
         message: responseMessage,
         originalMessage: conv.originalMessage,
         messageId: conv.messageId,

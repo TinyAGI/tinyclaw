@@ -8,9 +8,12 @@ import { ensureAgentDirectory, updateAgentTeammates } from './agent';
 
 export async function runCommand(command: string, args: string[], cwd?: string): Promise<string> {
     return new Promise((resolve, reject) => {
+        const env = { ...process.env };
+        delete env.CLAUDECODE;
         const child = spawn(command, args, {
             cwd: cwd || SCRIPT_DIR,
             stdio: ['ignore', 'pipe', 'pipe'],
+            env,
         });
 
         let stdout = '';

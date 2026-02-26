@@ -38,7 +38,11 @@ export interface Settings {
     };
     channels?: {
         enabled?: string[];
-        discord?: { bot_token?: string };
+        discord?: {
+            bot_token?: string;
+            guild_channels?: Record<string, { default_agent?: string }>;
+            sign_responses?: boolean;
+        };
         telegram?: { bot_token?: string };
         whatsapp?: {};
     };
@@ -79,6 +83,7 @@ export interface Conversation {
     id: string;
     channel: string;
     sender: string;
+    senderId?: string;
     originalMessage: string;
     messageId: string;
     pending: number;
