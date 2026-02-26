@@ -1,7 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import { jsonrepair } from 'jsonrepair';
-import { LOG_FILE } from '../../lib/config';
+import {
+    LOG_FILE,
+    resolveClaudeModel,
+    resolveCodexModel,
+    resolveOpenCodeModel,
+} from '../../lib/config';
 import { runCommand } from '../../lib/invoke';
 import { log } from '../../lib/logging';
 import type {
@@ -25,6 +30,17 @@ import {
     buildOpenVikingSearchPrefetchBlock,
     OpenVikingSearchHitDistribution,
 } from './prefetch';
+import {
+    buildPrefetchLlmGatePrompt,
+    DEFAULT_PREFETCH_FORCE_PATTERNS,
+    DEFAULT_PREFETCH_SKIP_PATTERNS,
+    evaluatePrefetchRuleGate,
+    parseCodexJsonlAgentMessage,
+    parseOpenCodeJsonlText,
+    parsePrefetchLlmGateResult,
+    PrefetchGateMode,
+    resolveLlmProvider,
+} from './prefetch-gate';
 import {
     buildOpenVikingSessionMapKey,
     getOpenVikingSessionEntry,
@@ -71,10 +87,25 @@ type OpenVikingContextConfig = {
     prefetchMaxTurns: number;
     prefetchMaxHits: number;
     prefetchResourceSupplementMax: number;
+    prefetchGateMode: PrefetchGateMode;
+    prefetchForcePatterns: string[];
+    prefetchSkipPatterns: string[];
+    prefetchRuleThreshold: number;
+    prefetchLlmAmbiguityLow: number;
+    prefetchLlmAmbiguityHigh: number;
+    prefetchLlmTimeoutMs: number;
     closedSessionRetentionDays: number;
     searchScoreThreshold?: string;
     sessionRoot: string;
     nativePrefetchDumpFile: string;
+};
+
+type PrefetchDecisionValue = 'force' | 'rule_yes' | 'rule_no' | 'llm_yes' | 'llm_no' | 'disabled';
+
+type PrefetchGateDecision = {
+    decision: PrefetchDecisionValue;
+    shouldPrefetch: boolean;
+    reason: string;
 };
 
 const OPENVIKING_SESSION_ROOT = '/tinyclaw/sessions';
@@ -113,6 +144,28 @@ function resolveNumberFlag(
     if (Number.isFinite(settingValue) && (settingValue as number) >= min) {
         return settingValue as number;
     }
+    return fallback;
+}
+
+function parsePrefetchGateMode(value: string | undefined): PrefetchGateMode | undefined {
+    if (typeof value !== 'string') return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'always') return 'always';
+    if (normalized === 'never') return 'never';
+    if (normalized === 'rule') return 'rule';
+    if (normalized === 'rule_then_llm') return 'rule_then_llm';
+    return undefined;
+}
+
+function resolvePrefetchGateModeFlag(
+    envName: string,
+    settingValue: string | undefined,
+    fallback: PrefetchGateMode
+): PrefetchGateMode {
+    const envMode = parsePrefetchGateMode(process.env[envName]);
+    if (envMode) return envMode;
+    const settingMode = parsePrefetchGateMode(settingValue);
+    if (settingMode) return settingMode;
     return fallback;
 }
 
@@ -155,6 +208,21 @@ function resolveOpenVikingContextConfig(settings: Settings): OpenVikingContextCo
         ov.session_switch_markers,
         ['/newtask']
     );
+    const prefetchGateMode = resolvePrefetchGateModeFlag(
+        'TINYCLAW_OPENVIKING_PREFETCH_GATE_MODE',
+        ov.prefetch_gate_mode,
+        'rule'
+    );
+    const prefetchForcePatterns = resolveStringListFlag(
+        'TINYCLAW_OPENVIKING_PREFETCH_FORCE_PATTERNS',
+        ov.prefetch_force_patterns,
+        DEFAULT_PREFETCH_FORCE_PATTERNS
+    );
+    const prefetchSkipPatterns = resolveStringListFlag(
+        'TINYCLAW_OPENVIKING_PREFETCH_SKIP_PATTERNS',
+        ov.prefetch_skip_patterns,
+        DEFAULT_PREFETCH_SKIP_PATTERNS
+    );
 
     const scoreFromEnv = process.env.TINYCLAW_OPENVIKING_SEARCH_SCORE_THRESHOLD;
     const scoreFromSettings = ov.search_score_threshold;
@@ -181,6 +249,33 @@ function resolveOpenVikingContextConfig(settings: Settings): OpenVikingContextCo
             ov.prefetch_resource_supplement_max,
             2,
             0
+        ),
+        prefetchGateMode,
+        prefetchForcePatterns,
+        prefetchSkipPatterns,
+        prefetchRuleThreshold: resolveNumberFlag(
+            'TINYCLAW_OPENVIKING_PREFETCH_RULE_THRESHOLD',
+            ov.prefetch_rule_threshold,
+            3,
+            1
+        ),
+        prefetchLlmAmbiguityLow: resolveNumberFlag(
+            'TINYCLAW_OPENVIKING_PREFETCH_LLM_AMBIGUITY_LOW',
+            ov.prefetch_llm_ambiguity_low,
+            1,
+            0
+        ),
+        prefetchLlmAmbiguityHigh: resolveNumberFlag(
+            'TINYCLAW_OPENVIKING_PREFETCH_LLM_AMBIGUITY_HIGH',
+            ov.prefetch_llm_ambiguity_high,
+            2,
+            0
+        ),
+        prefetchLlmTimeoutMs: resolveNumberFlag(
+            'TINYCLAW_OPENVIKING_PREFETCH_LLM_TIMEOUT_MS',
+            ov.prefetch_llm_timeout_ms,
+            1500,
+            100
         ),
         // 0 means keep all closed sessions (default behavior).
         closedSessionRetentionDays: resolveNumberFlag(
@@ -875,6 +970,162 @@ function asPluginState(value: unknown): OpenVikingPluginState {
     };
 }
 
+async function invokePrefetchGateLlm(ctx: BeforeModelContext, prompt: string, timeoutMs: number): Promise<string> {
+    const provider = resolveLlmProvider(ctx.agent);
+    const workdir = path.join(ctx.workspacePath, ctx.agentId);
+    if (provider === 'openai') {
+        const modelId = resolveCodexModel(ctx.agent.model);
+        const args = ['exec'];
+        if (modelId) {
+            args.push('--model', modelId);
+        }
+        args.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json', prompt);
+        const output = await runCommand('codex', args, workdir, timeoutMs);
+        return parseCodexJsonlAgentMessage(output) || output;
+    }
+
+    if (provider === 'opencode') {
+        const modelId = resolveOpenCodeModel(ctx.agent.model);
+        const args = ['run', '--format', 'json'];
+        if (modelId) {
+            args.push('--model', modelId);
+        }
+        args.push(prompt);
+        const output = await runCommand('opencode', args, workdir, timeoutMs);
+        return parseOpenCodeJsonlText(output) || output;
+    }
+
+    const modelId = resolveClaudeModel(ctx.agent.model);
+    const args = ['--dangerously-skip-permissions'];
+    if (modelId) {
+        args.push('--model', modelId);
+    }
+    args.push('-p', prompt);
+    return runCommand('claude', args, workdir, timeoutMs);
+}
+
+async function runPrefetchLlmGate(
+    config: OpenVikingContextConfig,
+    ctx: BeforeModelContext,
+    message: string
+): Promise<{ needMemory: boolean; reason: string }> {
+    const startedAt = Date.now();
+    const prompt = buildPrefetchLlmGatePrompt(ctx.agentId, message);
+    try {
+        const raw = await invokePrefetchGateLlm(ctx, prompt, config.prefetchLlmTimeoutMs);
+        const parsed = parsePrefetchLlmGateResult(raw);
+        const elapsedMs = Date.now() - startedAt;
+        log(
+            'INFO',
+            `OpenViking prefetch llm gate for @${ctx.agentId}: elapsed_ms=${elapsedMs} need_memory=${parsed.needMemory ? 1 : 0} reason=${parsed.reason}`
+        );
+        return {
+            needMemory: parsed.needMemory,
+            reason: `llm_gate:${parsed.reason}`,
+        };
+    } catch (error) {
+        const elapsedMs = Date.now() - startedAt;
+        const baseReason = isCommandTimeoutError(error) ? 'llm_timeout' : 'llm_error';
+        const detail = ((error as Error)?.message || baseReason).replace(/\s+/g, '_').slice(0, 200);
+        log(
+            'WARN',
+            `OpenViking prefetch llm gate failed for @${ctx.agentId}: elapsed_ms=${elapsedMs} reason=${baseReason} error=${(error as Error).message}`
+        );
+        return {
+            needMemory: false,
+            reason: `${baseReason}:${detail}`,
+        };
+    }
+}
+
+async function decidePrefetchGate(
+    config: OpenVikingContextConfig,
+    ctx: BeforeModelContext,
+    message: string,
+    sessionSetupTimedOut: boolean
+): Promise<PrefetchGateDecision> {
+    if (!config.prefetchEnabled) {
+        return {
+            decision: 'disabled',
+            shouldPrefetch: false,
+            reason: 'prefetch_flag_disabled',
+        };
+    }
+
+    if (sessionSetupTimedOut) {
+        return {
+            decision: 'disabled',
+            shouldPrefetch: false,
+            reason: 'session_setup_timeout_in_same_turn',
+        };
+    }
+
+    if (config.prefetchGateMode === 'never') {
+        return {
+            decision: 'disabled',
+            shouldPrefetch: false,
+            reason: 'mode_never',
+        };
+    }
+
+    if (config.prefetchGateMode === 'always') {
+        return {
+            decision: 'force',
+            shouldPrefetch: true,
+            reason: 'mode_always',
+        };
+    }
+
+    const rule = evaluatePrefetchRuleGate(message, {
+        forcePatterns: config.prefetchForcePatterns,
+        skipPatterns: config.prefetchSkipPatterns,
+        threshold: config.prefetchRuleThreshold,
+        ambiguityLow: config.prefetchLlmAmbiguityLow,
+        ambiguityHigh: config.prefetchLlmAmbiguityHigh,
+    });
+
+    if (rule.verdict === 'yes') {
+        const decision: PrefetchDecisionValue = rule.reason.startsWith('force_pattern:')
+            ? 'force'
+            : 'rule_yes';
+        return {
+            decision,
+            shouldPrefetch: true,
+            reason: rule.reason,
+        };
+    }
+
+    if (rule.verdict === 'no') {
+        return {
+            decision: 'rule_no',
+            shouldPrefetch: false,
+            reason: rule.reason,
+        };
+    }
+
+    if (config.prefetchGateMode === 'rule_then_llm') {
+        const llmGate = await runPrefetchLlmGate(config, ctx, message);
+        if (llmGate.needMemory) {
+            return {
+                decision: 'llm_yes',
+                shouldPrefetch: true,
+                reason: `${rule.reason};${llmGate.reason}`,
+            };
+        }
+        return {
+            decision: 'llm_no',
+            shouldPrefetch: false,
+            reason: `${rule.reason};${llmGate.reason}`,
+        };
+    }
+
+    return {
+        decision: 'rule_no',
+        shouldPrefetch: false,
+        reason: `${rule.reason};ambiguous_fallback_no`,
+    };
+}
+
 async function onSessionReset(ctx: SessionResetContext): Promise<void> {
     const config = resolveOpenVikingContextConfig(ctx.settings);
     if (!config.enabled) return;
@@ -965,9 +1216,9 @@ async function beforeModel(ctx: BeforeModelContext): Promise<BeforeModelHookResu
     }
 
     if (!ctx.isInternal) {
-        if (sessionSetupTimedOut) {
-            log('WARN', `OpenViking prefetch skipped for @${ctx.agentId}: session_setup_timeout_in_same_turn`);
-        } else {
+        const gateDecision = await decidePrefetchGate(config, ctx, message, sessionSetupTimedOut);
+        log('INFO', `OpenViking prefetch gate for @${ctx.agentId}: prefetch_decision=${gateDecision.decision} reason=${gateDecision.reason}`);
+        if (gateDecision.shouldPrefetch) {
             try {
                 const prefetch = await fetchOpenVikingPrefetchContext(
                     config,
@@ -1097,6 +1348,8 @@ function onStartup(ctx: StartupContext): void {
         `session_native=${config.sessionNativeEnabled ? 1 : 0} ` +
         `search_native=${config.searchNativeEnabled ? 1 : 0} autosync=${config.autosyncFallbackEnabled ? 1 : 0} ` +
         `idle_timeout_ms=${config.sessionIdleTimeoutMs} commit_on_shutdown=${config.commitOnShutdown ? 1 : 0} ` +
+        `prefetch_gate_mode=${config.prefetchGateMode} prefetch_rule_threshold=${config.prefetchRuleThreshold} ` +
+        `prefetch_llm_timeout_ms=${config.prefetchLlmTimeoutMs} ` +
         `prefetch_resource_supplement_max=${config.prefetchResourceSupplementMax} ` +
         `closed_session_retention_days=${config.closedSessionRetentionDays}`
     );
@@ -1126,6 +1379,11 @@ function onHealth(ctx: HealthContext): HealthResult {
             sessionIdleTimeoutMs: config.sessionIdleTimeoutMs,
             commitOnShutdown: config.commitOnShutdown,
             sessionSwitchMarkers: config.sessionSwitchMarkers,
+            prefetchGateMode: config.prefetchGateMode,
+            prefetchRuleThreshold: config.prefetchRuleThreshold,
+            prefetchLlmAmbiguityLow: config.prefetchLlmAmbiguityLow,
+            prefetchLlmAmbiguityHigh: config.prefetchLlmAmbiguityHigh,
+            prefetchLlmTimeoutMs: config.prefetchLlmTimeoutMs,
             prefetchResourceSupplementMax: config.prefetchResourceSupplementMax,
             closedSessionRetentionDays: config.closedSessionRetentionDays,
         },

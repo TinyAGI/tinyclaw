@@ -346,6 +346,13 @@ Environment flags:
 
 - `TINYCLAW_OPENVIKING_PREFETCH=0` disable pre-prompt retrieval
 - `TINYCLAW_OPENVIKING_SEARCH_NATIVE=1` enable native search as primary prefetch path
+- `TINYCLAW_OPENVIKING_PREFETCH_GATE_MODE` prefetch gate mode: `always | never | rule | rule_then_llm` (default: `rule`)
+- `TINYCLAW_OPENVIKING_PREFETCH_FORCE_PATTERNS` comma-separated force patterns (match => force prefetch)
+- `TINYCLAW_OPENVIKING_PREFETCH_SKIP_PATTERNS` comma-separated skip patterns (match => skip prefetch)
+- `TINYCLAW_OPENVIKING_PREFETCH_RULE_THRESHOLD` score threshold for rule gate (default: `3`)
+- `TINYCLAW_OPENVIKING_PREFETCH_LLM_AMBIGUITY_LOW` lower score bound that is considered ambiguous for `rule_then_llm` (default: `1`)
+- `TINYCLAW_OPENVIKING_PREFETCH_LLM_AMBIGUITY_HIGH` upper score bound that is considered ambiguous for `rule_then_llm` (default: `2`)
+- `TINYCLAW_OPENVIKING_PREFETCH_LLM_TIMEOUT_MS` LLM gate timeout in milliseconds (default: `1500`, timeout => no prefetch)
 - `TINYCLAW_OPENVIKING_PREFETCH_TIMEOUT_MS` prefetch/search timeout (default: `5000`)
 - `TINYCLAW_OPENVIKING_COMMIT_TIMEOUT_MS` native session commit timeout (default: `30000`)
 - `TINYCLAW_OPENVIKING_PREFETCH_MAX_CHARS` max injected chars (default: `1200`)
@@ -354,6 +361,11 @@ Environment flags:
 - `TINYCLAW_OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX` max resource supplements when memory-first selection is enabled (default: `2`)
 - `TINYCLAW_OPENVIKING_CLOSED_SESSION_RETENTION_DAYS` closed session retention days (`0` means keep forever; default: `0`)
 - `TINYCLAW_OPENVIKING_SEARCH_SCORE_THRESHOLD` optional native score threshold passed to OpenViking search API
+
+`settings.openviking` also supports the same gate keys:
+`prefetch_gate_mode`, `prefetch_force_patterns`, `prefetch_skip_patterns`,
+`prefetch_rule_threshold`, `prefetch_llm_ambiguity_low`,
+`prefetch_llm_ambiguity_high`, `prefetch_llm_timeout_ms`.
 
 ### In-Chat Commands
 

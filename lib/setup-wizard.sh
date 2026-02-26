@@ -243,6 +243,13 @@ OPENVIKING_PREFETCH_MAX_CHARS=1200
 OPENVIKING_PREFETCH_MAX_TURNS=4
 OPENVIKING_PREFETCH_MAX_HITS=8
 OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX=2
+OPENVIKING_PREFETCH_GATE_MODE="rule"
+OPENVIKING_PREFETCH_FORCE_PATTERNS_JSON='["based on memory","from long term memory","long-term memory","memory only","remember what i told you","previously told","according to memory","根据记忆","基于记忆","只根据记忆","只基于记忆","你还记得","我之前告诉过","之前说过","长期记忆"]'
+OPENVIKING_PREFETCH_SKIP_PATTERNS_JSON='["latest news","today weather","current price","stock price","crypto price","search web","browse web","run command","execute command","shell command","npm run","git ","最新新闻","今天天气","实时价格","执行命令","跑一下命令","查一下最新","查今日"]'
+OPENVIKING_PREFETCH_RULE_THRESHOLD=3
+OPENVIKING_PREFETCH_LLM_AMBIGUITY_LOW=1
+OPENVIKING_PREFETCH_LLM_AMBIGUITY_HIGH=2
+OPENVIKING_PREFETCH_LLM_TIMEOUT_MS=1500
 OPENVIKING_CLOSED_SESSION_RETENTION_DAYS=0
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -469,6 +476,13 @@ OPENVIKING_JSON=$(jq -n \
   --argjson prefetch_max_turns "$OPENVIKING_PREFETCH_MAX_TURNS" \
   --argjson prefetch_max_hits "$OPENVIKING_PREFETCH_MAX_HITS" \
   --argjson prefetch_resource_supplement_max "$OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX" \
+  --arg prefetch_gate_mode "$OPENVIKING_PREFETCH_GATE_MODE" \
+  --argjson prefetch_force_patterns "$OPENVIKING_PREFETCH_FORCE_PATTERNS_JSON" \
+  --argjson prefetch_skip_patterns "$OPENVIKING_PREFETCH_SKIP_PATTERNS_JSON" \
+  --argjson prefetch_rule_threshold "$OPENVIKING_PREFETCH_RULE_THRESHOLD" \
+  --argjson prefetch_llm_ambiguity_low "$OPENVIKING_PREFETCH_LLM_AMBIGUITY_LOW" \
+  --argjson prefetch_llm_ambiguity_high "$OPENVIKING_PREFETCH_LLM_AMBIGUITY_HIGH" \
+  --argjson prefetch_llm_timeout_ms "$OPENVIKING_PREFETCH_LLM_TIMEOUT_MS" \
   --argjson closed_session_retention_days "$OPENVIKING_CLOSED_SESSION_RETENTION_DAYS" \
   '{
     enabled: $enabled,
@@ -489,6 +503,13 @@ OPENVIKING_JSON=$(jq -n \
     prefetch_max_turns: $prefetch_max_turns,
     prefetch_max_hits: $prefetch_max_hits,
     prefetch_resource_supplement_max: $prefetch_resource_supplement_max,
+    prefetch_gate_mode: $prefetch_gate_mode,
+    prefetch_force_patterns: $prefetch_force_patterns,
+    prefetch_skip_patterns: $prefetch_skip_patterns,
+    prefetch_rule_threshold: $prefetch_rule_threshold,
+    prefetch_llm_ambiguity_low: $prefetch_llm_ambiguity_low,
+    prefetch_llm_ambiguity_high: $prefetch_llm_ambiguity_high,
+    prefetch_llm_timeout_ms: $prefetch_llm_timeout_ms,
     closed_session_retention_days: $closed_session_retention_days
   }')
 

@@ -79,6 +79,13 @@ OPENVIKING_PREFETCH_MAX_CHARS="1200"
 OPENVIKING_PREFETCH_MAX_TURNS="4"
 OPENVIKING_PREFETCH_MAX_HITS="8"
 OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX="2"
+OPENVIKING_PREFETCH_GATE_MODE="rule"
+OPENVIKING_PREFETCH_FORCE_PATTERNS="based on memory,long-term memory,memory only,remember what i told you,according to memory,根据记忆,基于记忆,只根据记忆,只基于记忆,你还记得,我之前告诉过,之前说过,长期记忆"
+OPENVIKING_PREFETCH_SKIP_PATTERNS="latest news,today weather,current price,stock price,crypto price,search web,browse web,run command,execute command,shell command,npm run,git ,最新新闻,今天天气,实时价格,执行命令,跑一下命令,查一下最新,查今日"
+OPENVIKING_PREFETCH_RULE_THRESHOLD="3"
+OPENVIKING_PREFETCH_LLM_AMBIGUITY_LOW="1"
+OPENVIKING_PREFETCH_LLM_AMBIGUITY_HIGH="2"
+OPENVIKING_PREFETCH_LLM_TIMEOUT_MS="1500"
 OPENVIKING_CLOSED_SESSION_RETENTION_DAYS="0"
 
 # Logging function
@@ -156,7 +163,20 @@ load_settings() {
     OPENVIKING_PREFETCH_MAX_TURNS=$(jq -r '.openviking.prefetch_max_turns // 4' "$SETTINGS_FILE" 2>/dev/null)
     OPENVIKING_PREFETCH_MAX_HITS=$(jq -r '.openviking.prefetch_max_hits // 8' "$SETTINGS_FILE" 2>/dev/null)
     OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX=$(jq -r '.openviking.prefetch_resource_supplement_max // 2' "$SETTINGS_FILE" 2>/dev/null)
+    OPENVIKING_PREFETCH_GATE_MODE=$(jq -r '.openviking.prefetch_gate_mode // "rule"' "$SETTINGS_FILE" 2>/dev/null)
+    OPENVIKING_PREFETCH_FORCE_PATTERNS=$(jq -r '(.openviking.prefetch_force_patterns // []) | join(",")' "$SETTINGS_FILE" 2>/dev/null)
+    OPENVIKING_PREFETCH_SKIP_PATTERNS=$(jq -r '(.openviking.prefetch_skip_patterns // []) | join(",")' "$SETTINGS_FILE" 2>/dev/null)
+    OPENVIKING_PREFETCH_RULE_THRESHOLD=$(jq -r '.openviking.prefetch_rule_threshold // 3' "$SETTINGS_FILE" 2>/dev/null)
+    OPENVIKING_PREFETCH_LLM_AMBIGUITY_LOW=$(jq -r '.openviking.prefetch_llm_ambiguity_low // 1' "$SETTINGS_FILE" 2>/dev/null)
+    OPENVIKING_PREFETCH_LLM_AMBIGUITY_HIGH=$(jq -r '.openviking.prefetch_llm_ambiguity_high // 2' "$SETTINGS_FILE" 2>/dev/null)
+    OPENVIKING_PREFETCH_LLM_TIMEOUT_MS=$(jq -r '.openviking.prefetch_llm_timeout_ms // 1500' "$SETTINGS_FILE" 2>/dev/null)
     OPENVIKING_CLOSED_SESSION_RETENTION_DAYS=$(jq -r '.openviking.closed_session_retention_days // 0' "$SETTINGS_FILE" 2>/dev/null)
+    if [ -z "$OPENVIKING_PREFETCH_FORCE_PATTERNS" ]; then
+        OPENVIKING_PREFETCH_FORCE_PATTERNS="based on memory,long-term memory,memory only,remember what i told you,according to memory,根据记忆,基于记忆,只根据记忆,只基于记忆,你还记得,我之前告诉过,之前说过,长期记忆"
+    fi
+    if [ -z "$OPENVIKING_PREFETCH_SKIP_PATTERNS" ]; then
+        OPENVIKING_PREFETCH_SKIP_PATTERNS="latest news,today weather,current price,stock price,crypto price,search web,browse web,run command,execute command,shell command,npm run,git ,最新新闻,今天天气,实时价格,执行命令,跑一下命令,查一下最新,查今日"
+    fi
 
     return 0
 }

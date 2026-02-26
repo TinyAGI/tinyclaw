@@ -81,6 +81,13 @@ export interface Settings {
         prefetch_max_turns?: number;
         prefetch_max_hits?: number;
         prefetch_resource_supplement_max?: number;
+        prefetch_gate_mode?: 'always' | 'never' | 'rule' | 'rule_then_llm';
+        prefetch_force_patterns?: string[];
+        prefetch_skip_patterns?: string[];
+        prefetch_rule_threshold?: number;
+        prefetch_llm_ambiguity_low?: number;
+        prefetch_llm_ambiguity_high?: number;
+        prefetch_llm_timeout_ms?: number;
         closed_session_retention_days?: number;
         search_score_threshold?: number;
         context_plugin_enabled?: boolean;

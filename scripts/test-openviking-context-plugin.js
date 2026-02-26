@@ -11,6 +11,11 @@ function runParent() {
         'disabled',
         'settings-disabled',
         'enabled',
+        'mode-never',
+        'mode-rule-force',
+        'mode-rule-skip',
+        'mode-rule-then-llm-yes',
+        'mode-rule-then-llm-timeout',
         'session-scope-empty',
         'failure',
         'idle-timeout',
@@ -132,6 +137,30 @@ process.exit(0);
     fs.writeFileSync(toolPath, script, 'utf8');
 }
 
+function writeStubCodex(toolPath) {
+    const script = `#!/usr/bin/env node
+const fs = require('fs');
+
+const logFile = process.env.OPENVIKING_TEST_LLM_CMD_LOG;
+if (logFile) {
+  fs.mkdirSync(require('path').dirname(logFile), { recursive: true });
+  fs.appendFileSync(logFile, process.argv.slice(2).join(' ') + '\\n');
+}
+
+const scenario = process.env.OPENVIKING_TEST_SCENARIO || '';
+if (scenario === 'mode-rule-then-llm-timeout') {
+  setTimeout(() => {
+    fs.writeSync(1, '{"need_memory": true, "reason": "late"}');
+  }, 2000);
+  return;
+}
+
+fs.writeSync(1, '{"need_memory": true, "reason": "explicit memory intent"}');
+`;
+    fs.writeFileSync(toolPath, script, 'utf8');
+    fs.chmodSync(toolPath, 0o755);
+}
+
 async function runChild(scenario) {
     const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), `tinyclaw-ov-plugin-${scenario}-`));
     const tinyclawHome = path.join(tmpRoot, '.tinyclaw-home');
@@ -141,22 +170,37 @@ async function runChild(scenario) {
     const toolDir = path.join(agentPath, '.tinyclaw', 'tools', 'openviking');
     const toolPath = path.join(toolDir, 'openviking-tool.js');
     const commandLogFile = path.join(tmpRoot, 'ovk-command.log');
+    const llmCommandLogFile = path.join(tmpRoot, 'llm-command.log');
     const sessionMapDir = path.join(tinyclawHome, 'runtime', 'openviking');
     const sessionMapFile = path.join(sessionMapDir, 'session-map.json');
+    const queueLogFile = path.join(tinyclawHome, 'logs', 'queue.log');
+    const binDir = path.join(tmpRoot, 'bin');
+    const codexStubPath = path.join(binDir, 'codex');
 
     fs.mkdirSync(path.join(tinyclawHome, 'logs'), { recursive: true });
     fs.mkdirSync(path.join(tinyclawHome, 'runtime'), { recursive: true });
 
     fs.mkdirSync(toolDir, { recursive: true });
     writeStubOpenVikingTool(toolPath);
+    fs.mkdirSync(binDir, { recursive: true });
+    writeStubCodex(codexStubPath);
 
     process.env.TINYCLAW_HOME = tinyclawHome;
+    process.env.PATH = `${binDir}:${process.env.PATH}`;
     process.env.OPENVIKING_TEST_CMD_LOG = commandLogFile;
+    process.env.OPENVIKING_TEST_LLM_CMD_LOG = llmCommandLogFile;
     process.env.OPENVIKING_TEST_SCENARIO = scenario;
     process.env.TINYCLAW_PLUGINS_ENABLED = '0';
     process.env.TINYCLAW_OPENVIKING_AUTOSYNC = '1';
     process.env.TINYCLAW_OPENVIKING_PREFETCH_TIMEOUT_MS = '1500';
     process.env.TINYCLAW_OPENVIKING_COMMIT_TIMEOUT_MS = '1500';
+    process.env.TINYCLAW_OPENVIKING_PREFETCH_GATE_MODE = 'always';
+    process.env.TINYCLAW_OPENVIKING_PREFETCH_FORCE_PATTERNS = 'according to memory,根据记忆,你还记得';
+    process.env.TINYCLAW_OPENVIKING_PREFETCH_SKIP_PATTERNS = 'latest news,实时价格,执行命令';
+    process.env.TINYCLAW_OPENVIKING_PREFETCH_RULE_THRESHOLD = '3';
+    process.env.TINYCLAW_OPENVIKING_PREFETCH_LLM_AMBIGUITY_LOW = '1';
+    process.env.TINYCLAW_OPENVIKING_PREFETCH_LLM_AMBIGUITY_HIGH = '2';
+    process.env.TINYCLAW_OPENVIKING_PREFETCH_LLM_TIMEOUT_MS = '500';
 
     if (scenario === 'disabled') {
         process.env.TINYCLAW_OPENVIKING_CONTEXT_PLUGIN = '0';
@@ -173,6 +217,38 @@ async function runChild(scenario) {
         process.env.TINYCLAW_OPENVIKING_SESSION_NATIVE = '1';
         process.env.TINYCLAW_OPENVIKING_SEARCH_NATIVE = '1';
         process.env.TINYCLAW_OPENVIKING_PREFETCH = '1';
+    } else if (scenario === 'mode-never') {
+        process.env.TINYCLAW_OPENVIKING_CONTEXT_PLUGIN = '1';
+        process.env.TINYCLAW_OPENVIKING_SESSION_NATIVE = '1';
+        process.env.TINYCLAW_OPENVIKING_SEARCH_NATIVE = '1';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH = '1';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH_GATE_MODE = 'never';
+    } else if (scenario === 'mode-rule-force') {
+        process.env.TINYCLAW_OPENVIKING_CONTEXT_PLUGIN = '1';
+        process.env.TINYCLAW_OPENVIKING_SESSION_NATIVE = '1';
+        process.env.TINYCLAW_OPENVIKING_SEARCH_NATIVE = '1';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH = '1';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH_GATE_MODE = 'rule';
+    } else if (scenario === 'mode-rule-skip') {
+        process.env.TINYCLAW_OPENVIKING_CONTEXT_PLUGIN = '1';
+        process.env.TINYCLAW_OPENVIKING_SESSION_NATIVE = '1';
+        process.env.TINYCLAW_OPENVIKING_SEARCH_NATIVE = '1';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH = '1';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH_GATE_MODE = 'rule';
+    } else if (scenario === 'mode-rule-then-llm-yes') {
+        process.env.TINYCLAW_OPENVIKING_CONTEXT_PLUGIN = '1';
+        process.env.TINYCLAW_OPENVIKING_SESSION_NATIVE = '1';
+        process.env.TINYCLAW_OPENVIKING_SEARCH_NATIVE = '1';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH = '1';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH_GATE_MODE = 'rule_then_llm';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH_LLM_TIMEOUT_MS = '800';
+    } else if (scenario === 'mode-rule-then-llm-timeout') {
+        process.env.TINYCLAW_OPENVIKING_CONTEXT_PLUGIN = '1';
+        process.env.TINYCLAW_OPENVIKING_SESSION_NATIVE = '1';
+        process.env.TINYCLAW_OPENVIKING_SEARCH_NATIVE = '1';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH = '1';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH_GATE_MODE = 'rule_then_llm';
+        process.env.TINYCLAW_OPENVIKING_PREFETCH_LLM_TIMEOUT_MS = '120';
     } else if (scenario === 'session-scope-empty') {
         process.env.TINYCLAW_OPENVIKING_CONTEXT_PLUGIN = '1';
         process.env.TINYCLAW_OPENVIKING_SESSION_NATIVE = '1';
@@ -222,7 +298,19 @@ async function runChild(scenario) {
             },
         };
 
-    if (['enabled', 'session-scope-empty', 'failure', 'idle-timeout', 'task-switch', 'shutdown-drain'].includes(scenario)) {
+    if ([
+        'enabled',
+        'mode-never',
+        'mode-rule-force',
+        'mode-rule-skip',
+        'mode-rule-then-llm-yes',
+        'mode-rule-then-llm-timeout',
+        'session-scope-empty',
+        'failure',
+        'idle-timeout',
+        'task-switch',
+        'shutdown-drain',
+    ].includes(scenario)) {
         const staleTimestamp = new Date(Date.now() - (60 * 60 * 1000)).toISOString();
         fs.mkdirSync(sessionMapDir, { recursive: true });
         fs.writeFileSync(sessionMapFile, JSON.stringify({
@@ -258,8 +346,8 @@ async function runChild(scenario) {
         agentId,
         agent: {
             name: 'Default',
-            provider: 'anthropic',
-            model: 'sonnet',
+            provider: ['mode-rule-then-llm-yes', 'mode-rule-then-llm-timeout'].includes(scenario) ? 'openai' : 'anthropic',
+            model: ['mode-rule-then-llm-yes', 'mode-rule-then-llm-timeout'].includes(scenario) ? 'gpt-5.3-codex' : 'sonnet',
             working_directory: agentPath,
         },
         workspacePath,
@@ -271,6 +359,14 @@ async function runChild(scenario) {
     let initialMessage = 'what do you remember about me?';
     if (scenario === 'task-switch') {
         initialMessage = '/newtask 现在开始一个新任务：请设计缓存策略';
+    } else if (scenario === 'mode-never') {
+        initialMessage = 'based on memory, summarize what I told you before';
+    } else if (scenario === 'mode-rule-force') {
+        initialMessage = '请根据记忆回答：我之前告诉过你什么偏好？';
+    } else if (scenario === 'mode-rule-skip') {
+        initialMessage = '帮我查今天 BTC 实时价格，然后执行命令 npm run build';
+    } else if (scenario === 'mode-rule-then-llm-yes' || scenario === 'mode-rule-then-llm-timeout') {
+        initialMessage = 'can you recall?';
     }
     const before = await plugins.runBeforeModelHooks(initialMessage, baseContext);
 
@@ -296,6 +392,52 @@ async function runChild(scenario) {
         assert.match(called, /session-message sess-1 user/, 'enabled plugin should write native user message');
         assert.match(called, /session-message sess-1 assistant/, 'enabled plugin should write native assistant message');
         assert.match(called, /session-commit sess-1/, 'enabled plugin should commit native session on shutdown');
+        return;
+    }
+
+    if (scenario === 'mode-never') {
+        const called = fs.readFileSync(commandLogFile, 'utf8');
+        assert.doesNotMatch(called, /^search /m, 'mode=never should skip prefetch search');
+        const queueLog = fs.existsSync(queueLogFile) ? fs.readFileSync(queueLogFile, 'utf8') : '';
+        assert.match(queueLog, /prefetch_decision=disabled reason=mode_never/, 'mode=never should emit disabled gate decision');
+        return;
+    }
+
+    if (scenario === 'mode-rule-force') {
+        const called = fs.readFileSync(commandLogFile, 'utf8');
+        assert.match(called, /^search /m, 'mode=rule force pattern should trigger prefetch search');
+        const queueLog = fs.existsSync(queueLogFile) ? fs.readFileSync(queueLogFile, 'utf8') : '';
+        assert.match(queueLog, /prefetch_decision=force reason=force_pattern:/, 'mode=rule force pattern should log force decision');
+        return;
+    }
+
+    if (scenario === 'mode-rule-skip') {
+        const called = fs.readFileSync(commandLogFile, 'utf8');
+        assert.doesNotMatch(called, /^search /m, 'mode=rule skip pattern should skip prefetch search');
+        const queueLog = fs.existsSync(queueLogFile) ? fs.readFileSync(queueLogFile, 'utf8') : '';
+        assert.match(queueLog, /prefetch_decision=rule_no reason=skip_pattern:/, 'mode=rule skip pattern should log rule_no decision');
+        return;
+    }
+
+    if (scenario === 'mode-rule-then-llm-yes') {
+        const called = fs.readFileSync(commandLogFile, 'utf8');
+        assert.match(called, /^search /m, 'rule_then_llm yes should prefetch');
+        const llmCalled = fs.existsSync(llmCommandLogFile) ? fs.readFileSync(llmCommandLogFile, 'utf8') : '';
+        assert.match(llmCalled, /exec --model gpt-5.3-codex/, 'rule_then_llm should invoke codex gate');
+        const queueLog = fs.existsSync(queueLogFile) ? fs.readFileSync(queueLogFile, 'utf8') : '';
+        assert.match(queueLog, /prefetch_decision=llm_yes/, 'rule_then_llm yes should log llm_yes decision');
+        assert.match(queueLog, /OpenViking prefetch llm gate .* elapsed_ms=/, 'rule_then_llm should log llm gate timing');
+        return;
+    }
+
+    if (scenario === 'mode-rule-then-llm-timeout') {
+        const called = fs.readFileSync(commandLogFile, 'utf8');
+        assert.doesNotMatch(called, /^search /m, 'rule_then_llm timeout should fallback to no prefetch');
+        const llmCalled = fs.existsSync(llmCommandLogFile) ? fs.readFileSync(llmCommandLogFile, 'utf8') : '';
+        assert.match(llmCalled, /exec --model gpt-5.3-codex/, 'rule_then_llm timeout should still invoke codex gate');
+        const queueLog = fs.existsSync(queueLogFile) ? fs.readFileSync(queueLogFile, 'utf8') : '';
+        assert.match(queueLog, /prefetch_decision=llm_no/, 'rule_then_llm timeout should log llm_no decision');
+        assert.match(queueLog, /prefetch llm gate failed/, 'rule_then_llm timeout should log llm gate failure');
         return;
     }
 
