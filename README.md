@@ -106,7 +106,7 @@ The setup wizard will guide you through:
 **Discord features:**
 - **Slash commands** — `/agent`, `/team`, `/reset` appear in Discord's autocomplete menu
 - **Guild channels** — Bind server channels to specific agents (messages in a bound channel auto-route to that agent without `@` prefix)
-- **Agent signatures** — Responses include `— AgentName` footer (disable with `"sign_responses": false` in settings)
+- **Agent signatures** — Responses include `— AgentName` footer (disable with `"sign_responses": false` under `channels.discord`)
 
 ### Telegram Setup
 
@@ -465,7 +465,8 @@ Located at `.tinyclaw/settings.json`:
       "bot_token": "...",
       "guild_channels": {
         "CHANNEL_ID": { "default_agent": "coder" }
-      }
+      },
+      "sign_responses": true
     },
     "telegram": { "bot_token": "..." },
     "whatsapp": {}
@@ -491,8 +492,7 @@ Located at `.tinyclaw/settings.json`:
   },
   "monitoring": {
     "heartbeat_interval": 3600
-  },
-  "sign_responses": true
+  }
 }
 ```
 

@@ -580,7 +580,7 @@ async function checkOutgoingQueue(): Promise<void> {
                     let signedText = responseText;
                     if (agentId) {
                         const settings = getCachedSettings();
-                        if (settings?.sign_responses !== false) {
+                        if (settings?.channels?.discord?.sign_responses !== false) {
                             const agentName = settings?.agents?.[agentId]?.name;
                             if (agentName) signedText = `${responseText}\n\n— ${agentName}`;
                         }

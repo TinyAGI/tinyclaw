@@ -41,6 +41,7 @@ export interface Settings {
         discord?: {
             bot_token?: string;
             guild_channels?: Record<string, { default_agent?: string }>;
+            sign_responses?: boolean;
         };
         telegram?: { bot_token?: string };
         whatsapp?: {};
@@ -62,7 +63,6 @@ export interface Settings {
     monitoring?: {
         heartbeat_interval?: number;
     };
-    sign_responses?: boolean;
 }
 
 export interface MessageData {
