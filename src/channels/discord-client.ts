@@ -576,12 +576,14 @@ async function checkOutgoingQueue(): Promise<void> {
                         }
                     }
 
-                    // Append agent signature to response
+                    // Append agent signature to response (unless disabled)
                     let signedText = responseText;
                     if (agentId) {
                         const settings = getCachedSettings();
-                        const agentName = settings?.agents?.[agentId]?.name;
-                        if (agentName) signedText = `${responseText}\n\n— ${agentName}`;
+                        if (settings?.sign_responses !== false) {
+                            const agentName = settings?.agents?.[agentId]?.name;
+                            if (agentName) signedText = `${responseText}\n\n— ${agentName}`;
+                        }
                     }
 
                     // Split message if needed (Discord 2000 char limit)

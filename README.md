@@ -25,7 +25,8 @@
 
 - ✅ **Multi-agent** - Run multiple isolated AI agents with specialized roles
 - ✅ **Multi-team collaboration** - Agents hand off work to teammates via chain execution and fan-out
-- ✅ **Multi-channel** - Discord, WhatsApp, and Telegram
+- ✅ **Agent-to-agent handoff** - Non-team agents can hand off to each other via `@agent_id` prefix in responses
+- ✅ **Multi-channel** - Discord (with slash commands and guild channels), WhatsApp, and Telegram
 - ✅ **Web portal (TinyOffice)** - Browser-based dashboard for chat, agents, teams, tasks, logs, and settings
 - ✅ **Team Observation** - You can observe agent teams conversations via `tinyclaw team visualize`
 - ✅ **Multiple AI providers** - Anthropic Claude and OpenAI Codex using existing subscriptions without breaking ToS
@@ -100,7 +101,12 @@ The setup wizard will guide you through:
 2. Create application → Bot section → Create bot
 3. Copy bot token
 4. Enable "Message Content Intent"
-5. Invite bot using OAuth2 URL Generator
+5. Invite bot using OAuth2 URL Generator (include `applications.commands` scope for slash commands)
+
+**Discord features:**
+- **Slash commands** — `/agent`, `/team`, `/reset` appear in Discord's autocomplete menu
+- **Guild channels** — Bind server channels to specific agents (messages in a bound channel auto-route to that agent without `@` prefix)
+- **Agent signatures** — Responses include `— AgentName` footer (disable with `"sign_responses": false` in settings)
 
 ### Telegram Setup
 
@@ -281,15 +287,16 @@ export TINYCLAW_SKIP_UPDATE_CHECK=1
 
 These commands work in Discord, Telegram, and WhatsApp:
 
-| Command             | Description                          | Example                 |
-| ------------------- | ------------------------------------ | ----------------------- |
-| `@agent_id message` | Route message to specific agent      | `@coder fix the bug`    |
-| `@team_id message`  | Route message to team leader         | `@dev fix the auth bug` |
-| `/agent`            | List all available agents            | `/agent`                |
-| `/team`             | List all available teams             | `/team`                 |
-| `@agent_id /reset`  | Reset specific agent conversation    | `@coder /reset`         |
-| `/reset`            | Reset conversation (WhatsApp/global) | `/reset` or `!reset`    |
-| `message`           | Send to default agent (no prefix)    | `help me with this`     |
+| Command                      | Description                          | Example                       |
+| ---------------------------- | ------------------------------------ | ----------------------------- |
+| `@agent_id message`          | Route message to specific agent      | `@coder fix the bug`          |
+| `@team_id message`           | Route message to team leader         | `@dev fix the auth bug`       |
+| `/agent`                     | List all available agents            | `/agent`                      |
+| `/team`                      | List all available teams             | `/team`                       |
+| `/reset agent_id [agent_id]` | Reset one or more agent conversations| `/reset coder writer`         |
+| `message`                    | Send to default agent (no prefix)    | `help me with this`           |
+
+On Discord, `/agent`, `/team`, and `/reset` are native slash commands with autocomplete. On Telegram and WhatsApp they work as text commands.
 
 **Note:** The `@agent_id` routing prefix requires a space after it (e.g., `@coder fix` not `@coderfix`).
 
@@ -454,7 +461,12 @@ Located at `.tinyclaw/settings.json`:
 {
   "channels": {
     "enabled": ["discord", "telegram", "whatsapp"],
-    "discord": { "bot_token": "..." },
+    "discord": {
+      "bot_token": "...",
+      "guild_channels": {
+        "CHANNEL_ID": { "default_agent": "coder" }
+      }
+    },
     "telegram": { "bot_token": "..." },
     "whatsapp": {}
   },
@@ -479,7 +491,8 @@ Located at `.tinyclaw/settings.json`:
   },
   "monitoring": {
     "heartbeat_interval": 3600
-  }
+  },
+  "sign_responses": true
 }
 ```
 
