@@ -74,10 +74,12 @@ OPENVIKING_NATIVE_SEARCH="false"
 OPENVIKING_PREFETCH="false"
 OPENVIKING_AUTOSYNC="true"
 OPENVIKING_PREFETCH_TIMEOUT_MS="5000"
-OPENVIKING_COMMIT_TIMEOUT_MS="15000"
+OPENVIKING_COMMIT_TIMEOUT_MS="30000"
 OPENVIKING_PREFETCH_MAX_CHARS="1200"
 OPENVIKING_PREFETCH_MAX_TURNS="4"
 OPENVIKING_PREFETCH_MAX_HITS="8"
+OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX="2"
+OPENVIKING_CLOSED_SESSION_RETENTION_DAYS="0"
 
 # Logging function
 log() {
@@ -149,10 +151,12 @@ load_settings() {
     OPENVIKING_PREFETCH=$(jq -r '.openviking.prefetch // false' "$SETTINGS_FILE" 2>/dev/null)
     OPENVIKING_AUTOSYNC=$(jq -r '.openviking.autosync // true' "$SETTINGS_FILE" 2>/dev/null)
     OPENVIKING_PREFETCH_TIMEOUT_MS=$(jq -r '.openviking.prefetch_timeout_ms // 5000' "$SETTINGS_FILE" 2>/dev/null)
-    OPENVIKING_COMMIT_TIMEOUT_MS=$(jq -r '.openviking.commit_timeout_ms // 15000' "$SETTINGS_FILE" 2>/dev/null)
+    OPENVIKING_COMMIT_TIMEOUT_MS=$(jq -r '.openviking.commit_timeout_ms // 30000' "$SETTINGS_FILE" 2>/dev/null)
     OPENVIKING_PREFETCH_MAX_CHARS=$(jq -r '.openviking.prefetch_max_chars // 1200' "$SETTINGS_FILE" 2>/dev/null)
     OPENVIKING_PREFETCH_MAX_TURNS=$(jq -r '.openviking.prefetch_max_turns // 4' "$SETTINGS_FILE" 2>/dev/null)
     OPENVIKING_PREFETCH_MAX_HITS=$(jq -r '.openviking.prefetch_max_hits // 8' "$SETTINGS_FILE" 2>/dev/null)
+    OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX=$(jq -r '.openviking.prefetch_resource_supplement_max // 2' "$SETTINGS_FILE" 2>/dev/null)
+    OPENVIKING_CLOSED_SESSION_RETENTION_DAYS=$(jq -r '.openviking.closed_session_retention_days // 0' "$SETTINGS_FILE" 2>/dev/null)
 
     return 0
 }

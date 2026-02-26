@@ -245,14 +245,42 @@ export function summarizeOpenVikingSearchHitDistribution(hits: OpenVikingSearchH
     return summary;
 }
 
-export function buildOpenVikingSearchPrefetchBlock(hits: OpenVikingSearchHit[], maxChars: number, maxHits: number): string {
-    if (!hits.length) return '';
+export function selectOpenVikingSearchHits(
+    hits: OpenVikingSearchHit[],
+    maxHits: number,
+    maxResourceSupplement: number
+): OpenVikingSearchHit[] {
+    if (!hits.length) return [];
     const cap = Math.max(1, maxHits);
+    const resourceCap = Math.max(0, Math.min(maxResourceSupplement, cap));
     const memoryHits = hits.filter((hit) => hit.type === 'memory');
     const resourceHits = hits.filter((hit) => hit.type === 'resource');
     const skillHits = hits.filter((hit) => hit.type === 'skill');
-    // Memory-first composition keeps high-value long-term facts ahead of docs/skills.
-    const selected = [...memoryHits, ...resourceHits, ...skillHits].slice(0, cap);
+
+    // Keep memory as the primary source, while reserving a small budget for resource supplements.
+    const selected: OpenVikingSearchHit[] = [];
+    const memoryPrimaryCap = Math.max(0, cap - resourceCap);
+    selected.push(...memoryHits.slice(0, memoryPrimaryCap));
+    selected.push(...resourceHits.slice(0, resourceCap));
+
+    if (selected.length < cap) {
+        const remainingMemory = memoryHits.slice(memoryPrimaryCap);
+        const remainingResource = resourceHits.slice(resourceCap);
+        const backfill = [...remainingMemory, ...remainingResource, ...skillHits];
+        selected.push(...backfill.slice(0, cap - selected.length));
+    }
+
+    return selected.slice(0, cap);
+}
+
+export function buildOpenVikingSearchPrefetchBlock(
+    hits: OpenVikingSearchHit[],
+    maxChars: number,
+    maxHits: number,
+    maxResourceSupplement: number
+): string {
+    if (!hits.length) return '';
+    const selected = selectOpenVikingSearchHits(hits, maxHits, maxResourceSupplement);
     const summary = summarizeOpenVikingSearchHitDistribution(selected);
     const lines: string[] = [];
     lines.push('[OpenViking Retrieved Context]');

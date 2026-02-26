@@ -80,6 +80,8 @@ export interface Settings {
         prefetch_max_chars?: number;
         prefetch_max_turns?: number;
         prefetch_max_hits?: number;
+        prefetch_resource_supplement_max?: number;
+        closed_session_retention_days?: number;
         search_score_threshold?: number;
         context_plugin_enabled?: boolean;
     };

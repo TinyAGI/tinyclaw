@@ -347,10 +347,12 @@ Environment flags:
 - `TINYCLAW_OPENVIKING_PREFETCH=0` disable pre-prompt retrieval
 - `TINYCLAW_OPENVIKING_SEARCH_NATIVE=1` enable native search as primary prefetch path
 - `TINYCLAW_OPENVIKING_PREFETCH_TIMEOUT_MS` prefetch/search timeout (default: `5000`)
-- `TINYCLAW_OPENVIKING_COMMIT_TIMEOUT_MS` native session commit timeout (default: `15000`)
+- `TINYCLAW_OPENVIKING_COMMIT_TIMEOUT_MS` native session commit timeout (default: `30000`)
 - `TINYCLAW_OPENVIKING_PREFETCH_MAX_CHARS` max injected chars (default: `1200`)
 - `TINYCLAW_OPENVIKING_PREFETCH_MAX_TURNS` max selected turns (default: `4`)
 - `TINYCLAW_OPENVIKING_PREFETCH_MAX_HITS` max typed native hits injected (default: `8`)
+- `TINYCLAW_OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX` max resource supplements when memory-first selection is enabled (default: `2`)
+- `TINYCLAW_OPENVIKING_CLOSED_SESSION_RETENTION_DAYS` closed session retention days (`0` means keep forever; default: `0`)
 - `TINYCLAW_OPENVIKING_SEARCH_SCORE_THRESHOLD` optional native score threshold passed to OpenViking search API
 
 ### In-Chat Commands

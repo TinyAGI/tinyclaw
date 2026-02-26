@@ -238,10 +238,12 @@ OPENVIKING_PROJECT=""
 OPENVIKING_API_KEY=""
 OPENVIKING_CONFIG_PATH="$HOME/.openviking/ov.conf"
 OPENVIKING_PREFETCH_TIMEOUT_MS=5000
-OPENVIKING_COMMIT_TIMEOUT_MS=15000
+OPENVIKING_COMMIT_TIMEOUT_MS=30000
 OPENVIKING_PREFETCH_MAX_CHARS=1200
 OPENVIKING_PREFETCH_MAX_TURNS=4
 OPENVIKING_PREFETCH_MAX_HITS=8
+OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX=2
+OPENVIKING_CLOSED_SESSION_RETENTION_DAYS=0
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}  OpenViking Memory (Optional)${NC}"
@@ -466,6 +468,8 @@ OPENVIKING_JSON=$(jq -n \
   --argjson prefetch_max_chars "$OPENVIKING_PREFETCH_MAX_CHARS" \
   --argjson prefetch_max_turns "$OPENVIKING_PREFETCH_MAX_TURNS" \
   --argjson prefetch_max_hits "$OPENVIKING_PREFETCH_MAX_HITS" \
+  --argjson prefetch_resource_supplement_max "$OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX" \
+  --argjson closed_session_retention_days "$OPENVIKING_CLOSED_SESSION_RETENTION_DAYS" \
   '{
     enabled: $enabled,
     auto_start: $auto_start,
@@ -483,7 +487,9 @@ OPENVIKING_JSON=$(jq -n \
     commit_timeout_ms: $commit_timeout_ms,
     prefetch_max_chars: $prefetch_max_chars,
     prefetch_max_turns: $prefetch_max_turns,
-    prefetch_max_hits: $prefetch_max_hits
+    prefetch_max_hits: $prefetch_max_hits,
+    prefetch_resource_supplement_max: $prefetch_resource_supplement_max,
+    closed_session_retention_days: $closed_session_retention_days
   }')
 
 cat > "$SETTINGS_FILE" <<EOF

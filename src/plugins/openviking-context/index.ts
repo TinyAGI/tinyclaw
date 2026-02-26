@@ -20,6 +20,7 @@ import {
     parseSessionTurns,
     buildPrefetchBlock,
     parseOpenVikingSearchHits,
+    selectOpenVikingSearchHits,
     summarizeOpenVikingSearchHitDistribution,
     buildOpenVikingSearchPrefetchBlock,
     OpenVikingSearchHitDistribution,
@@ -69,6 +70,8 @@ type OpenVikingContextConfig = {
     prefetchMaxChars: number;
     prefetchMaxTurns: number;
     prefetchMaxHits: number;
+    prefetchResourceSupplementMax: number;
+    closedSessionRetentionDays: number;
     searchScoreThreshold?: string;
     sessionRoot: string;
     nativePrefetchDumpFile: string;
@@ -169,10 +172,23 @@ function resolveOpenVikingContextConfig(settings: Settings): OpenVikingContextCo
         sessionIdleTimeoutMs: resolveNumberFlag('TINYCLAW_OPENVIKING_SESSION_IDLE_TIMEOUT_MS', ov.session_idle_timeout_ms, 0, 0),
         sessionSwitchMarkers,
         prefetchTimeoutMs: resolveNumberFlag('TINYCLAW_OPENVIKING_PREFETCH_TIMEOUT_MS', ov.prefetch_timeout_ms, 5000, 1),
-        commitTimeoutMs: resolveNumberFlag('TINYCLAW_OPENVIKING_COMMIT_TIMEOUT_MS', ov.commit_timeout_ms, 15000, 1),
+        commitTimeoutMs: resolveNumberFlag('TINYCLAW_OPENVIKING_COMMIT_TIMEOUT_MS', ov.commit_timeout_ms, 30000, 1),
         prefetchMaxChars: resolveNumberFlag('TINYCLAW_OPENVIKING_PREFETCH_MAX_CHARS', ov.prefetch_max_chars, 1200, 200),
         prefetchMaxTurns: resolveNumberFlag('TINYCLAW_OPENVIKING_PREFETCH_MAX_TURNS', ov.prefetch_max_turns, 4, 1),
         prefetchMaxHits: resolveNumberFlag('TINYCLAW_OPENVIKING_PREFETCH_MAX_HITS', ov.prefetch_max_hits, 8, 1),
+        prefetchResourceSupplementMax: resolveNumberFlag(
+            'TINYCLAW_OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX',
+            ov.prefetch_resource_supplement_max,
+            2,
+            0
+        ),
+        // 0 means keep all closed sessions (default behavior).
+        closedSessionRetentionDays: resolveNumberFlag(
+            'TINYCLAW_OPENVIKING_CLOSED_SESSION_RETENTION_DAYS',
+            ov.closed_session_retention_days,
+            0,
+            0
+        ),
         searchScoreThreshold,
         sessionRoot: OPENVIKING_SESSION_ROOT,
         nativePrefetchDumpFile: OPENVIKING_NATIVE_PREFETCH_DUMP_FILE,
@@ -749,9 +765,19 @@ async function fetchOpenVikingPrefetchContext(
                 try {
                     const sessionHits = await runNativeSearchAttempt('session', sessionId);
                     if (sessionHits.length > 0) {
-                        const distribution = summarizeOpenVikingSearchHitDistribution(sessionHits.slice(0, config.prefetchMaxHits));
+                        const selectedHits = selectOpenVikingSearchHits(
+                            sessionHits,
+                            config.prefetchMaxHits,
+                            config.prefetchResourceSupplementMax
+                        );
+                        const distribution = summarizeOpenVikingSearchHitDistribution(selectedHits);
                         return {
-                            block: buildOpenVikingSearchPrefetchBlock(sessionHits, config.prefetchMaxChars, config.prefetchMaxHits),
+                            block: buildOpenVikingSearchPrefetchBlock(
+                                sessionHits,
+                                config.prefetchMaxChars,
+                                config.prefetchMaxHits,
+                                config.prefetchResourceSupplementMax
+                            ),
                             source: 'search_native',
                             diagnostics: ['session_id_used=1', `native_search_hits=${sessionHits.length}`],
                             distribution,
@@ -786,9 +812,19 @@ async function fetchOpenVikingPrefetchContext(
 
             const globalHits = await runNativeSearchAttempt('global');
             if (globalHits.length > 0) {
-                const distribution = summarizeOpenVikingSearchHitDistribution(globalHits.slice(0, config.prefetchMaxHits));
+                const selectedHits = selectOpenVikingSearchHits(
+                    globalHits,
+                    config.prefetchMaxHits,
+                    config.prefetchResourceSupplementMax
+                );
+                const distribution = summarizeOpenVikingSearchHitDistribution(selectedHits);
                 return {
-                    block: buildOpenVikingSearchPrefetchBlock(globalHits, config.prefetchMaxChars, config.prefetchMaxHits),
+                    block: buildOpenVikingSearchPrefetchBlock(
+                        globalHits,
+                        config.prefetchMaxChars,
+                        config.prefetchMaxHits,
+                        config.prefetchResourceSupplementMax
+                    ),
                     source: 'search_native',
                     diagnostics: ['session_id_used=0', `native_search_hits=${globalHits.length}`, ...diagnostics],
                     distribution,
@@ -1060,7 +1096,9 @@ function onStartup(ctx: StartupContext): void {
         `[plugin:openviking-context] enabled prefetch=${config.prefetchEnabled ? 1 : 0} ` +
         `session_native=${config.sessionNativeEnabled ? 1 : 0} ` +
         `search_native=${config.searchNativeEnabled ? 1 : 0} autosync=${config.autosyncFallbackEnabled ? 1 : 0} ` +
-        `idle_timeout_ms=${config.sessionIdleTimeoutMs} commit_on_shutdown=${config.commitOnShutdown ? 1 : 0}`
+        `idle_timeout_ms=${config.sessionIdleTimeoutMs} commit_on_shutdown=${config.commitOnShutdown ? 1 : 0} ` +
+        `prefetch_resource_supplement_max=${config.prefetchResourceSupplementMax} ` +
+        `closed_session_retention_days=${config.closedSessionRetentionDays}`
     );
 }
 
@@ -1088,6 +1126,8 @@ function onHealth(ctx: HealthContext): HealthResult {
             sessionIdleTimeoutMs: config.sessionIdleTimeoutMs,
             commitOnShutdown: config.commitOnShutdown,
             sessionSwitchMarkers: config.sessionSwitchMarkers,
+            prefetchResourceSupplementMax: config.prefetchResourceSupplementMax,
+            closedSessionRetentionDays: config.closedSessionRetentionDays,
         },
     };
 }
