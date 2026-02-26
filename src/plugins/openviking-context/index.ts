@@ -170,7 +170,7 @@ function resolveOpenVikingContextConfig(settings: Settings): OpenVikingContextCo
         sessionSwitchMarkers,
         prefetchTimeoutMs: resolveNumberFlag('TINYCLAW_OPENVIKING_PREFETCH_TIMEOUT_MS', ov.prefetch_timeout_ms, 5000, 1),
         commitTimeoutMs: resolveNumberFlag('TINYCLAW_OPENVIKING_COMMIT_TIMEOUT_MS', ov.commit_timeout_ms, 15000, 1),
-        prefetchMaxChars: resolveNumberFlag('TINYCLAW_OPENVIKING_PREFETCH_MAX_CHARS', ov.prefetch_max_chars, 2800, 200),
+        prefetchMaxChars: resolveNumberFlag('TINYCLAW_OPENVIKING_PREFETCH_MAX_CHARS', ov.prefetch_max_chars, 1200, 200),
         prefetchMaxTurns: resolveNumberFlag('TINYCLAW_OPENVIKING_PREFETCH_MAX_TURNS', ov.prefetch_max_turns, 4, 1),
         prefetchMaxHits: resolveNumberFlag('TINYCLAW_OPENVIKING_PREFETCH_MAX_HITS', ov.prefetch_max_hits, 8, 1),
         searchScoreThreshold,
@@ -192,6 +192,11 @@ function safeParseJSON<T = unknown>(raw: string, label?: string): T {
 function maybeDistributionSummary(distribution?: OpenVikingSearchHitDistribution): string {
     if (!distribution) return 'memory=0,resource=0,skill=0';
     return `memory=${distribution.memory},resource=${distribution.resource},skill=${distribution.skill}`;
+}
+
+function isCommandTimeoutError(error: unknown): boolean {
+    const message = (error as Error)?.message || '';
+    return /timed out/i.test(message);
 }
 
 function stripInjectedOpenVikingContext(text: string): string {
@@ -541,6 +546,45 @@ async function commitMappedNativeSessionAndClear(
     return true;
 }
 
+function scheduleNativeSessionCommitAfterRotation(
+    config: OpenVikingContextConfig,
+    workspacePath: string,
+    sessionKey: OpenVikingSessionMapKey,
+    sessionId: string,
+    reason: string
+): void {
+    const agentId = sessionKey.agentId;
+    enqueueOpenVikingSync(agentId, async () => {
+        try {
+            await commitNativeOpenVikingSession(config, workspacePath, agentId, sessionId);
+        } catch (error) {
+            log(
+                'WARN',
+                `OpenViking async session commit failed for @${agentId}: session_id=${sessionId} reason=${reason} error=${(error as Error).message}`
+            );
+        }
+    });
+}
+
+function rotateSessionMappingAndCommitAsync(
+    config: OpenVikingContextConfig,
+    workspacePath: string,
+    sessionKey: OpenVikingSessionMapKey,
+    reason: string,
+    logPrefix: string
+): boolean {
+    const existingSessionId = getOpenVikingSessionId(sessionKey);
+    if (!existingSessionId) {
+        log('INFO', `${logPrefix} for @${sessionKey.agentId}: no native session mapping found reason=${reason}`);
+        return false;
+    }
+    deleteOpenVikingSessionId(sessionKey);
+    log('INFO', `OpenViking session map cleared for @${sessionKey.agentId}: session_id=${existingSessionId} reason=${reason}`);
+    scheduleNativeSessionCommitAfterRotation(config, workspacePath, sessionKey, existingSessionId, reason);
+    log('INFO', `OpenViking async commit scheduled for @${sessionKey.agentId}: session_id=${existingSessionId} reason=${reason}`);
+    return true;
+}
+
 async function fetchLegacyOpenVikingPrefetchContext(
     config: OpenVikingContextConfig,
     workspacePath: string,
@@ -680,6 +724,7 @@ async function fetchOpenVikingPrefetchContext(
     }
 
     const diagnostics: string[] = [];
+    let nativeSearchTimedOut = false;
     if (config.searchNativeEnabled) {
         const searchLimit = Math.max(config.prefetchMaxHits * 2, 12);
         const runNativeSearchAttempt = async (scope: 'session' | 'global', sid?: string): Promise<ReturnType<typeof parseOpenVikingSearchHits>> => {
@@ -700,6 +745,7 @@ async function fetchOpenVikingPrefetchContext(
 
         try {
             if (sessionId) {
+                let sessionSearchTimedOut = false;
                 try {
                     const sessionHits = await runNativeSearchAttempt('session', sessionId);
                     if (sessionHits.length > 0) {
@@ -714,11 +760,28 @@ async function fetchOpenVikingPrefetchContext(
                     diagnostics.push('native_search_empty_session');
                 } catch (error) {
                     diagnostics.push(`native_search_error_session=${(error as Error).message}`);
+                    if (isCommandTimeoutError(error)) {
+                        sessionSearchTimedOut = true;
+                        nativeSearchTimedOut = true;
+                    }
                 }
 
                 // Some OpenViking query planners can return an empty plan when scoped by session.
                 // Retry globally before falling back to legacy markdown retrieval.
-                diagnostics.push('native_search_retry_without_session');
+                if (!sessionSearchTimedOut) {
+                    diagnostics.push('native_search_retry_without_session');
+                } else {
+                    diagnostics.push('native_search_retry_skipped_due_timeout');
+                }
+            }
+
+            if (nativeSearchTimedOut) {
+                return {
+                    block: '',
+                    source: 'none',
+                    diagnostics: [...diagnostics, 'legacy_fallback_skipped_due_native_timeout'],
+                    fallbackReason: 'native_search_timeout',
+                };
             }
 
             const globalHits = await runNativeSearchAttempt('global');
@@ -734,9 +797,21 @@ async function fetchOpenVikingPrefetchContext(
             diagnostics.push('native_search_empty_global');
         } catch (error) {
             diagnostics.push(`native_search_error_global=${(error as Error).message}`);
+            if (isCommandTimeoutError(error)) {
+                nativeSearchTimedOut = true;
+            }
         }
     } else {
         diagnostics.push('native_search_disabled');
+    }
+
+    if (nativeSearchTimedOut) {
+        return {
+            block: '',
+            source: 'none',
+            diagnostics: [...diagnostics, 'legacy_fallback_skipped_due_native_timeout'],
+            fallbackReason: 'native_search_timeout',
+        };
     }
 
     const legacy = await fetchLegacyOpenVikingPrefetchContext(config, workspacePath, agentId, query);
@@ -770,7 +845,7 @@ async function onSessionReset(ctx: SessionResetContext): Promise<void> {
 
     if (!ctx.isInternal && config.sessionNativeEnabled) {
         const sessionMapKey = resolveSessionMapKey(ctx.messageData, ctx.agentId);
-        await commitMappedNativeSessionAndClear(
+        rotateSessionMappingAndCommitAsync(
             config,
             ctx.workspacePath,
             sessionMapKey,
@@ -796,11 +871,12 @@ async function beforeModel(ctx: BeforeModelContext): Promise<BeforeModelHookResu
     const sessionMapKey = !ctx.isInternal ? resolveSessionMapKey(ctx.messageData, ctx.agentId) : null;
     let openVikingSessionId: string | null = null;
     let nativeSessionWriteFailed = false;
+    let sessionSetupTimedOut = false;
 
     if (!ctx.isInternal && config.sessionNativeEnabled && sessionMapKey) {
         const switchDirective = matchSessionSwitchDirective(message, config.sessionSwitchMarkers);
         if (switchDirective.matched) {
-            await commitMappedNativeSessionAndClear(
+            rotateSessionMappingAndCommitAsync(
                 config,
                 ctx.workspacePath,
                 sessionMapKey,
@@ -827,7 +903,7 @@ async function beforeModel(ctx: BeforeModelContext): Promise<BeforeModelHookResu
                             'INFO',
                             `OpenViking idle timeout reached for @${ctx.agentId}: session_id=${existingEntry.sessionId} idle_ms=${idleMs} threshold_ms=${config.sessionIdleTimeoutMs}`
                         );
-                        await commitMappedNativeSessionAndClear(
+                        rotateSessionMappingAndCommitAsync(
                             config,
                             ctx.workspacePath,
                             sessionMapKey,
@@ -845,32 +921,39 @@ async function beforeModel(ctx: BeforeModelContext): Promise<BeforeModelHookResu
             log('INFO', `OpenViking session resolved for @${ctx.agentId}: session_id=${openVikingSessionId} status=${ensured.isNew ? 'created' : 'reused'}`);
         } catch (error) {
             nativeSessionWriteFailed = true;
+            if (isCommandTimeoutError(error)) {
+                sessionSetupTimedOut = true;
+            }
             log('WARN', `OpenViking session setup failed for @${ctx.agentId}: ${(error as Error).message}`);
         }
     }
 
     if (!ctx.isInternal) {
-        try {
-            const prefetch = await fetchOpenVikingPrefetchContext(
-                config,
-                ctx.workspacePath,
-                ctx.agentId,
-                message,
-                openVikingSessionId || undefined
-            );
-            if (prefetch.block) {
-                writeNativePrefetchDump(config, ctx.agentId, message, openVikingSessionId || undefined, prefetch);
-                message += `\n\n------\n\n${prefetch.block}\n[End OpenViking Context]`;
-                const distributionSummary = maybeDistributionSummary(prefetch.distribution);
-                log('INFO', `OpenViking prefetch hit for @${ctx.agentId}: source=${prefetch.source} distribution=${distributionSummary} injected_chars=${prefetch.block.length}`);
-                if (prefetch.fallbackReason) {
-                    log('INFO', `OpenViking prefetch fallback for @${ctx.agentId}: reason=${prefetch.fallbackReason} diagnostics=${prefetch.diagnostics.join(' | ')}`);
+        if (sessionSetupTimedOut) {
+            log('WARN', `OpenViking prefetch skipped for @${ctx.agentId}: session_setup_timeout_in_same_turn`);
+        } else {
+            try {
+                const prefetch = await fetchOpenVikingPrefetchContext(
+                    config,
+                    ctx.workspacePath,
+                    ctx.agentId,
+                    message,
+                    openVikingSessionId || undefined
+                );
+                if (prefetch.block) {
+                    writeNativePrefetchDump(config, ctx.agentId, message, openVikingSessionId || undefined, prefetch);
+                    message += `\n\n------\n\n${prefetch.block}\n[End OpenViking Context]`;
+                    const distributionSummary = maybeDistributionSummary(prefetch.distribution);
+                    log('INFO', `OpenViking prefetch hit for @${ctx.agentId}: source=${prefetch.source} distribution=${distributionSummary} injected_chars=${prefetch.block.length}`);
+                    if (prefetch.fallbackReason) {
+                        log('INFO', `OpenViking prefetch fallback for @${ctx.agentId}: reason=${prefetch.fallbackReason} diagnostics=${prefetch.diagnostics.join(' | ')}`);
+                    }
+                } else {
+                    log('INFO', `OpenViking prefetch miss for @${ctx.agentId}: source=${prefetch.source} diagnostics=${prefetch.diagnostics.join(' | ')}`);
                 }
-            } else {
-                log('INFO', `OpenViking prefetch miss for @${ctx.agentId}: source=${prefetch.source} diagnostics=${prefetch.diagnostics.join(' | ')}`);
+            } catch (error) {
+                log('WARN', `OpenViking prefetch skipped for @${ctx.agentId}: ${(error as Error).message}`);
             }
-        } catch (error) {
-            log('WARN', `OpenViking prefetch skipped for @${ctx.agentId}: ${(error as Error).message}`);
         }
     }
 
