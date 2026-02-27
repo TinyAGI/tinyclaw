@@ -46,6 +46,7 @@ if (!TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN === 'your_token_here') {
 interface PendingMessage {
     chatId: number;
     messageId: number;
+    messageThreadId?: number;
     timestamp: number;
 }
 
@@ -280,8 +281,8 @@ bot.getMe().then(async (me: TelegramBot.User) => {
 // Message received - Write to queue
 bot.on('message', async (msg: TelegramBot.Message) => {
     try {
-        // Skip group/channel messages - only handle private chats
-        if (msg.chat.type !== 'private') {
+        // Skip channel posts - handle private chats, groups, supergroups, and forums
+        if (msg.chat.type === 'channel') {
             return;
         }
 
@@ -355,12 +356,17 @@ bot.on('message', async (msg: TelegramBot.Message) => {
 
         log('INFO', `Message from ${sender}: ${messageText.substring(0, 50)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}...`);
 
+        const threadOpts = (msg as any).message_thread_id
+            ? { message_thread_id: (msg as any).message_thread_id } as any
+            : {};
+
         const pairing = ensureSenderPaired(PAIRING_FILE, 'telegram', senderId, sender);
         if (!pairing.approved && pairing.code) {
             if (pairing.isNewPending) {
                 log('INFO', `Blocked unpaired Telegram sender ${sender} (${senderId}) with code ${pairing.code}`);
                 await bot.sendMessage(msg.chat.id, pairingMessage(pairing.code), {
                     reply_to_message_id: msg.message_id,
+                    ...threadOpts,
                 });
             } else {
                 log('INFO', `Blocked pending Telegram sender ${sender} (${senderId}) without re-sending pairing message`);
@@ -374,6 +380,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
             const agentList = getAgentListText();
             await bot.sendMessage(msg.chat.id, agentList, {
                 reply_to_message_id: msg.message_id,
+                ...threadOpts,
             });
             return;
         }
@@ -384,6 +391,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
             const teamList = getTeamListText();
             await bot.sendMessage(msg.chat.id, teamList, {
                 reply_to_message_id: msg.message_id,
+                ...threadOpts,
             });
             return;
         }
@@ -393,6 +401,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
         if (messageText.trim().match(/^[!/]reset$/i)) {
             await bot.sendMessage(msg.chat.id, 'Usage: /reset @agent_id [@agent_id2 ...]\nSpecify which agent(s) to reset.', {
                 reply_to_message_id: msg.message_id,
+                ...threadOpts,
             });
             return;
         }
@@ -417,10 +426,12 @@ bot.on('message', async (msg: TelegramBot.Message) => {
                 }
                 await bot.sendMessage(msg.chat.id, resetResults.join('\n'), {
                     reply_to_message_id: msg.message_id,
+                    ...threadOpts,
                 });
             } catch {
                 await bot.sendMessage(msg.chat.id, 'Could not process reset command. Check settings.', {
                     reply_to_message_id: msg.message_id,
+                    ...threadOpts,
                 });
             }
             return;
@@ -456,6 +467,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
         pendingMessages.set(queueMessageId, {
             chatId: msg.chat.id,
             messageId: msg.message_id,
+            messageThreadId: (msg as any).message_thread_id,
             timestamp: Date.now(),
         });
 
@@ -498,6 +510,11 @@ async function checkOutgoingQueue(): Promise<void> {
                 const targetChatId = pending?.chatId ?? (senderId ? Number(senderId) : null);
 
                 if (targetChatId && !Number.isNaN(targetChatId)) {
+                    // Thread options for file and message sending
+                    const threadOpts = pending?.messageThreadId
+                        ? { message_thread_id: pending.messageThreadId } as any
+                        : {};
+
                     // Send any attached files first
                     if (files.length > 0) {
                         for (const file of files) {
@@ -505,13 +522,13 @@ async function checkOutgoingQueue(): Promise<void> {
                                 if (!fs.existsSync(file)) continue;
                                 const ext = path.extname(file).toLowerCase();
                                 if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
-                                    await bot.sendPhoto(targetChatId, file);
+                                    await bot.sendPhoto(targetChatId, file, threadOpts);
                                 } else if (['.mp3', '.ogg', '.wav', '.m4a'].includes(ext)) {
-                                    await bot.sendAudio(targetChatId, file);
+                                    await bot.sendAudio(targetChatId, file, threadOpts);
                                 } else if (['.mp4', '.avi', '.mov', '.webm'].includes(ext)) {
-                                    await bot.sendVideo(targetChatId, file);
+                                    await bot.sendVideo(targetChatId, file, threadOpts);
                                 } else {
-                                    await bot.sendDocument(targetChatId, file);
+                                    await bot.sendDocument(targetChatId, file, threadOpts);
                                 }
                                 log('INFO', `Sent file to Telegram: ${path.basename(file)}`);
                             } catch (fileErr) {
@@ -526,12 +543,12 @@ async function checkOutgoingQueue(): Promise<void> {
 
                         if (chunks.length > 0) {
                             await sendTelegramMessage(targetChatId, chunks[0]!, pending
-                                ? { reply_to_message_id: pending.messageId }
-                                : {},
+                                ? { reply_to_message_id: pending.messageId, ...threadOpts }
+                                : threadOpts,
                             );
                         }
                         for (let i = 1; i < chunks.length; i++) {
-                            await sendTelegramMessage(targetChatId, chunks[i]!);
+                            await sendTelegramMessage(targetChatId, chunks[i]!, threadOpts);
                         }
                     }
 
@@ -561,7 +578,10 @@ setInterval(checkOutgoingQueue, 1000);
 // Refresh typing indicator every 4 seconds for pending messages
 setInterval(() => {
     for (const [, data] of pendingMessages.entries()) {
-        bot.sendChatAction(data.chatId, 'typing').catch(() => {
+        const opts = data.messageThreadId
+            ? { message_thread_id: data.messageThreadId } as any
+            : {};
+        bot.sendChatAction(data.chatId, 'typing', opts).catch(() => {
             // Ignore typing errors silently
         });
     }

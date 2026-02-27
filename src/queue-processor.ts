@@ -364,10 +364,19 @@ emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), te
 // Event-driven: all messages come through the API server (same process)
 queueEvents.on('message:enqueued', () => processQueue());
 
+// Process any pending messages left from previous session
+setTimeout(() => processQueue(), 1000);
+
+// Periodic fallback poll — catches messages missed by events or recovered from stale state
+setInterval(() => processQueue(), 30 * 1000); // every 30s
+
 // Periodic maintenance
 setInterval(() => {
     const count = recoverStaleMessages();
-    if (count > 0) log('INFO', `Recovered ${count} stale message(s)`);
+    if (count > 0) {
+        log('INFO', `Recovered ${count} stale message(s)`);
+        processQueue();
+    }
 }, 5 * 60 * 1000); // every 5 min
 
 setInterval(() => {

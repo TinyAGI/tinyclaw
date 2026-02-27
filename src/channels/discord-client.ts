@@ -5,7 +5,7 @@
  * Does NOT call Claude directly - that's handled by queue-processor
  */
 
-import { Client, Events, GatewayIntentBits, Partials, Message, DMChannel, AttachmentBuilder } from 'discord.js';
+import { Client, Events, GatewayIntentBits, Partials, Message, DMChannel, TextChannel, ThreadChannel, AttachmentBuilder } from 'discord.js';
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
@@ -43,7 +43,8 @@ if (!DISCORD_BOT_TOKEN || DISCORD_BOT_TOKEN === 'your_token_here') {
 
 interface PendingMessage {
     message: Message;
-    channel: DMChannel;
+    channel: DMChannel | TextChannel;
+    thread?: ThreadChannel;
     timestamp: number;
 }
 
@@ -198,6 +199,7 @@ function pairingMessage(code: string): string {
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
     ],
@@ -221,9 +223,9 @@ client.on(Events.MessageCreate, async (message: Message) => {
             return;
         }
 
-        // Skip non-DM messages (guild = server channel)
+        // In server channels, strip any bot mention from the text but respond to all messages
         if (message.guild) {
-            return;
+            message.content = message.content.replace(/<@!?\d+>/g, '').trim();
         }
 
         const hasAttachments = message.attachments.size > 0;
@@ -321,7 +323,29 @@ client.on(Events.MessageCreate, async (message: Message) => {
         }
 
         // Show typing indicator
-        await (message.channel as DMChannel).sendTyping();
+        await (message.channel as DMChannel | TextChannel).sendTyping();
+
+        // For guild messages, create a thread (or use existing thread) for the response
+        let thread: ThreadChannel | undefined;
+        if (message.guild) {
+            if (message.channel.isThread()) {
+                // Already in a thread, reply there
+                thread = message.channel as ThreadChannel;
+            } else {
+                // Create a new thread from the message
+                try {
+                    const threadName = messageText.substring(0, 90) || 'Tiny';
+                    thread = await (message as Message<true>).startThread({
+                        name: threadName,
+                        autoArchiveDuration: 60,
+                    });
+                    log('INFO', `Created thread "${threadName}" for message ${messageId}`);
+                } catch (threadErr) {
+                    log('ERROR', `Failed to create thread: ${(threadErr as Error).message}`);
+                    // Fall back to inline reply if thread creation fails
+                }
+            }
+        }
 
         // Build message text with file references
         let fullMessage = messageText;
@@ -349,7 +373,8 @@ client.on(Events.MessageCreate, async (message: Message) => {
         // Store pending message for response
         pendingMessages.set(messageId, {
             message: message,
-            channel: message.channel as DMChannel,
+            channel: message.channel as DMChannel | TextChannel,
+            thread,
             timestamp: Date.now(),
         });
 
@@ -401,6 +426,9 @@ async function checkOutgoingQueue(): Promise<void> {
                 }
 
                 if (dmChannel) {
+                    // Use thread channel if available (guild messages), otherwise DM channel
+                    const replyChannel = pending?.thread ?? dmChannel;
+
                     // Send any attached files
                     if (files.length > 0) {
                         const attachments: AttachmentBuilder[] = [];
@@ -413,7 +441,7 @@ async function checkOutgoingQueue(): Promise<void> {
                             }
                         }
                         if (attachments.length > 0) {
-                            await dmChannel.send({ files: attachments });
+                            await replyChannel.send({ files: attachments });
                             log('INFO', `Sent ${attachments.length} file(s) to Discord`);
                         }
                     }
@@ -422,15 +450,8 @@ async function checkOutgoingQueue(): Promise<void> {
                     if (responseText) {
                         const chunks = splitMessage(responseText);
 
-                        if (chunks.length > 0) {
-                            if (pending) {
-                                await pending.message.reply(chunks[0]!);
-                            } else {
-                                await dmChannel.send(chunks[0]!);
-                            }
-                        }
-                        for (let i = 1; i < chunks.length; i++) {
-                            await dmChannel.send(chunks[i]!);
+                        for (const chunk of chunks) {
+                            await replyChannel.send(chunk);
                         }
                     }
 
@@ -460,7 +481,8 @@ setInterval(checkOutgoingQueue, 1000);
 // Refresh typing indicator every 8 seconds (Discord typing expires after ~10s)
 setInterval(() => {
     for (const [, data] of pendingMessages.entries()) {
-        data.channel.sendTyping().catch(() => {
+        const typingChannel = data.thread ?? data.channel;
+        typingChannel.sendTyping().catch(() => {
             // Ignore typing errors silently
         });
     }

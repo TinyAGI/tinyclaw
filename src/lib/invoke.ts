@@ -1,20 +1,43 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { AgentConfig, TeamConfig } from './types';
 import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel } from './config';
 import { log } from './logging';
 import { ensureAgentDirectory, updateAgentTeammates } from './agent';
 
-export async function runCommand(command: string, args: string[], cwd?: string): Promise<string> {
+const DEFAULT_COMMAND_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+// Ensure ~/.local/bin and ~/bin are in PATH for spawned processes
+const HOME = os.homedir();
+const extraPaths = [
+    path.join(HOME, '.local', 'bin'),
+    path.join(HOME, 'bin'),
+    '/usr/local/bin',
+].filter(p => fs.existsSync(p));
+const spawnPath = [...extraPaths, process.env.PATH].join(':');
+
+export async function runCommand(command: string, args: string[], cwd?: string, timeoutMs?: number): Promise<string> {
     return new Promise((resolve, reject) => {
         const child = spawn(command, args, {
             cwd: cwd || SCRIPT_DIR,
             stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env, PATH: spawnPath },
         });
 
         let stdout = '';
         let stderr = '';
+        let killed = false;
+
+        const timeout = setTimeout(() => {
+            killed = true;
+            child.kill('SIGTERM');
+            // Force kill if SIGTERM doesn't work after 5s
+            setTimeout(() => {
+                if (!child.killed) child.kill('SIGKILL');
+            }, 5000);
+        }, timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS);
 
         child.stdout.setEncoding('utf8');
         child.stderr.setEncoding('utf8');
@@ -28,10 +51,18 @@ export async function runCommand(command: string, args: string[], cwd?: string):
         });
 
         child.on('error', (error) => {
+            clearTimeout(timeout);
             reject(error);
         });
 
         child.on('close', (code) => {
+            clearTimeout(timeout);
+
+            if (killed) {
+                reject(new Error(`Command timed out after ${(timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS) / 1000}s and was killed`));
+                return;
+            }
+
             if (code === 0) {
                 resolve(stdout);
                 return;
