@@ -107,8 +107,8 @@ The QR code appears in the WhatsApp pane. If it's not visible:
 # Check queue processor status
 tinyclaw status
 
-# Check incoming queue
-ls -la .tinyclaw/queue/incoming/
+# Check queue status via API
+curl http://localhost:3777/api/queue/status | jq
 
 # View queue logs
 tinyclaw logs queue
@@ -117,25 +117,23 @@ tinyclaw logs queue
 **Checklist:**
 - ✅ Queue processor is running
 - ✅ Claude Code CLI is installed: `claude --version`
-- ✅ Messages aren't stuck in processing: `ls .tinyclaw/queue/processing/`
+- ✅ No dead messages: `curl http://localhost:3777/api/queue/dead | jq`
 
 ### Messages stuck in processing
 
-This happens when the queue processor crashes mid-message:
+Messages stuck in `processing` state are automatically recovered after 10
+minutes. To force recovery:
 
 ```bash
-# Clear stuck messages
-rm -rf .tinyclaw/queue/processing/*
-
-# Restart TinyClaw
+# Restart TinyClaw (triggers stale message recovery on startup)
 tinyclaw restart
 ```
 
 ### Responses not being sent
 
 ```bash
-# Check outgoing queue
-ls -la .tinyclaw/queue/outgoing/
+# Check responses via API
+curl http://localhost:3777/api/responses | jq
 
 # Check channel client logs
 tinyclaw logs discord
@@ -292,13 +290,13 @@ If you see "Could not fetch latest version":
 If bundle download fails during update:
 
 1. **Check release exists:**
-   - Visit: https://github.com/jlia0/tinyclaw/releases
+   - Visit: https://github.com/TinyAGI/tinyclaw/releases
    - Verify bundle file is attached
 
 2. **Manual update:**
    ```bash
    # Download bundle manually
-   wget https://github.com/jlia0/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
+   wget https://github.com/TinyAGI/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
 
    # Extract to temp directory
    mkdir temp-update
@@ -362,17 +360,12 @@ ps aux | grep -E 'claude|codex|node' | awk '{print $4, $11}'
 
 1. **Check queue depth:**
    ```bash
-   ls .tinyclaw/queue/incoming/ | wc -l
+   curl http://localhost:3777/api/queue/status | jq
    ```
 
-2. **Check processing queue:**
+2. **Monitor AI response time:**
    ```bash
-   ls .tinyclaw/queue/processing/
-   ```
-
-3. **Monitor AI response time:**
-   ```bash
-   tail -f .tinyclaw/logs/queue.log | grep "Processing completed"
+   tail -f .tinyclaw/logs/queue.log | grep "Response ready"
    ```
 
 ## Log Analysis
@@ -424,12 +417,12 @@ grep "Heartbeat" .tinyclaw/logs/heartbeat.log
 3. **Restart from scratch:**
    ```bash
    tinyclaw stop
-   rm -rf .tinyclaw/queue/*
+   rm -f .tinyclaw/tinyclaw.db
    tinyclaw start
    ```
 
 4. **Report issue:**
-   - GitHub Issues: https://github.com/jlia0/tinyclaw/issues
+   - GitHub Issues: https://github.com/TinyAGI/tinyclaw/issues
    - Include logs and error messages
    - Describe steps to reproduce
 
@@ -440,7 +433,7 @@ Quick reference for common recovery scenarios:
 ```bash
 # Full reset (preserves settings)
 tinyclaw stop
-rm -rf .tinyclaw/queue/*
+rm -f .tinyclaw/tinyclaw.db
 rm -rf .tinyclaw/channels/*
 rm -rf .tinyclaw/whatsapp-session/*
 tinyclaw start
@@ -450,7 +443,7 @@ cd ~/tinyclaw
 ./scripts/uninstall.sh
 cd ..
 rm -rf tinyclaw
-curl -fsSL https://raw.githubusercontent.com/jlia0/tinyclaw/main/scripts/remote-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 
 # Reset single agent
 tinyclaw agent reset coder

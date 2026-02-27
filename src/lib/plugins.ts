@@ -8,7 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { TINYCLAW_HOME } from './config';
-import { log } from './logging';
+import { log, onEvent } from './logging';
 
 // Types
 export interface PluginEvent {
@@ -136,6 +136,11 @@ export async function loadPlugins(): Promise<void> {
 
     if (loadedPlugins.length > 0) {
         log('INFO', `${loadedPlugins.length} plugin(s) loaded`);
+
+        // Register as an event listener so all emitEvent() calls get broadcast to plugins
+        onEvent((type, data) => {
+            broadcastEvent({ type, timestamp: Date.now(), ...data });
+        });
     }
 }
 

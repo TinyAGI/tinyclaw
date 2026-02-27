@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # TinyClaw Remote Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/jlia0/tinyclaw/main/scripts/remote-install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 
 set -e
 
@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-GITHUB_REPO="jlia0/tinyclaw"
+GITHUB_REPO="TinyAGI/tinyclaw"
 DEFAULT_BRANCH="main"
 INSTALL_DIR=""
 
@@ -164,7 +164,10 @@ if [ "$USE_BUNDLE" = false ]; then
     echo -e "${GREEN}✓ Dependencies installed${NC}"
     echo ""
 else
-    echo -e "${BLUE}[5/6] Skipping dependency installation (pre-built bundle)${NC}"
+    echo -e "${BLUE}[5/6] Rebuilding native modules for your Node.js version...${NC}"
+    cd "$INSTALL_DIR"
+    npm rebuild better-sqlite3 --silent 2>/dev/null || true
+    echo -e "${GREEN}✓ Native modules rebuilt${NC}"
     echo ""
 fi
 

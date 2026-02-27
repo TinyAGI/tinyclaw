@@ -2,7 +2,7 @@
 # Update management for TinyClaw
 
 # GitHub repository info
-GITHUB_REPO="jlia0/tinyclaw"
+GITHUB_REPO="TinyAGI/tinyclaw"
 UPDATE_CHECK_CACHE="$HOME/.tinyclaw/.update_check"
 UPDATE_CHECK_TTL=3600  # Check once per hour
 
@@ -221,6 +221,11 @@ do_update() {
     chmod +x "$SCRIPT_DIR/tinyclaw.sh"
 
     rm -rf "$temp_dir"
+
+    # Rebuild native modules for the user's Node.js version
+    echo "Rebuilding native modules..."
+    cd "$SCRIPT_DIR"
+    npm rebuild better-sqlite3 --silent 2>/dev/null || true
 
     echo -e "${GREEN}✓ Installed${NC}"
     echo ""

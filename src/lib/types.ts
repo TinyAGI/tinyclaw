@@ -3,12 +3,27 @@ export interface AgentConfig {
     provider: string;       // 'anthropic', 'openai', or 'opencode'
     model: string;           // e.g. 'sonnet', 'opus', 'gpt-5.3-codex'
     working_directory: string;
+    system_prompt?: string;
+    prompt_file?: string;
 }
 
 export interface TeamConfig {
     name: string;
     agents: string[];
     leader_agent: string;
+}
+
+export type TaskStatus = 'backlog' | 'in_progress' | 'review' | 'done';
+
+export interface Task {
+    id: string;
+    title: string;
+    description: string;
+    status: TaskStatus;
+    assignee: string;       // agent or team id, empty = unassigned
+    assigneeType: 'agent' | 'team' | '';
+    createdAt: number;
+    updatedAt: number;
 }
 
 export interface ChainStep {
@@ -87,12 +102,6 @@ export interface ResponseData {
     agent?: string; // which agent handled this
     files?: string[];
     metadata?: Record<string, unknown>;
-}
-
-export interface QueueFile {
-    name: string;
-    path: string;
-    time: number;
 }
 
 // Model name mapping
