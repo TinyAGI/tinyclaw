@@ -369,6 +369,45 @@ Environment flags:
 `prefetch_rule_threshold`, `prefetch_llm_ambiguity_low`,
 `prefetch_llm_ambiguity_high`, `prefetch_llm_timeout_ms`.
 
+#### Quick Usage
+
+1. Enable OpenViking in setup:
+```bash
+tinyclaw setup
+```
+2. Start TinyClaw (auto-starts OpenViking when enabled):
+```bash
+tinyclaw start
+```
+3. Watch gate/prefetch logs:
+```bash
+tail -f ~/.tinyclaw/logs/queue.log | grep -E "prefetch gate|prefetch llm gate|prefetch hit|prefetch miss"
+```
+
+Typical prompt patterns:
+- Force memory retrieval: `based on memory...`
+- Likely skip retrieval: realtime/news/weather/price/tool-execution queries
+- Ambiguous (may use LLM gate in `rule_then_llm`): `do you remember what I told you before?`
+
+#### Gate Decision Rules
+
+Gate priority is:
+1. `mode=never` => `prefetch_decision=disabled`
+2. `mode=always` => `prefetch_decision=force`
+3. `force_patterns` hit => `prefetch_decision=force`
+4. `skip_patterns` hit => `prefetch_decision=rule_no`
+5. Rule scoring:
+   - `score >= threshold` => `rule_yes`
+   - `score in [ambiguity_low, ambiguity_high]`:
+     - `mode=rule` => `rule_no` (ambiguous fallback)
+     - `mode=rule_then_llm` => `llm_yes` or `llm_no`
+   - otherwise => `rule_no`
+
+Notes:
+- LLM gate runs only for ambiguous cases and only in `rule_then_llm`.
+- LLM timeout/error falls back to no-prefetch (`llm_no`) to protect response latency.
+- Even with `llm_yes`, prefetch may still be skipped if plugin hook budget is exhausted.
+
 ### In-Chat Commands
 
 These commands work in Discord, Telegram, and WhatsApp:
