@@ -250,8 +250,14 @@ client.on(Events.MessageCreate, async (message: Message) => {
             }
 
             // Priority 2: Channel-based routing
+            // For threads, resolve the parent channel name for routing
             if (!routedAgent) {
-                const channelName = 'name' in message.channel ? (message.channel as TextChannel).name : '';
+                let channelName = '';
+                if (message.channel.isThread() && message.channel.parent) {
+                    channelName = message.channel.parent.name;
+                } else if ('name' in message.channel) {
+                    channelName = (message.channel as TextChannel).name;
+                }
                 const channelAgent = resolveChannelAgent(channelName, discordConfig.channel_routing, agents);
                 if (channelAgent) {
                     routedAgent = channelAgent;
