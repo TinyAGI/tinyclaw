@@ -5,13 +5,14 @@
  * Does NOT call Claude directly - that's handled by queue-processor
  */
 
-import { Client, Events, GatewayIntentBits, Partials, Message, DMChannel, AttachmentBuilder } from 'discord.js';
+import { Client, Events, GatewayIntentBits, Partials, Message, DMChannel, TextChannel, ThreadChannel, AttachmentBuilder } from 'discord.js';
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
+import { resolveChannelAgent, parseMentionRouting } from '../lib/routing';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -43,7 +44,8 @@ if (!DISCORD_BOT_TOKEN || DISCORD_BOT_TOKEN === 'your_token_here') {
 
 interface PendingMessage {
     message: Message;
-    channel: DMChannel;
+    channel: DMChannel | TextChannel;
+    thread?: ThreadChannel;
     timestamp: number;
 }
 
@@ -198,6 +200,7 @@ function pairingMessage(code: string): string {
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
     ],
@@ -221,9 +224,52 @@ client.on(Events.MessageCreate, async (message: Message) => {
             return;
         }
 
-        // Skip non-DM messages (guild = server channel)
+        // In server channels, strip bot mentions and determine routing
+        let routedAgent: string | undefined;
         if (message.guild) {
-            return;
+            // Check if bot was mentioned (before stripping mentions)
+            const botMentioned = client.user && message.mentions.has(client.user);
+
+            // Strip bot mentions from content
+            message.content = message.content.replace(/<@!?\d+>/g, '').trim();
+
+            // Load settings for routing decisions
+            const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
+            const settings = JSON.parse(settingsData);
+            const agents = settings.agents || {};
+            const discordConfig = settings.channels?.discord || {};
+
+            // Priority 1: @mention routing - first word after bot mention is agent name
+            if (botMentioned && message.content) {
+                const mentionRoute = parseMentionRouting(message.content, agents);
+                if (mentionRoute) {
+                    routedAgent = mentionRoute.agentId;
+                    message.content = mentionRoute.cleanMessage;
+                    log('INFO', `@mention routed to agent: ${routedAgent}`);
+                }
+            }
+
+            // Priority 2: Channel-based routing
+            // For threads, resolve the parent channel name for routing
+            if (!routedAgent) {
+                let channelName = '';
+                if (message.channel.isThread() && message.channel.parent) {
+                    channelName = message.channel.parent.name;
+                } else if ('name' in message.channel) {
+                    channelName = (message.channel as TextChannel).name;
+                }
+                const channelAgent = resolveChannelAgent(channelName, discordConfig.channel_routing, agents);
+                if (channelAgent) {
+                    routedAgent = channelAgent;
+                    log('INFO', `Channel "${channelName}" routed to agent: ${routedAgent}`);
+                }
+            }
+
+            // Priority 3: Default agent from discord config
+            if (!routedAgent && discordConfig.default_agent && agents[discordConfig.default_agent]) {
+                routedAgent = discordConfig.default_agent;
+                log('INFO', `Using default discord agent: ${routedAgent}`);
+            }
         }
 
         const hasAttachments = message.attachments.size > 0;
@@ -321,7 +367,29 @@ client.on(Events.MessageCreate, async (message: Message) => {
         }
 
         // Show typing indicator
-        await (message.channel as DMChannel).sendTyping();
+        await (message.channel as DMChannel | TextChannel).sendTyping();
+
+        // For guild messages, create a thread (or use existing thread) for the response
+        let thread: ThreadChannel | undefined;
+        if (message.guild) {
+            if (message.channel.isThread()) {
+                // Already in a thread, reply there
+                thread = message.channel as ThreadChannel;
+            } else {
+                // Create a new thread from the message
+                try {
+                    const threadName = messageText.substring(0, 90) || 'Tiny';
+                    thread = await (message as Message<true>).startThread({
+                        name: threadName,
+                        autoArchiveDuration: 60,
+                    });
+                    log('INFO', `Created thread "${threadName}" for message ${messageId}`);
+                } catch (threadErr) {
+                    log('ERROR', `Failed to create thread: ${(threadErr as Error).message}`);
+                    // Fall back to inline reply if thread creation fails
+                }
+            }
+        }
 
         // Build message text with file references
         let fullMessage = messageText;
@@ -340,6 +408,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
                 senderId: message.author.id,
                 message: fullMessage,
                 messageId,
+                agent: routedAgent,
                 files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
             }),
         });
@@ -349,7 +418,8 @@ client.on(Events.MessageCreate, async (message: Message) => {
         // Store pending message for response
         pendingMessages.set(messageId, {
             message: message,
-            channel: message.channel as DMChannel,
+            channel: message.channel as DMChannel | TextChannel,
+            thread,
             timestamp: Date.now(),
         });
 
@@ -401,6 +471,9 @@ async function checkOutgoingQueue(): Promise<void> {
                 }
 
                 if (dmChannel) {
+                    // Use thread channel if available (guild messages), otherwise DM channel
+                    const replyChannel = pending?.thread ?? dmChannel;
+
                     // Send any attached files
                     if (files.length > 0) {
                         const attachments: AttachmentBuilder[] = [];
@@ -413,7 +486,7 @@ async function checkOutgoingQueue(): Promise<void> {
                             }
                         }
                         if (attachments.length > 0) {
-                            await dmChannel.send({ files: attachments });
+                            await replyChannel.send({ files: attachments });
                             log('INFO', `Sent ${attachments.length} file(s) to Discord`);
                         }
                     }
@@ -422,15 +495,8 @@ async function checkOutgoingQueue(): Promise<void> {
                     if (responseText) {
                         const chunks = splitMessage(responseText);
 
-                        if (chunks.length > 0) {
-                            if (pending) {
-                                await pending.message.reply(chunks[0]!);
-                            } else {
-                                await dmChannel.send(chunks[0]!);
-                            }
-                        }
-                        for (let i = 1; i < chunks.length; i++) {
-                            await dmChannel.send(chunks[i]!);
+                        for (const chunk of chunks) {
+                            await replyChannel.send(chunk);
                         }
                     }
 
@@ -460,7 +526,8 @@ setInterval(checkOutgoingQueue, 1000);
 // Refresh typing indicator every 8 seconds (Discord typing expires after ~10s)
 setInterval(() => {
     for (const [, data] of pendingMessages.entries()) {
-        data.channel.sendTyping().catch(() => {
+        const typingChannel = data.thread ?? data.channel;
+        typingChannel.sendTyping().catch(() => {
             // Ignore typing errors silently
         });
     }

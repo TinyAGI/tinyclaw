@@ -136,3 +136,76 @@ export function parseAgentRouting(
     }
     return { agentId: 'default', message: rawMessage };
 }
+
+/**
+ * Resolve an agent from channel routing configuration.
+ * Matches channel name (case-insensitive) against channel_routing keys.
+ * Supports exact match and partial matching (key contains channel name or vice versa).
+ * Returns agent ID if found and agent exists, null otherwise.
+ */
+export function resolveChannelAgent(
+    channelName: string,
+    channelRouting: Record<string, string> | undefined,
+    agents: Record<string, AgentConfig>
+): string | null {
+    if (!channelRouting || !channelName) return null;
+
+    const normalizedChannel = channelName.toLowerCase();
+
+    // Exact match first
+    for (const [key, agentId] of Object.entries(channelRouting)) {
+        if (key.toLowerCase() === normalizedChannel) {
+            if (agents[agentId]) return agentId;
+            // Try matching by agent name
+            for (const [id, config] of Object.entries(agents)) {
+                if (config.name.toLowerCase() === agentId.toLowerCase()) return id;
+            }
+        }
+    }
+
+    // Partial match: channel name contains key or key contains channel name
+    for (const [key, agentId] of Object.entries(channelRouting)) {
+        const normalizedKey = key.toLowerCase();
+        if (normalizedChannel.includes(normalizedKey) || normalizedKey.includes(normalizedChannel)) {
+            if (agents[agentId]) return agentId;
+            for (const [id, config] of Object.entries(agents)) {
+                if (config.name.toLowerCase() === agentId.toLowerCase()) return id;
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Parse @mention routing from a message in a channel context.
+ * Extracts the agent ID from the first word after bot mentions are stripped.
+ * Returns { agentId, cleanMessage } or null if no valid agent mention found.
+ */
+export function parseMentionRouting(
+    messageText: string,
+    agents: Record<string, AgentConfig>
+): { agentId: string; cleanMessage: string } | null {
+    if (!messageText.trim()) return null;
+
+    // Check if the first word is @agentId or just agentId
+    const match = messageText.match(/^@?(\S+)\s*([\s\S]*)$/);
+    if (!match) return null;
+
+    const candidateId = match[1].toLowerCase();
+    const rest = match[2].trim();
+
+    // Check agent IDs
+    if (agents[candidateId]) {
+        return { agentId: candidateId, cleanMessage: rest || messageText };
+    }
+
+    // Check agent names (case-insensitive)
+    for (const [id, config] of Object.entries(agents)) {
+        if (config.name.toLowerCase() === candidateId) {
+            return { agentId: id, cleanMessage: rest || messageText };
+        }
+    }
+
+    return null;
+}

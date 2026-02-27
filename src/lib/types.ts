@@ -5,6 +5,7 @@ export interface AgentConfig {
     working_directory: string;
     system_prompt?: string;
     prompt_file?: string;
+    timeout?: number;         // max execution time in seconds (default: 300)
 }
 
 export interface TeamConfig {
@@ -31,6 +32,17 @@ export interface ChainStep {
     response: string;
 }
 
+export interface ChannelRouting {
+    [channelNameOrId: string]: string; // channel name/id → agent id
+}
+
+export interface ChannelConfig {
+    bot_token?: string;
+    channel_routing?: ChannelRouting;
+    default_agent?: string; // fallback agent for unmapped channels
+    approved_users?: number[];
+}
+
 export interface Settings {
     workspace?: {
         path?: string;
@@ -38,8 +50,8 @@ export interface Settings {
     };
     channels?: {
         enabled?: string[];
-        discord?: { bot_token?: string };
-        telegram?: { bot_token?: string };
+        discord?: ChannelConfig;
+        telegram?: ChannelConfig;
         whatsapp?: {};
     };
     models?: {
