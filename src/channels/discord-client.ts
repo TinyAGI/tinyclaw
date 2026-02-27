@@ -12,6 +12,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
+import { resolveChannelAgent, parseMentionRouting } from '../lib/routing';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -223,9 +224,46 @@ client.on(Events.MessageCreate, async (message: Message) => {
             return;
         }
 
-        // In server channels, strip any bot mention from the text but respond to all messages
+        // In server channels, strip bot mentions and determine routing
+        let routedAgent: string | undefined;
         if (message.guild) {
+            // Check if bot was mentioned (before stripping mentions)
+            const botMentioned = client.user && message.mentions.has(client.user);
+
+            // Strip bot mentions from content
             message.content = message.content.replace(/<@!?\d+>/g, '').trim();
+
+            // Load settings for routing decisions
+            const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
+            const settings = JSON.parse(settingsData);
+            const agents = settings.agents || {};
+            const discordConfig = settings.channels?.discord || {};
+
+            // Priority 1: @mention routing - first word after bot mention is agent name
+            if (botMentioned && message.content) {
+                const mentionRoute = parseMentionRouting(message.content, agents);
+                if (mentionRoute) {
+                    routedAgent = mentionRoute.agentId;
+                    message.content = mentionRoute.cleanMessage;
+                    log('INFO', `@mention routed to agent: \${routedAgent}`);
+                }
+            }
+
+            // Priority 2: Channel-based routing
+            if (!routedAgent) {
+                const channelName = 'name' in message.channel ? (message.channel as TextChannel).name : '';
+                const channelAgent = resolveChannelAgent(channelName, discordConfig.channel_routing, agents);
+                if (channelAgent) {
+                    routedAgent = channelAgent;
+                    log('INFO', `Channel "\${channelName}" routed to agent: \${routedAgent}`);
+                }
+            }
+
+            // Priority 3: Default agent from discord config
+            if (!routedAgent && discordConfig.default_agent && agents[discordConfig.default_agent]) {
+                routedAgent = discordConfig.default_agent;
+                log('INFO', `Using default discord agent: \${routedAgent}`);
+            }
         }
 
         const hasAttachments = message.attachments.size > 0;
@@ -364,6 +402,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
                 senderId: message.author.id,
                 message: fullMessage,
                 messageId,
+                agent: routedAgent,
                 files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
             }),
         });

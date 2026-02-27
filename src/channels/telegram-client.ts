@@ -14,6 +14,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
+import { resolveChannelAgent, parseMentionRouting } from '../lib/routing';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -262,7 +263,10 @@ function pairingMessage(code: string): string {
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
 
 // Bot ready
+let botUsername = '';
+
 bot.getMe().then(async (me: TelegramBot.User) => {
+    botUsername = (me.username || '').toLowerCase();
     log('INFO', `Telegram bot connected as @${me.username}`);
 
     // Register bot commands so they appear in Telegram's "/" menu
@@ -440,6 +444,54 @@ bot.on('message', async (msg: TelegramBot.Message) => {
         // Show typing indicator
         await bot.sendChatAction(msg.chat.id, 'typing');
 
+        // Determine agent routing for group/supergroup messages
+        let routedAgent: string | undefined;
+        if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+            const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
+            const settings = JSON.parse(settingsData);
+            const agents = settings.agents || {};
+            const telegramConfig = settings.channels?.telegram || {};
+
+            // Check if bot was mentioned via @username in message text
+            const botMentionPattern = botUsername ? new RegExp(`@${botUsername}\\b`, 'i') : null;
+            const botWasMentioned = botMentionPattern && botMentionPattern.test(messageText);
+
+            if (botWasMentioned && botUsername) {
+                // Strip bot mention and check for agent routing
+                const strippedText = messageText.replace(new RegExp(`@${botUsername}\\s*`, 'gi'), '').trim();
+                const mentionRoute = parseMentionRouting(strippedText, agents);
+                if (mentionRoute) {
+                    routedAgent = mentionRoute.agentId;
+                    messageText = mentionRoute.cleanMessage;
+                    log('INFO', `Telegram @mention routed to agent: ${routedAgent}`);
+                } else {
+                    messageText = strippedText;
+                }
+            }
+
+            // Channel/topic routing (lower priority than @mention)
+            if (!routedAgent) {
+                // Use topic name for forum topics, or chat title for regular groups
+                const topicName = (msg as any).forum_topic_created?.name
+                    || (msg as any).reply_to_message?.forum_topic_created?.name
+                    || '';
+                const routingName = topicName || msg.chat.title || '';
+                if (routingName) {
+                    const channelAgent = resolveChannelAgent(routingName, telegramConfig.channel_routing, agents);
+                    if (channelAgent) {
+                        routedAgent = channelAgent;
+                        log('INFO', `Telegram topic/group "${routingName}" routed to agent: ${routedAgent}`);
+                    }
+                }
+            }
+
+            // Default agent fallback
+            if (!routedAgent && telegramConfig.default_agent && agents[telegramConfig.default_agent]) {
+                routedAgent = telegramConfig.default_agent;
+                log('INFO', `Using default telegram agent: ${routedAgent}`);
+            }
+        }
+
         // Build message text with file references
         let fullMessage = messageText;
         if (downloadedFiles.length > 0) {
@@ -457,6 +509,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
                 senderId,
                 message: fullMessage,
                 messageId: queueMessageId,
+                agent: routedAgent,
                 files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
             }),
         });
