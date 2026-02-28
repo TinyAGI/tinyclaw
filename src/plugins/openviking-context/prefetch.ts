@@ -256,17 +256,22 @@ export function selectOpenVikingSearchHits(
     const memoryHits = hits.filter((hit) => hit.type === 'memory');
     const resourceHits = hits.filter((hit) => hit.type === 'resource');
     const skillHits = hits.filter((hit) => hit.type === 'skill');
+    const reserveSkillSlots = skillHits.length > 0 ? 1 : 0;
 
     // Keep memory as the primary source, while reserving a small budget for resource supplements.
     const selected: OpenVikingSearchHit[] = [];
-    const memoryPrimaryCap = Math.max(0, cap - resourceCap);
+    const memoryPrimaryCap = Math.max(0, cap - resourceCap - reserveSkillSlots);
     selected.push(...memoryHits.slice(0, memoryPrimaryCap));
     selected.push(...resourceHits.slice(0, resourceCap));
+    if (reserveSkillSlots > 0) {
+        selected.push(...skillHits.slice(0, reserveSkillSlots));
+    }
 
     if (selected.length < cap) {
         const remainingMemory = memoryHits.slice(memoryPrimaryCap);
         const remainingResource = resourceHits.slice(resourceCap);
-        const backfill = [...remainingMemory, ...remainingResource, ...skillHits];
+        const remainingSkill = skillHits.slice(reserveSkillSlots);
+        const backfill = [...remainingMemory, ...remainingResource, ...remainingSkill];
         selected.push(...backfill.slice(0, cap - selected.length));
     }
 
