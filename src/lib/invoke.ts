@@ -86,17 +86,31 @@ export async function invokeAgent(
     if (provider === 'openai') {
         log('INFO', `Using Codex CLI (agent: ${agentId})`);
 
-        const shouldResume = !shouldReset;
-
         if (shouldReset) {
             log('INFO', `🔄 Resetting Codex conversation for agent: ${agentId}`);
+            if (threadId) {
+                deleteThreadSession(agentId, threadId);
+            }
         }
 
         const modelId = resolveCodexModel(agent.model);
         const codexArgs = ['exec'];
-        if (shouldResume) {
-            codexArgs.push('resume', '--last');
+
+        if (threadId) {
+            // Thread-aware session management
+            const existing = !shouldReset ? getThreadSession(agentId, threadId) : null;
+            if (existing) {
+                codexArgs.push('resume', existing.session_id);
+                log('INFO', `Resuming Codex session ${existing.session_id} for thread ${threadId}`);
+            }
+            // else: new session — we'll capture the session ID from JSONL output
+        } else {
+            // No thread context — fall back to resume --last
+            if (!shouldReset) {
+                codexArgs.push('resume', '--last');
+            }
         }
+
         if (modelId) {
             codexArgs.push('--model', modelId);
         }
@@ -104,8 +118,9 @@ export async function invokeAgent(
 
         const codexOutput = await runCommand('codex', codexArgs, workingDir);
 
-        // Parse JSONL output and extract final agent_message
+        // Parse JSONL output and extract final agent_message + session ID
         let response = '';
+        let detectedSessionId: string | null = null;
         const lines = codexOutput.trim().split('\n');
         for (const line of lines) {
             try {
@@ -113,9 +128,22 @@ export async function invokeAgent(
                 if (json.type === 'item.completed' && json.item?.type === 'agent_message') {
                     response = json.item.text;
                 }
+                // Capture session/thread ID from JSONL events
+                if (!detectedSessionId) {
+                    const sid = json.session_id ?? json.thread_id;
+                    if (sid && typeof sid === 'string') {
+                        detectedSessionId = sid;
+                    }
+                }
             } catch (e) {
                 // Ignore lines that aren't valid JSON
             }
+        }
+
+        // Save session ID for this thread if we detected one on a new session
+        if (threadId && detectedSessionId && !getThreadSession(agentId, threadId)) {
+            saveThreadSession(agentId, threadId, detectedSessionId, 'openai');
+            log('INFO', `Saved Codex session ${detectedSessionId} for thread ${threadId}`);
         }
 
         return response || 'Sorry, I could not generate a response from Codex.';
