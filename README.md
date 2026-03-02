@@ -545,6 +545,10 @@ Teams support sequential chains (single handoff) and parallel fan-out (multiple 
 
 All channels share agent conversations!
 
+## 🐳 Docker
+
+For containerized deployment with API authentication, health checks, and process isolation, see [tinyclaw-infra](https://github.com/shwdsun/tinyclaw-infra). No changes to TinyClaw required.
+
 ## 📚 Documentation
 
 - [AGENTS.md](docs/AGENTS.md) - Agent management and routing
@@ -553,6 +557,7 @@ All channels share agent conversations!
 - [tinyoffice/README.md](tinyoffice/README.md) - TinyOffice web portal
 - [PLUGINS.md](docs/PLUGINS.md) - Plugin development guide
 - [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [tinyclaw-infra](https://github.com/shwdsun/tinyclaw-infra) - Docker deployment and auth proxy
 
 ## 🐛 Troubleshooting
 
