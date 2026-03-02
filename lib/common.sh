@@ -86,34 +86,6 @@ get_channel_token() {
     done
 }
 
-# Per-channel token storage (parallel array, bash 3.2 compatible)
-_CHANNEL_TOKEN_KEYS=()
-_CHANNEL_TOKEN_VALS=()
-
-_set_channel_token() {
-    local ch="$1" val="$2"
-    local i
-    for i in "${!_CHANNEL_TOKEN_KEYS[@]}"; do
-        if [ "${_CHANNEL_TOKEN_KEYS[$i]}" = "$ch" ]; then
-            _CHANNEL_TOKEN_VALS[$i]="$val"
-            return
-        fi
-    done
-    _CHANNEL_TOKEN_KEYS+=("$ch")
-    _CHANNEL_TOKEN_VALS+=("$val")
-}
-
-get_channel_token() {
-    local ch="$1"
-    local i
-    for i in "${!_CHANNEL_TOKEN_KEYS[@]}"; do
-        if [ "${_CHANNEL_TOKEN_KEYS[$i]}" = "$ch" ]; then
-            echo "${_CHANNEL_TOKEN_VALS[$i]}"
-            return
-        fi
-    done
-}
-
 # Logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_DIR/daemon.log"
