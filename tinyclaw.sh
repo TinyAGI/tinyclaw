@@ -402,6 +402,20 @@ case "${1:-}" in
                 fi
                 team_show "$3"
                 ;;
+            add-agent|agent-add|member-add)
+                if [ -z "$3" ] || [ -z "$4" ]; then
+                    echo "Usage: $0 team add-agent <team_id> <agent_id>"
+                    exit 1
+                fi
+                team_add_agent "$3" "$4"
+                ;;
+            remove-agent|agent-remove|member-remove)
+                if [ -z "$3" ] || [ -z "$4" ]; then
+                    echo "Usage: $0 team remove-agent <team_id> <agent_id>"
+                    exit 1
+                fi
+                team_remove_agent "$3" "$4"
+                ;;
             visualize|viz)
                 # Build visualizer if needed
                 if [ ! -f "$SCRIPT_DIR/dist/visualizer/team-visualizer.js" ] || \
@@ -419,13 +433,15 @@ case "${1:-}" in
                 fi
                 ;;
             *)
-                echo "Usage: $0 team {list|add|remove|show|visualize}"
+                echo "Usage: $0 team {list|add|remove|show|add-agent|remove-agent|visualize}"
                 echo ""
                 echo "Team Commands:"
                 echo "  list                   List all configured teams"
                 echo "  add                    Add a new team interactively"
                 echo "  remove <id>            Remove a team"
                 echo "  show <id>              Show team configuration"
+                echo "  add-agent <tid> <aid>  Add an existing agent to a team"
+                echo "  remove-agent <tid> <aid> Remove an agent from a team"
                 echo "  visualize [team_id]    Live TUI dashboard for team collaboration"
                 echo ""
                 echo "Examples:"
@@ -433,6 +449,8 @@ case "${1:-}" in
                 echo "  $0 team add"
                 echo "  $0 team show dev"
                 echo "  $0 team remove dev"
+                echo "  $0 team add-agent dev reviewer"
+                echo "  $0 team remove-agent dev reviewer"
                 echo "  $0 team visualize"
                 echo "  $0 team visualize dev"
                 echo ""
@@ -473,7 +491,7 @@ case "${1:-}" in
         echo "  provider [name] [--model model]  Show or switch AI provider"
         echo "  model [name]             Show or switch AI model"
         echo "  agent {list|add|remove|show|reset|provider}  Manage agents"
-        echo "  team {list|add|remove|show|visualize}  Manage teams"
+        echo "  team {list|add|remove|show|add-agent|remove-agent|visualize}  Manage teams"
         echo "  pairing {pending|approved|list|approve <code>|unpair <channel> <sender_id>}  Manage sender approvals"
         echo "  update                   Update TinyClaw to latest version"
         echo "  attach                   Attach to tmux session"

@@ -194,13 +194,15 @@ Commands work with `tinyclaw` (if CLI installed) or `./tinyclaw.sh` (direct scri
 
 ### Team Commands
 
-| Command               | Description                        | Example                       |
-| --------------------- | ---------------------------------- | ----------------------------- |
-| `team list`           | List all configured teams          | `tinyclaw team list`          |
-| `team add`            | Add new team (interactive)         | `tinyclaw team add`           |
-| `team show <id>`      | Show team configuration            | `tinyclaw team show dev`      |
-| `team remove <id>`    | Remove a team                      | `tinyclaw team remove dev`    |
-| `team visualize [id]` | Live TUI dashboard for team chains | `tinyclaw team visualize dev` |
+| Command                     | Description                        | Example                                   |
+| --------------------------- | ---------------------------------- | ----------------------------------------- |
+| `team list`                 | List all configured teams          | `tinyclaw team list`                      |
+| `team add`                  | Add new team (interactive)         | `tinyclaw team add`                       |
+| `team show <id>`            | Show team configuration            | `tinyclaw team show dev`                  |
+| `team remove <id>`          | Remove a team                      | `tinyclaw team remove dev`                |
+| `team add-agent <t> <a>`    | Add an existing agent to a team    | `tinyclaw team add-agent dev reviewer`    |
+| `team remove-agent <t> <a>` | Remove an agent from a team        | `tinyclaw team remove-agent dev reviewer` |
+| `team visualize [id]`       | Live TUI dashboard for team chains | `tinyclaw team visualize dev`             |
 
 ### Configuration Commands
 

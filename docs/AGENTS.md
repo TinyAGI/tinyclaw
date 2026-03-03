@@ -641,6 +641,8 @@ tinyclaw team list                # List all teams
 tinyclaw team add                 # Add a new team (interactive)
 tinyclaw team show dev            # Show team configuration
 tinyclaw team remove dev          # Remove a team
+tinyclaw team add-agent dev reviewer     # Add an existing agent to a team
+tinyclaw team remove-agent dev reviewer  # Remove an agent from a team
 ```
 
 **In-chat Commands:**

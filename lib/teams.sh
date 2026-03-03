@@ -265,6 +265,180 @@ team_remove() {
     echo -e "${GREEN}Team '${team_id}' removed.${NC}"
 }
 
+# Add an existing agent to an existing team
+team_add_agent() {
+    local team_id="$1"
+    local agent_id="$2"
+
+    if [ -z "$team_id" ] || [ -z "$agent_id" ]; then
+        echo "Usage: $0 team add-agent <team_id> <agent_id>"
+        exit 1
+    fi
+
+    team_id=$(echo "$team_id" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
+    agent_id=$(echo "$agent_id" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
+
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}No settings file found.${NC}"
+        exit 1
+    fi
+
+    local team_json
+    team_json=$(jq -r "(.teams // {}).\"${team_id}\" // empty" "$SETTINGS_FILE" 2>/dev/null)
+    if [ -z "$team_json" ]; then
+        echo -e "${RED}Team '${team_id}' not found.${NC}"
+        exit 1
+    fi
+
+    local agent_json
+    agent_json=$(jq -r "(.agents // {}).\"${agent_id}\" // empty" "$SETTINGS_FILE" 2>/dev/null)
+    if [ -z "$agent_json" ]; then
+        echo -e "${RED}Agent '${agent_id}' not found.${NC}"
+        exit 1
+    fi
+
+    local already_member
+    already_member=$(jq -r --arg tid "$team_id" --arg aid "$agent_id" \
+        'if ((.teams // {})[$tid].agents | index($aid)) then "yes" else "no" end' \
+        "$SETTINGS_FILE" 2>/dev/null)
+    if [ "$already_member" = "yes" ]; then
+        echo -e "${YELLOW}Agent '${agent_id}' is already in team '${team_id}'.${NC}"
+        return
+    fi
+
+    local tmp_file="$SETTINGS_FILE.tmp"
+    jq --arg tid "$team_id" --arg aid "$agent_id" \
+        '.teams[$tid].agents += [$aid]' \
+        "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+
+    local team_name
+    team_name=$(jq -r "(.teams // {}).\"${team_id}\".name // \"${team_id}\"" "$SETTINGS_FILE" 2>/dev/null)
+
+    # Update AGENTS.md for all members in this team.
+    while IFS= read -r aid; do
+        update_agent_team_info "$aid"
+    done < <(jq -r "(.teams // {}).\"${team_id}\".agents[]" "$SETTINGS_FILE" 2>/dev/null)
+
+    echo -e "${GREEN}Added @${agent_id} to team '${team_id}' (${team_name}).${NC}"
+}
+
+# Remove an agent from an existing team
+team_remove_agent() {
+    local team_id="$1"
+    local agent_id="$2"
+
+    if [ -z "$team_id" ] || [ -z "$agent_id" ]; then
+        echo "Usage: $0 team remove-agent <team_id> <agent_id>"
+        exit 1
+    fi
+
+    team_id=$(echo "$team_id" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
+    agent_id=$(echo "$agent_id" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
+
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}No settings file found.${NC}"
+        exit 1
+    fi
+
+    local team_json
+    team_json=$(jq -r "(.teams // {}).\"${team_id}\" // empty" "$SETTINGS_FILE" 2>/dev/null)
+    if [ -z "$team_json" ]; then
+        echo -e "${RED}Team '${team_id}' not found.${NC}"
+        exit 1
+    fi
+
+    local is_member
+    is_member=$(jq -r --arg tid "$team_id" --arg aid "$agent_id" \
+        'if ((.teams // {})[$tid].agents | index($aid)) then "yes" else "no" end' \
+        "$SETTINGS_FILE" 2>/dev/null)
+    if [ "$is_member" != "yes" ]; then
+        echo -e "${YELLOW}Agent '${agent_id}' is not in team '${team_id}'.${NC}"
+        return
+    fi
+
+    local remaining_count
+    remaining_count=$(jq -r --arg tid "$team_id" --arg aid "$agent_id" \
+        '((.teams // {})[$tid].agents | map(select(. != $aid)) | length)' \
+        "$SETTINGS_FILE" 2>/dev/null)
+
+    if [ "$remaining_count" -lt 1 ]; then
+        echo -e "${RED}Cannot remove the last agent from team '${team_id}'.${NC}"
+        echo "Use '$0 team remove ${team_id}' to remove the whole team."
+        exit 1
+    fi
+
+    local current_leader
+    current_leader=$(jq -r "(.teams // {}).\"${team_id}\".leader_agent // empty" "$SETTINGS_FILE" 2>/dev/null)
+    local new_leader="$current_leader"
+
+    if [ "$current_leader" = "$agent_id" ]; then
+        echo ""
+        echo -e "${YELLOW}@${agent_id} is currently the leader of team '${team_id}'.${NC}"
+        echo "Choose a new leader from remaining members:"
+        jq -r --arg tid "$team_id" --arg aid "$agent_id" \
+            '((.teams // {})[$tid].agents | map(select(. != $aid))[])' \
+            "$SETTINGS_FILE" 2>/dev/null | while IFS= read -r rid; do
+                rname=""
+                rname=$(jq -r "(.agents // {}).\"${rid}\".name // \"${rid}\"" "$SETTINGS_FILE" 2>/dev/null)
+                echo "  @${rid} - ${rname}"
+            done
+
+        local suggested_leader
+        suggested_leader=$(jq -r --arg tid "$team_id" --arg aid "$agent_id" \
+            '((.teams // {})[$tid].agents | map(select(. != $aid)) | .[0]) // empty' \
+            "$SETTINGS_FILE" 2>/dev/null)
+
+        read -rp "New leader [default: ${suggested_leader}]: " new_leader
+        new_leader=$(echo "$new_leader" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+        if [ -z "$new_leader" ]; then
+            new_leader="$suggested_leader"
+        fi
+
+        local leader_valid
+        leader_valid=$(jq -r --arg tid "$team_id" --arg aid "$agent_id" --arg leader "$new_leader" \
+            'if (((.teams // {})[$tid].agents | map(select(. != $aid))) | index($leader)) then "yes" else "no" end' \
+            "$SETTINGS_FILE" 2>/dev/null)
+        if [ "$leader_valid" != "yes" ]; then
+            echo -e "${RED}Leader '${new_leader}' must be one of the remaining team members.${NC}"
+            exit 1
+        fi
+    fi
+
+    read -rp "Remove @${agent_id} from team '${team_id}'? [y/N]: " CONFIRM
+    if [[ ! "$CONFIRM" =~ ^[yY] ]]; then
+        echo "Cancelled."
+        return
+    fi
+
+    # Capture old members for AGENTS.md updates before mutating settings.
+    local old_members=()
+    while IFS= read -r aid; do
+        old_members+=("$aid")
+    done < <(jq -r "(.teams // {}).\"${team_id}\".agents[]" "$SETTINGS_FILE" 2>/dev/null)
+
+    local tmp_file="$SETTINGS_FILE.tmp"
+    jq --arg tid "$team_id" --arg aid "$agent_id" --arg leader "$new_leader" \
+        '.teams[$tid].agents |= map(select(. != $aid)) | .teams[$tid].leader_agent = $leader' \
+        "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+
+    # Update AGENTS.md for old and current members.
+    local combined_ids
+    combined_ids=$(printf '%s\n' "${old_members[@]}" | awk 'NF' | sort -u)
+    while IFS= read -r aid; do
+        [ -z "$aid" ] && continue
+        update_agent_team_info "$aid"
+    done <<< "$combined_ids"
+    while IFS= read -r aid; do
+        update_agent_team_info "$aid"
+    done < <(jq -r "(.teams // {}).\"${team_id}\".agents[]" "$SETTINGS_FILE" 2>/dev/null)
+
+    if [ "$current_leader" != "$new_leader" ]; then
+        echo -e "${GREEN}Removed @${agent_id} from team '${team_id}'. New leader: @${new_leader}.${NC}"
+    else
+        echo -e "${GREEN}Removed @${agent_id} from team '${team_id}'.${NC}"
+    fi
+}
+
 # Update an agent's AGENTS.md with team collaboration info
 # Called after team add/remove to keep agent docs in sync
 update_agent_team_info() {

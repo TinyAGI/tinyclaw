@@ -306,6 +306,10 @@ agent_remove() {
         exit 1
     fi
 
+    # Load settings to get workspace path for cleanup.
+    load_settings
+    AGENTS_DIR="$WORKSPACE_PATH"
+
     local agent_json
     agent_json=$(jq -r "(.agents // {}).\"${agent_id}\" // empty" "$SETTINGS_FILE" 2>/dev/null)
 
@@ -317,6 +321,29 @@ agent_remove() {
     local agent_name
     agent_name=$(jq -r "(.agents // {}).\"${agent_id}\".name" "$SETTINGS_FILE" 2>/dev/null)
 
+    # Find all teams that currently include this agent.
+    local member_teams=()
+    local member_team_names=()
+    while IFS='|' read -r tid tname; do
+        [ -z "$tid" ] && continue
+        member_teams+=("$tid")
+        member_team_names+=("$tname")
+    done < <(jq -r --arg aid "$agent_id" \
+        '(.teams // {}) | to_entries[] | select(.value.agents | index($aid)) | "\(.key)|\(.value.name)"' \
+        "$SETTINGS_FILE" 2>/dev/null)
+
+    if [ ${#member_teams[@]} -gt 0 ]; then
+        echo -e "${YELLOW}Agent '${agent_id}' is in ${#member_teams[@]} team(s):${NC}"
+        local i
+        for i in "${!member_teams[@]}"; do
+            echo "  @${member_teams[$i]} - ${member_team_names[$i]}"
+        done
+        echo ""
+        echo "Continuing will remove this agent from those teams as well."
+        echo "If this agent is a team leader, a new leader will be auto-selected."
+        echo "If a team becomes empty, that team will be removed."
+    fi
+
     read -rp "Remove agent '${agent_id}' (${agent_name})? [y/N]: " CONFIRM
     if [[ ! "$CONFIRM" =~ ^[yY] ]]; then
         echo "Cancelled."
@@ -326,12 +353,92 @@ agent_remove() {
     local tmp_file="$SETTINGS_FILE.tmp"
     jq --arg id "$agent_id" 'del(.agents[$id])' "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
 
+    # Also remove this agent from any teams and keep team leaders valid.
+    local removed_from_teams=()
+    local removed_empty_teams=()
+    local reassigned_leaders=()
+    if [ ${#member_teams[@]} -gt 0 ]; then
+        local team_id
+        for team_id in "${member_teams[@]}"; do
+            # Team may already have been removed by an earlier iteration.
+            local team_exists
+            team_exists=$(jq -r --arg tid "$team_id" 'if ((.teams // {})[$tid]) then "yes" else "no" end' "$SETTINGS_FILE" 2>/dev/null)
+            if [ "$team_exists" != "yes" ]; then
+                continue
+            fi
+
+            local remaining_count
+            remaining_count=$(jq -r --arg tid "$team_id" --arg aid "$agent_id" \
+                '(((.teams // {})[$tid].agents // []) | map(select(. != $aid)) | length)' \
+                "$SETTINGS_FILE" 2>/dev/null)
+
+            if [ "$remaining_count" -lt 1 ]; then
+                jq --arg tid "$team_id" 'del(.teams[$tid])' "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                removed_empty_teams+=("$team_id")
+                continue
+            fi
+
+            local current_leader
+            current_leader=$(jq -r --arg tid "$team_id" '(.teams // {})[$tid].leader_agent // empty' "$SETTINGS_FILE" 2>/dev/null)
+            local new_leader="$current_leader"
+            if [ "$current_leader" = "$agent_id" ] || [ -z "$current_leader" ]; then
+                new_leader=$(jq -r --arg tid "$team_id" --arg aid "$agent_id" \
+                    '(((.teams // {})[$tid].agents // []) | map(select(. != $aid)) | .[0]) // empty' \
+                    "$SETTINGS_FILE" 2>/dev/null)
+            fi
+
+            jq --arg tid "$team_id" --arg aid "$agent_id" --arg leader "$new_leader" \
+                '.teams[$tid].agents |= map(select(. != $aid)) | .teams[$tid].leader_agent = $leader' \
+                "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+
+            removed_from_teams+=("$team_id")
+            if [ "$current_leader" != "$new_leader" ]; then
+                reassigned_leaders+=("${team_id}:${new_leader}")
+            fi
+        done
+    fi
+
+    # Update AGENTS.md for teammates affected by membership changes.
+    if [ ${#member_teams[@]} -gt 0 ]; then
+        local affected_agent_ids
+        affected_agent_ids=$(jq -r --arg aid "$agent_id" \
+            '(.teams // {}) | to_entries[] | select(.value.agents | index($aid)) | .value.agents[]' \
+            "$SETTINGS_FILE" 2>/dev/null)
+        # Include remaining current members from previously impacted teams.
+        local team_id
+        for team_id in "${member_teams[@]}"; do
+            while IFS= read -r member_id; do
+                affected_agent_ids+=$'\n'"$member_id"
+            done < <(jq -r --arg tid "$team_id" '((.teams // {})[$tid].agents // [])[]' "$SETTINGS_FILE" 2>/dev/null)
+        done
+        while IFS= read -r affected_id; do
+            [ -z "$affected_id" ] && continue
+            [ "$affected_id" = "$agent_id" ] && continue
+            update_agent_team_info "$affected_id"
+        done < <(printf '%s\n' "$affected_agent_ids" | awk 'NF' | sort -u)
+    fi
+
     # Clean up agent state directory
     if [ -d "$AGENTS_DIR/$agent_id" ]; then
         rm -rf "$AGENTS_DIR/$agent_id"
     fi
 
     echo -e "${GREEN}✓ Agent '${agent_id}' removed.${NC}"
+    if [ ${#removed_from_teams[@]} -gt 0 ]; then
+        echo "  Removed from teams: ${removed_from_teams[*]}"
+    fi
+    if [ ${#reassigned_leaders[@]} -gt 0 ]; then
+        echo "  Reassigned leaders:"
+        local entry
+        for entry in "${reassigned_leaders[@]}"; do
+            local tid="${entry%%:*}"
+            local lid="${entry##*:}"
+            echo "    @${tid} -> @${lid}"
+        done
+    fi
+    if [ ${#removed_empty_teams[@]} -gt 0 ]; then
+        echo "  Removed empty teams: ${removed_empty_teams[*]}"
+    fi
 }
 
 # Set provider and/or model for a specific agent

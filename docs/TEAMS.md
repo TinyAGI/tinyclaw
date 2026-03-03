@@ -160,6 +160,8 @@ tinyclaw team list              # List all teams
 tinyclaw team add               # Add a new team (interactive wizard)
 tinyclaw team show dev          # Show team configuration
 tinyclaw team remove dev        # Remove a team
+tinyclaw team add-agent dev reviewer     # Add @reviewer to @dev
+tinyclaw team remove-agent dev reviewer  # Remove @reviewer from @dev
 tinyclaw team visualize [id]    # Live TUI dashboard
 ```
 
