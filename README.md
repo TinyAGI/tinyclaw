@@ -298,17 +298,51 @@ export TINYCLAW_OPENVIKING_CONTEXT_PLUGIN=0
 
 This branch does **not** rely on `tinyclaw setup`/`tinyclaw start` to auto-install or auto-start OpenViking.
 
-You should ensure:
+OpenViking is an **optional plugin dependency**:
 
-- OpenViking server is already running and reachable
-- OpenViking workspace helper exists at:
-  `<workspace>/<agent_id>/.tinyclaw/tools/openviking/openviking-tool.js`
+- If enabled and available, TinyClaw can prefetch long-term context.
+- If disabled or unavailable, TinyClaw still runs normally (no OpenViking calls).
 
-Reference tool templates are in:
+### OpenViking Quick Setup (Optional)
+
+1. Install and start OpenViking first (official docs: `https://github.com/volcengine/OpenViking`).
+2. Configure OpenViking model backends in OpenViking config (for example `embedding` and `vlm`).
+3. If your selected providers require credentials (for example OpenAI), set API keys in OpenViking config/env.
+4. Confirm OpenViking server is reachable from TinyClaw.
+5. Ensure TinyClaw agent workspace has the OpenViking helper tool.
+
+Minimal expectations for functional retrieval:
+
+- A running OpenViking server endpoint (default: `http://127.0.0.1:8320`)
+- A valid embedding backend configuration
+- A valid VLM/LLM backend configuration for features that require LLM reasoning
+- Required provider credentials (for example API keys) configured on the OpenViking side
+
+Without valid model/provider credentials, OpenViking may fail startup validation or run in a degraded state where retrieval/memory features cannot work as expected.
+
+### OpenViking Connectivity Check
+
+```bash
+curl -sS http://127.0.0.1:8320/health || true
+```
+
+### OpenViking Workspace Tooling
+
+TinyClaw expects the helper at:
+
+`<workspace>/<agent_id>/.tinyclaw/tools/openviking/openviking-tool.js`
+
+Reference templates:
 
 ```bash
 lib/templates/agent-tools/openviking/
 ```
+
+Optional tool env vars:
+
+- `OPENVIKING_BASE_URL` (default `http://127.0.0.1:8320`)
+- `OPENVIKING_API_KEY` (optional `X-API-Key` header for OpenViking HTTP API)
+- `OPENVIKING_PROJECT` (optional project scoping)
 
 ### Prefetch Gate (Rule-first)
 
