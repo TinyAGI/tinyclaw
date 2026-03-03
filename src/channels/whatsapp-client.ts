@@ -10,6 +10,8 @@ import qrcode from 'qrcode-terminal';
 import fs from 'fs';
 import path from 'path';
 import { ensureSenderPaired } from '../lib/pairing';
+import { messageSizeSummary } from '../lib/privacy';
+import { buildWhatsAppChromiumArgs } from '../lib/whatsapp-launch';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -153,6 +155,11 @@ function pairingMessage(code: string): string {
     ].join('\n');
 }
 
+const disableSandbox = process.env.WHATSAPP_DISABLE_SANDBOX === 'true';
+if (disableSandbox) {
+    log('WARN', 'WhatsApp Chromium sandbox is disabled (WHATSAPP_DISABLE_SANDBOX=true). Use only in strongly isolated environments.');
+}
+
 // Initialize WhatsApp client
 const client = new Client({
     authStrategy: new LocalAuth({
@@ -160,15 +167,7 @@ const client = new Client({
     }),
     puppeteer: {
         headless: 'new' as any,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu'
-        ]
+        args: buildWhatsAppChromiumArgs(disableSandbox)
     }
 });
 
@@ -259,7 +258,7 @@ client.on('message_create', async (message: Message) => {
             return;
         }
 
-        log('INFO', `📱 Message from ${sender}: ${messageText.substring(0, 50)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}...`);
+        log('INFO', `📱 Message from ${sender}: ${messageSizeSummary(messageText)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}`);
 
         const pairing = ensureSenderPaired(PAIRING_FILE, 'whatsapp', message.from, sender);
         if (!pairing.approved && pairing.code) {

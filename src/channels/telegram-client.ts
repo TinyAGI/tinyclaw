@@ -14,6 +14,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
+import { messageSizeSummary } from '../lib/privacy';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -354,7 +355,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
             : 'Unknown';
         const senderId = msg.chat.id.toString();
 
-        log('INFO', `Message from ${sender}: ${messageText.substring(0, 50)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}...`);
+        log('INFO', `Message from ${sender}: ${messageSizeSummary(messageText)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}`);
 
         const pairing = ensureSenderPaired(PAIRING_FILE, 'telegram', senderId, sender);
         if (!pairing.approved && pairing.code) {
