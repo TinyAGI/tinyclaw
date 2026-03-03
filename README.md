@@ -296,12 +296,13 @@ export TINYCLAW_OPENVIKING_CONTEXT_PLUGIN=0
 
 ### Runtime Prerequisites
 
-This branch does **not** rely on `tinyclaw setup`/`tinyclaw start` to auto-install or auto-start OpenViking.
-
-OpenViking is an **optional plugin dependency**:
+TinyClaw does **not** auto-install OpenViking. OpenViking remains an **optional plugin dependency**:
 
 - If enabled and available, TinyClaw can prefetch long-term context.
 - If disabled or unavailable, TinyClaw still runs normally (no OpenViking calls).
+
+OpenViking auto-start is supported when configured (`settings.openviking.auto_start=true` or `TINYCLAW_OPENVIKING_AUTO_START=1`).
+If auto-start is disabled, start OpenViking manually before using retrieval features.
 
 ### OpenViking Quick Setup (Optional)
 
@@ -369,6 +370,8 @@ Common flags:
 - `TINYCLAW_OPENVIKING_PREFETCH_MAX_CHARS`
 - `TINYCLAW_OPENVIKING_PREFETCH_MAX_HITS`
 - `TINYCLAW_OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX`
+- `TINYCLAW_OPENVIKING_AUTO_START`
+- `TINYCLAW_PLUGIN_SESSION_END_HOOK_TIMEOUT_MS` (default `90000`)
 
 Observability:
 
@@ -380,6 +383,12 @@ Quick log tail:
 
 ```bash
 tail -f ~/.tinyclaw/logs/queue.log | grep -E "prefetch gate|prefetch llm gate|prefetch hit|prefetch miss"
+```
+
+Auto-start and startup recovery logs:
+
+```bash
+tail -f ~/.tinyclaw/logs/queue.log | grep -E "auto-start|startup recovery|session commit success"
 ```
 
 ### In-Chat Commands
