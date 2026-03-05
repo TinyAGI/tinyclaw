@@ -311,6 +311,22 @@ If auto-start is disabled, start OpenViking manually before using retrieval feat
 3. If your selected providers require credentials (for example OpenAI), set API keys in OpenViking config/env.
 4. Confirm OpenViking server is reachable from TinyClaw.
 5. Ensure TinyClaw agent workspace has the OpenViking helper tool.
+6. Enable TinyClaw-side feature flags (both default to `false` and must be set explicitly):
+
+**Minimum — retrieval only** (search works, but conversation history is not persisted to OpenViking):
+
+```bash
+export TINYCLAW_OPENVIKING_SEARCH_NATIVE=1
+```
+
+**Recommended — retrieval + session persistence** (full long-term memory: each turn is written to OpenViking and committed at session end):
+
+```bash
+export TINYCLAW_OPENVIKING_SESSION_NATIVE=1
+export TINYCLAW_OPENVIKING_SEARCH_NATIVE=1
+```
+
+Without `SESSION_NATIVE=1`, TinyClaw will not write conversation turns to OpenViking. Retrieval can still surface existing memories, but new conversations will not be persisted for future recall.
 
 Minimal expectations for functional retrieval:
 
@@ -356,22 +372,27 @@ Gate modes (`settings.openviking.prefetch_gate_mode` or env):
 - `rule` (default)
 - `rule_then_llm` (LLM only for ambiguous cases)
 
-Common flags:
+Prefetch flags:
 
-- `TINYCLAW_OPENVIKING_PREFETCH=0`
-- `TINYCLAW_OPENVIKING_SEARCH_NATIVE=1`
-- `TINYCLAW_OPENVIKING_PREFETCH_GATE_MODE`
-- `TINYCLAW_OPENVIKING_PREFETCH_FORCE_PATTERNS`
-- `TINYCLAW_OPENVIKING_PREFETCH_SKIP_PATTERNS`
-- `TINYCLAW_OPENVIKING_PREFETCH_RULE_THRESHOLD`
-- `TINYCLAW_OPENVIKING_PREFETCH_LLM_AMBIGUITY_LOW`
-- `TINYCLAW_OPENVIKING_PREFETCH_LLM_AMBIGUITY_HIGH`
-- `TINYCLAW_OPENVIKING_PREFETCH_LLM_TIMEOUT_MS`
-- `TINYCLAW_OPENVIKING_PREFETCH_MAX_CHARS`
-- `TINYCLAW_OPENVIKING_PREFETCH_MAX_HITS`
-- `TINYCLAW_OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX`
-- `TINYCLAW_OPENVIKING_AUTO_START`
-- `TINYCLAW_PLUGIN_SESSION_END_HOOK_TIMEOUT_MS` (default `90000`)
+| Flag | Default | Description |
+| ---- | ------- | ----------- |
+| `TINYCLAW_OPENVIKING_PREFETCH` | `1` | Enable/disable prefetch entirely |
+| `TINYCLAW_OPENVIKING_SEARCH_NATIVE` | `0` | Use native OpenViking search API (must be `1` for retrieval to work) |
+| `TINYCLAW_OPENVIKING_PREFETCH_GATE_MODE` | `rule` | Gate mode: `always`, `never`, `rule`, `rule_then_llm` |
+| `TINYCLAW_OPENVIKING_PREFETCH_FORCE_PATTERNS` | — | Comma-separated patterns that force prefetch |
+| `TINYCLAW_OPENVIKING_PREFETCH_SKIP_PATTERNS` | — | Comma-separated patterns that skip prefetch |
+| `TINYCLAW_OPENVIKING_PREFETCH_RULE_THRESHOLD` | `3` | Min word count for rule gate to trigger |
+| `TINYCLAW_OPENVIKING_PREFETCH_LLM_AMBIGUITY_LOW` | — | LLM gate lower ambiguity bound |
+| `TINYCLAW_OPENVIKING_PREFETCH_LLM_AMBIGUITY_HIGH` | — | LLM gate upper ambiguity bound |
+| `TINYCLAW_OPENVIKING_PREFETCH_LLM_TIMEOUT_MS` | — | LLM gate timeout (ms) |
+| `TINYCLAW_OPENVIKING_PREFETCH_TIMEOUT_MS` | `5000` | Overall prefetch timeout (ms) |
+| `TINYCLAW_OPENVIKING_PREFETCH_MAX_CHARS` | `1200` | Max chars injected into prompt |
+| `TINYCLAW_OPENVIKING_PREFETCH_MAX_HITS` | `8` | Max search hits considered |
+| `TINYCLAW_OPENVIKING_PREFETCH_MAX_TURNS` | `4` | Max turns read from legacy markdown session |
+| `TINYCLAW_OPENVIKING_PREFETCH_RESOURCE_SUPPLEMENT_MAX` | `2` | Max resource hits to supplement memory hits |
+| `TINYCLAW_OPENVIKING_SEARCH_SCORE_THRESHOLD` | — | Minimum similarity score for search results |
+| `TINYCLAW_OPENVIKING_AUTO_START` | `0` | Auto-start OpenViking process on startup |
+| `TINYCLAW_PLUGIN_SESSION_END_HOOK_TIMEOUT_MS` | `90000` | Timeout for session-end hook (covers commit drain) |
 
 Observability:
 
@@ -390,6 +411,22 @@ Auto-start and startup recovery logs:
 ```bash
 tail -f ~/.tinyclaw/logs/queue.log | grep -E "auto-start|startup recovery|session commit success"
 ```
+
+### Session Configuration
+
+Session flags control how conversation turns are persisted to OpenViking and when sessions are rotated.
+
+| Flag | Default | Description |
+| ---- | ------- | ----------- |
+| `TINYCLAW_OPENVIKING_SESSION_NATIVE` | `0` | Write conversation turns to OpenViking native session API (required for long-term memory accumulation) |
+| `TINYCLAW_OPENVIKING_SESSION_IDLE_TIMEOUT_MS` | `1800000` (30 min) | Idle time before a session is committed and rotated; set lower for more frequent checkpoints |
+| `TINYCLAW_OPENVIKING_SESSION_SWITCH_MARKERS` | `/newtask` | Comma-separated in-chat prefixes that trigger immediate session rotation (e.g. when starting a new task) |
+| `TINYCLAW_OPENVIKING_COMMIT_ON_SHUTDOWN` | `1` | Commit open sessions when TinyClaw shuts down |
+| `TINYCLAW_OPENVIKING_COMMIT_TIMEOUT_MS` | `60000` | Per-session commit timeout (ms) |
+| `TINYCLAW_OPENVIKING_AUTOSYNC` | `1` | Enable legacy markdown writeback as fallback when native session write fails |
+| `TINYCLAW_OPENVIKING_CLOSED_SESSION_RETENTION_DAYS` | `0` (keep all) | Days to retain closed session files locally before pruning |
+
+**Internal messages** (agent-to-agent coordination traffic) are never written to OpenViking sessions regardless of these flags.
 
 ### In-Chat Commands
 
