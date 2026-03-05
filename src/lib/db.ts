@@ -777,7 +777,7 @@ export function createOutstandingRequest(
         INSERT INTO outstanding_requests 
         (request_id, conversation_id, from_agent, to_agent, task, status, 
          ack_deadline, response_deadline, retry_count, max_retries, created_at)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, 0, 3, ?)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, 0, 5, ?)
     `).run(
         requestId,
         conversationId,

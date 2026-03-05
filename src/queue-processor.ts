@@ -43,7 +43,7 @@ import {
     // NEW: Outstanding request tracking
     getRequestsNeedingRetry, getRequestsNeedingEscalation, incrementRequestRetry,
     escalateRequest, acknowledgeRequest, respondToRequest, getRequest,
-    getPendingRequestsForConversation,
+    getPendingRequestsForConversation, pruneOldRequests,
 } from './lib/db';
 import { handleLongResponse, collectFiles } from './lib/response';
 import {
@@ -719,7 +719,7 @@ async function checkRequestTimeouts(): Promise<void> {
     }
 }
 
-// Periodic maintenance
+// Periodic maintenance (every 5 minutes)
 setInterval(() => {
     const msgCount = recoverStaleMessages();
     if (msgCount > 0) log('INFO', `Recovered ${msgCount} stale message(s)`);
@@ -738,11 +738,18 @@ setInterval(() => {
     }
     const convCount = recoverStaleConversations();
     
-    // Check request timeouts
+    // Prune old completed requests
+    const prunedRequests = pruneOldRequests();
+    if (prunedRequests > 0) log('INFO', `Pruned ${prunedRequests} old request(s)`);
+    
+}, 5 * 60 * 1000); // every 5 min
+
+// Check request timeouts more frequently (every 30 seconds)
+setInterval(() => {
     checkRequestTimeouts().catch(err => {
         log('ERROR', `Error checking request timeouts: ${err.message}`);
     });
-}, 5 * 60 * 1000); // every 5 min
+}, 30 * 1000); // every 30 seconds
 
 setInterval(() => {
     // Clean up old conversations (TTL: 30 min)
