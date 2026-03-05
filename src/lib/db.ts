@@ -631,13 +631,37 @@ export function loadPendingAgents(conversationId: string): string[] {
 }
 
 /**
+ * Recover stale conversations that are stuck in 'active' state.
+ *
+ * Conversations can be stuck if:
+ * - queue-processor crashes during agent processing
+ * - Network failure prevents agent response from being saved
+ * - Bug causes agent to not complete properly
+ *
+ * This marks conversations as 'completed' if they haven't been updated
+ * in a long time (e.g., 30 minutes), allowing them to be purged and
+ * preventing memory leaks.
+ *
+ * Returns number of conversations recovered.
+ */
+export function recoverStaleConversations(stalethresholdMs = 30 * 60 * 1000): number {
+    const cutoff = Date.now() - stalethresholdMs;
+    const result = getDb().prepare(`
+        UPDATE conversations
+        SET status = 'completed', updated_at = ?
+        WHERE status = 'active' AND updated_at < ?
+    `).run(Date.now(), cutoff);
+    return result.changes;
+}
+
+/**
  * Clean up old completed conversations.
  * Similar to pruneCompletedMessages, but for conversations.
  */
 export function pruneOldConversations(olderThanMs = 24 * 60 * 60 * 1000): number {
     const cutoff = Date.now() - olderThanMs;
     const result = getDb().prepare(`
-        DELETE FROM conversations 
+        DELETE FROM conversations
         WHERE status = 'completed' AND updated_at < ?
     `).run(cutoff);
     return result.changes;

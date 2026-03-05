@@ -34,7 +34,7 @@ import { startApiServer } from './server';
 import {
     initQueueDb, claimNextMessage, completeMessage as dbCompleteMessage,
     failMessage, enqueueResponse, getPendingAgents, recoverStaleMessages,
-    pruneAckedResponses, pruneCompletedMessages, closeQueueDb, queueEvents, DbMessage,
+    pruneAckedResponses, pruneCompletedMessages, recoverStaleConversations, closeQueueDb, queueEvents, DbMessage,
     // NEW: Conversation persistence functions
     persistConversation, persistResponse, decrementPendingInDb, incrementPendingInDb,
     incrementTotalMessages, markConversationCompleted, loadActiveConversations,
@@ -574,6 +574,12 @@ if (recovered > 0) {
     log('INFO', `Recovered ${recovered} stale message(s) from previous session`);
 }
 
+// Recover stale conversations that are stuck in 'active' state
+const staleConvs = recoverStaleConversations();
+if (staleConvs > 0) {
+    log('INFO', `Marked ${staleConvs} stale conversation(s) as completed`);
+}
+
 // Start heartbeat monitoring
 startHeartbeat();
 
@@ -647,8 +653,11 @@ queueEvents.on('message:enqueued', () => processQueue());
 
 // Periodic maintenance
 setInterval(() => {
-    const count = recoverStaleMessages();
-    if (count > 0) log('INFO', `Recovered ${count} stale message(s)`);
+    const msgCount = recoverStaleMessages();
+    if (msgCount > 0) log('INFO', `Recovered ${msgCount} stale message(s)`);
+
+    const convCount = recoverStaleConversations();
+    if (convCount > 0) log('INFO', `Marked ${convCount} stale conversation(s) as completed`);
 }, 5 * 60 * 1000); // every 5 min
 
 setInterval(() => {
