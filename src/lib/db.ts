@@ -9,6 +9,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { EventEmitter } from 'events';
 import { TINYCLAW_HOME } from './config';
+import { log } from './logging';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ export interface DbMessage {
     created_at: number;
     updated_at: number;
     claimed_by: string | null;
+    next_retry_at: number | null;  // NEW: For exponential backoff
 }
 
 export interface DbResponse {
@@ -122,7 +124,8 @@ export function initQueueDb(): void {
             last_error TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
-            claimed_by TEXT
+            claimed_by TEXT,
+            next_retry_at INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS responses (
@@ -155,6 +158,12 @@ export function initQueueDb(): void {
     const cols = db.prepare("PRAGMA table_info(responses)").all() as { name: string }[];
     if (!cols.some(c => c.name === 'metadata')) {
         db.exec('ALTER TABLE responses ADD COLUMN metadata TEXT');
+    }
+
+    // Migrate: add next_retry_at column to messages if missing
+    const msgCols = db.prepare("PRAGMA table_info(messages)").all() as { name: string }[];
+    if (!msgCols.some(c => c.name === 'next_retry_at')) {
+        db.exec('ALTER TABLE messages ADD COLUMN next_retry_at INTEGER');
     }
 
     // NEW: Conversation persistence tables for restart recovery
@@ -234,6 +243,7 @@ export function enqueueMessage(data: EnqueueMessageData): number {
 /**
  * Atomically claim the oldest pending message for a given agent.
  * Uses BEGIN IMMEDIATE to prevent concurrent claims.
+ * Respects next_retry_at for exponential backoff.
  */
 export function claimNextMessage(agentId: string): DbMessage | null {
     const d = getDb();
@@ -241,9 +251,13 @@ export function claimNextMessage(agentId: string): DbMessage | null {
         const row = d.prepare(`
             SELECT * FROM messages
             WHERE status = 'pending' AND (agent = ? OR (agent IS NULL AND ? = 'default'))
-            ORDER BY created_at ASC
+              AND (next_retry_at IS NULL OR next_retry_at <= ?)
+            ORDER BY 
+                CASE WHEN next_retry_at IS NULL THEN 0 ELSE 1 END,
+                next_retry_at ASC,
+                created_at ASC
             LIMIT 1
-        `).get(agentId, agentId) as DbMessage | undefined;
+        `).get(agentId, agentId, Date.now()) as DbMessage | undefined;
 
         if (!row) return null;
 
@@ -270,12 +284,30 @@ export function failMessage(rowId: number, error: string): void {
     if (!msg) return;
 
     const newCount = msg.retry_count + 1;
-    const newStatus = newCount >= MAX_RETRIES ? 'dead' : 'pending';
 
-    d.prepare(`
-        UPDATE messages SET status = ?, retry_count = ?, last_error = ?, claimed_by = NULL, updated_at = ?
-        WHERE id = ?
-    `).run(newStatus, newCount, error, Date.now(), rowId);
+    if (newCount >= MAX_RETRIES) {
+        // Mark as dead - no more retries
+        d.prepare(`
+            UPDATE messages SET status = 'dead', retry_count = ?, last_error = ?, 
+                              claimed_by = NULL, updated_at = ?, next_retry_at = NULL
+            WHERE id = ?
+        `).run(newCount, error, Date.now(), rowId);
+    } else {
+        // Exponential backoff with jitter
+        // Backoff: 100ms, 200ms, 400ms, 800ms... capped at 30 seconds
+        const backoffMs = Math.min(100 * Math.pow(2, newCount - 1), 30000);
+        // Add jitter (0-100ms) to prevent thundering herd
+        const jitter = Math.floor(Math.random() * 100);
+        const nextRetryAt = Date.now() + backoffMs + jitter;
+
+        d.prepare(`
+            UPDATE messages SET status = 'pending', retry_count = ?, last_error = ?, 
+                              claimed_by = NULL, updated_at = ?, next_retry_at = ?
+            WHERE id = ?
+        `).run(newCount, error, Date.now(), nextRetryAt, rowId);
+
+        log('DEBUG', `Message ${rowId} failed, retry ${newCount}/${MAX_RETRIES} in ${backoffMs + jitter}ms`);
+    }
 }
 
 // ── Responses (outgoing queue) ───────────────────────────────────────────────
