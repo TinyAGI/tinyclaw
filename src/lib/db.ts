@@ -207,6 +207,37 @@ export function initQueueDb(): void {
         CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);
         CREATE INDEX IF NOT EXISTS idx_conv_responses_conv ON conversation_responses(conversation_id);
     `);
+
+    // NEW: Outstanding requests table for agent handoff tracking
+    // This implements the primitive request-reply pattern with timeouts:
+    // - When agent A asks agent B to do something, create a request record
+    // - Agent B must ACK (acknowledge receipt) within timeout
+    // - Agent B must RESPOND with result within timeout
+    // - If timeouts expire, escalate or retry
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS outstanding_requests (
+            request_id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            from_agent TEXT NOT NULL,
+            to_agent TEXT NOT NULL,
+            task TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            ack_deadline INTEGER NOT NULL,
+            response_deadline INTEGER NOT NULL,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3,
+            created_at INTEGER NOT NULL,
+            acked_at INTEGER,
+            responded_at INTEGER,
+            response TEXT,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_requests_status ON outstanding_requests(status);
+        CREATE INDEX IF NOT EXISTS idx_requests_conversation ON outstanding_requests(conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_requests_to_agent ON outstanding_requests(to_agent);
+        CREATE INDEX IF NOT EXISTS idx_requests_deadlines ON outstanding_requests(ack_deadline, response_deadline);
+    `);
     // Verify database integrity on startup
     try {
         const result = db.prepare('PRAGMA integrity_check').get() as { integrity_check: string };
@@ -703,6 +734,196 @@ export function pruneOldConversations(olderThanMs = 24 * 60 * 60 * 1000): number
     const result = getDb().prepare(`
         DELETE FROM conversations
         WHERE status = 'completed' AND updated_at < ?
+    `).run(cutoff);
+    return result.changes;
+}
+
+// ── Outstanding Requests (Agent Handoff Tracking) ────────────────────────────
+
+export interface OutstandingRequest {
+    request_id: string;
+    conversation_id: string;
+    from_agent: string;
+    to_agent: string;
+    task: string;
+    status: 'pending' | 'acked' | 'responded' | 'failed' | 'escalated';
+    ack_deadline: number;
+    response_deadline: number;
+    retry_count: number;
+    max_retries: number;
+    created_at: number;
+    acked_at: number | null;
+    responded_at: number | null;
+    response: string | null;
+}
+
+/**
+ * Create a new outstanding request when agent A asks agent B to do something.
+ * This establishes accountability with timeouts.
+ */
+export function createOutstandingRequest(
+    conversationId: string,
+    fromAgent: string,
+    toAgent: string,
+    task: string,
+    ackTimeoutMs = 5000,      // 5 seconds to acknowledge
+    responseTimeoutMs = 300000 // 5 minutes to respond
+): string {
+    const d = getDb();
+    const now = Date.now();
+    const requestId = `req_${conversationId}_${toAgent}_${now}_${Math.random().toString(36).slice(2, 6)}`;
+
+    d.prepare(`
+        INSERT INTO outstanding_requests 
+        (request_id, conversation_id, from_agent, to_agent, task, status, 
+         ack_deadline, response_deadline, retry_count, max_retries, created_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, 0, 3, ?)
+    `).run(
+        requestId,
+        conversationId,
+        fromAgent,
+        toAgent,
+        task,
+        now + ackTimeoutMs,
+        now + responseTimeoutMs,
+        now
+    );
+
+    log('DEBUG', `Created outstanding request ${requestId}: ${fromAgent} -> ${toAgent}`);
+    return requestId;
+}
+
+/**
+ * Acknowledge receipt of a request.
+ * Called when agent B receives the message from agent A.
+ */
+export function acknowledgeRequest(requestId: string): boolean {
+    const d = getDb();
+    const now = Date.now();
+
+    const result = d.prepare(`
+        UPDATE outstanding_requests 
+        SET status = 'acked', acked_at = ?
+        WHERE request_id = ? AND status = 'pending' AND ack_deadline >= ?
+    `).run(now, requestId, now);
+
+    if (result.changes > 0) {
+        log('DEBUG', `Request ${requestId} acknowledged`);
+        return true;
+    }
+    return false; // Request not found, already acked, or deadline expired
+}
+
+/**
+ * Record response to a request.
+ * Called when agent B completes the task and responds.
+ */
+export function respondToRequest(requestId: string, response: string): boolean {
+    const d = getDb();
+    const now = Date.now();
+
+    const result = d.prepare(`
+        UPDATE outstanding_requests 
+        SET status = 'responded', responded_at = ?, response = ?
+        WHERE request_id = ? AND status IN ('pending', 'acked') AND response_deadline >= ?
+    `).run(now, response, requestId, now);
+
+    if (result.changes > 0) {
+        log('DEBUG', `Request ${requestId} responded`);
+        return true;
+    }
+    return false; // Request not found, wrong status, or deadline expired
+}
+
+/**
+ * Mark request as failed (permanent failure, no more retries).
+ */
+export function failRequest(requestId: string, reason: string): void {
+    getDb().prepare(`
+        UPDATE outstanding_requests 
+        SET status = 'failed', response = ?
+        WHERE request_id = ?
+    `).run(reason, requestId);
+
+    log('WARN', `Request ${requestId} failed: ${reason}`);
+}
+
+/**
+ * Mark request as escalated to human.
+ */
+export function escalateRequest(requestId: string, reason: string): void {
+    getDb().prepare(`
+        UPDATE outstanding_requests 
+        SET status = 'escalated', response = ?
+        WHERE request_id = ?
+    `).run(reason, requestId);
+
+    log('WARN', `Request ${requestId} escalated: ${reason}`);
+}
+
+/**
+ * Get all pending requests that need ACK but haven't been acked and deadline expired.
+ */
+export function getRequestsNeedingRetry(): OutstandingRequest[] {
+    const now = Date.now();
+    return getDb().prepare(`
+        SELECT * FROM outstanding_requests
+        WHERE status = 'pending' AND ack_deadline < ? AND retry_count < max_retries
+    `).all(now) as OutstandingRequest[];
+}
+
+/**
+ * Get all acked requests that haven't been responded and deadline expired.
+ */
+export function getRequestsNeedingEscalation(): OutstandingRequest[] {
+    const now = Date.now();
+    return getDb().prepare(`
+        SELECT * FROM outstanding_requests
+        WHERE status = 'acked' AND response_deadline < ?
+    `).all(now) as OutstandingRequest[];
+}
+
+/**
+ * Increment retry count for a request.
+ */
+export function incrementRequestRetry(requestId: string, newDeadline: number): void {
+    getDb().prepare(`
+        UPDATE outstanding_requests 
+        SET retry_count = retry_count + 1, ack_deadline = ?, status = 'pending'
+        WHERE request_id = ?
+    `).run(newDeadline, requestId);
+
+    log('DEBUG', `Request ${requestId} retry incremented`);
+}
+
+/**
+ * Get request by ID.
+ */
+export function getRequest(requestId: string): OutstandingRequest | null {
+    const row = getDb().prepare(`
+        SELECT * FROM outstanding_requests WHERE request_id = ?
+    `).get(requestId) as OutstandingRequest | undefined;
+    return row || null;
+}
+
+/**
+ * Get all pending requests for a conversation.
+ */
+export function getPendingRequestsForConversation(conversationId: string): OutstandingRequest[] {
+    return getDb().prepare(`
+        SELECT * FROM outstanding_requests 
+        WHERE conversation_id = ? AND status IN ('pending', 'acked')
+    `).all(conversationId) as OutstandingRequest[];
+}
+
+/**
+ * Clean up old completed/failed requests.
+ */
+export function pruneOldRequests(olderThanMs = 24 * 60 * 60 * 1000): number {
+    const cutoff = Date.now() - olderThanMs;
+    const result = getDb().prepare(`
+        DELETE FROM outstanding_requests 
+        WHERE status IN ('responded', 'failed', 'escalated') AND created_at < ?
     `).run(cutoff);
     return result.changes;
 }
