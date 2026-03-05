@@ -12,11 +12,16 @@
  *   - Agent mentions ([@teammate: message]) become new messages in the queue
  *   - Each agent processes messages naturally via its own promise chain
  *   - Conversations complete when all branches resolve (no more pending mentions)
+ * 
+ * PARALLEL PROCESSING:
+ *   - Messages are processed concurrently (not sequentially per agent)
+ *   - invokeAgent is fire-and-forget; responses handled asynchronously
+ *   - This prevents "freezing" when one message takes a long time
  */
 
 import fs from 'fs';
 import path from 'path';
-import { MessageData, Conversation, TeamConfig } from './lib/types';
+import { MessageData, Conversation, TeamConfig, AgentConfig } from './lib/types';
 import {
     LOG_FILE, CHATS_DIR, FILES_DIR,
     getSettings, getAgents, getTeams
@@ -30,11 +35,15 @@ import {
     initQueueDb, claimNextMessage, completeMessage as dbCompleteMessage,
     failMessage, enqueueResponse, getPendingAgents, recoverStaleMessages,
     pruneAckedResponses, pruneCompletedMessages, closeQueueDb, queueEvents, DbMessage,
+    // NEW: Conversation persistence functions
+    persistConversation, persistResponse, decrementPendingInDb, incrementPendingInDb,
+    incrementTotalMessages, markConversationCompleted, loadActiveConversations,
+    loadConversationResponses, loadPendingAgents, addPendingAgent, removePendingAgent,
+    pruneOldConversations,
 } from './lib/db';
 import { handleLongResponse, collectFiles } from './lib/response';
 import {
     conversations, MAX_CONVERSATION_MESSAGES, enqueueInternalMessage, completeConversation,
-    withConversationLock, incrementPending, decrementPending,
 } from './lib/conversation';
 
 // Ensure directories exist
@@ -43,6 +52,226 @@ import {
         fs.mkdirSync(dir, { recursive: true });
     }
 });
+
+/**
+ * Handle a simple (non-team) response asynchronously.
+ * This function is called when invokeAgent completes, without blocking the queue.
+ */
+async function handleSimpleResponse(
+    dbMsg: DbMessage,
+    agentId: string,
+    response: string
+): Promise<void> {
+    try {
+        const channel = dbMsg.channel;
+        const sender = dbMsg.sender;
+        const rawMessage = dbMsg.message;
+
+        let finalResponse = response.trim();
+
+        // Detect files
+        const outboundFilesSet = new Set<string>();
+        collectFiles(finalResponse, outboundFilesSet);
+        const outboundFiles = Array.from(outboundFilesSet);
+        if (outboundFiles.length > 0) {
+            finalResponse = finalResponse.replace(/\[send_file:\s*[^\]]+\]/g, '').trim();
+        }
+
+        // Run outgoing hooks
+        const { text: hookedResponse, metadata } = await runOutgoingHooks(
+            finalResponse,
+            { channel, sender, messageId: dbMsg.message_id, originalMessage: rawMessage }
+        );
+
+        // Handle long responses
+        const { message: responseMessage, files: allFiles } = handleLongResponse(hookedResponse, outboundFiles);
+
+        // Enqueue response
+        enqueueResponse({
+            channel,
+            sender,
+            senderId: dbMsg.sender_id ?? undefined,
+            message: responseMessage,
+            originalMessage: rawMessage,
+            messageId: dbMsg.message_id,
+            agent: agentId,
+            files: allFiles.length > 0 ? allFiles : undefined,
+            metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+        });
+
+        log('INFO', `✓ Response ready [${channel}] ${sender} via agent:${agentId} (${finalResponse.length} chars)`);
+        emitEvent('response_ready', {
+            channel, sender, agentId,
+            responseLength: finalResponse.length,
+            responseText: finalResponse,
+            messageId: dbMsg.message_id
+        });
+
+        // Mark message completed
+        dbCompleteMessage(dbMsg.id);
+
+    } catch (error) {
+        log('ERROR', `Error handling simple response: ${(error as Error).message}`);
+        failMessage(dbMsg.id, (error as Error).message);
+    }
+}
+
+/**
+ * Handle a team response asynchronously.
+ * Persists response to DB and manages conversation completion.
+ */
+async function handleTeamResponse(
+    dbMsg: DbMessage,
+    conv: Conversation,
+    agentId: string,
+    response: string,
+    teams: Record<string, TeamConfig>,
+    agents: Record<string, AgentConfig>
+): Promise<void> {
+    try {
+        // Persist response to DB first (for restart recovery)
+        persistResponse(conv.id, agentId, response);
+
+        // Update in-memory conversation
+        conv.responses.push({ agentId, response });
+        conv.totalMessages++;
+        conv.pendingAgents.delete(agentId);
+        collectFiles(response, conv.files);
+
+        // Update DB counters
+        incrementTotalMessages(conv.id);
+        removePendingAgent(conv.id, agentId);
+
+        // Check for teammate mentions
+        const teammateMentions = extractTeammateMentions(
+            response, agentId, conv.teamContext.teamId, teams, agents
+        );
+
+        if (teammateMentions.length > 0 && conv.totalMessages < conv.maxMessages) {
+            // Enqueue internal messages
+            incrementPendingInDb(conv.id, teammateMentions.length);
+            conv.pending += teammateMentions.length;
+
+            for (const mention of teammateMentions) {
+                conv.pendingAgents.add(mention.teammateId);
+                addPendingAgent(conv.id, mention.teammateId);
+
+                log('INFO', `@${agentId} → @${mention.teammateId}`);
+                emitEvent('chain_handoff', {
+                    teamId: conv.teamContext.teamId,
+                    fromAgent: agentId,
+                    toAgent: mention.teammateId
+                });
+
+                const internalMsg = `[Message from teammate @${agentId}]:\n${mention.message}`;
+                enqueueInternalMessage(conv.id, agentId, mention.teammateId, internalMsg, {
+                    channel: dbMsg.channel,
+                    sender: dbMsg.sender,
+                    senderId: dbMsg.sender_id ?? undefined,
+                    messageId: dbMsg.message_id,
+                });
+            }
+        } else if (teammateMentions.length > 0) {
+            log('WARN', `Conversation ${conv.id} hit max messages (${conv.maxMessages}) — not enqueuing further mentions`);
+        }
+
+        // Decrement pending and check completion
+        const newPending = decrementPendingInDb(conv.id);
+        conv.pending = newPending;
+
+        if (newPending === 0) {
+            // Load all responses from DB for completeness
+            const dbResponses = loadConversationResponses(conv.id);
+            conv.responses = dbResponses.map(r => ({ agentId: r.agent_id, response: r.response }));
+
+            completeConversation(conv);
+            markConversationCompleted(conv.id);
+            conversations.delete(conv.id);
+        } else {
+            // Persist updated conversation state
+            persistConversation(conv);
+            log('INFO', `Conversation ${conv.id}: ${newPending} branch(es) still pending`);
+        }
+
+        // Mark message completed
+        dbCompleteMessage(dbMsg.id);
+
+    } catch (error) {
+        log('ERROR', `Error handling team response: ${(error as Error).message}`);
+        failMessage(dbMsg.id, (error as Error).message);
+    }
+}
+
+/**
+ * Handle an error from invokeAgent in a team context.
+ * Still need to decrement pending and maybe complete the conversation.
+ */
+async function handleTeamError(
+    dbMsg: DbMessage,
+    conv: Conversation,
+    agentId: string,
+    error: Error
+): Promise<void> {
+    log('ERROR', `Agent ${agentId} error in conversation ${conv.id}: ${error.message}`);
+
+    try {
+        // Record error as response
+        const errorResponse = `Error: ${error.message}`;
+        persistResponse(conv.id, agentId, errorResponse);
+        conv.responses.push({ agentId, response: errorResponse });
+
+        // Update counters
+        removePendingAgent(conv.id, agentId);
+        conv.pendingAgents.delete(agentId);
+
+        // Decrement and check completion
+        const newPending = decrementPendingInDb(conv.id);
+        conv.pending = newPending;
+
+        if (newPending === 0) {
+            const dbResponses = loadConversationResponses(conv.id);
+            conv.responses = dbResponses.map(r => ({ agentId: r.agent_id, response: r.response }));
+
+            completeConversation(conv);
+            markConversationCompleted(conv.id);
+            conversations.delete(conv.id);
+        } else {
+            persistConversation(conv);
+        }
+
+        dbCompleteMessage(dbMsg.id);
+
+    } catch (e) {
+        log('ERROR', `Error in handleTeamError: ${(e as Error).message}`);
+        failMessage(dbMsg.id, (e as Error).message);
+    }
+}
+
+/**
+ * Create a new conversation for team processing.
+ */
+function createNewConversation(
+    dbMsg: DbMessage,
+    teamContext: { teamId: string; team: TeamConfig }
+): Conversation {
+    const convId = `${dbMsg.message_id}_${Date.now()}`;
+    return {
+        id: convId,
+        channel: dbMsg.channel,
+        sender: dbMsg.sender,
+        originalMessage: dbMsg.message,
+        messageId: dbMsg.message_id,
+        pending: 1,
+        responses: [],
+        files: new Set(),
+        totalMessages: 0,
+        maxMessages: MAX_CONVERSATION_MESSAGES,
+        teamContext,
+        startTime: Date.now(),
+        outgoingMentions: new Map(),
+        pendingAgents: new Set(),
+    };
+}
 
 // Process a single message from the DB
 async function processMessage(dbMsg: DbMessage): Promise<void> {
@@ -162,52 +391,22 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
 
         // Invoke agent
         emitEvent('chain_step_start', { agentId, agentName: agent.name, fromAgent: messageData.fromAgent || null });
-        let response: string;
-        try {
-            response = await invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams);
-        } catch (error) {
-            const provider = agent.provider || 'anthropic';
-            const providerLabel = provider === 'openai' ? 'Codex' : provider === 'opencode' ? 'OpenCode' : 'Claude';
-            log('ERROR', `${providerLabel} error (agent: ${agentId}): ${(error as Error).message}`);
-            response = "Sorry, I encountered an error processing your request. Please check the queue logs.";
-        }
-
-        emitEvent('chain_step_done', { agentId, agentName: agent.name, responseLength: response.length, responseText: response });
 
         // --- No team context: simple response to user ---
         if (!teamContext) {
-            let finalResponse = response.trim();
+            // Fire-and-forget: don't await invokeAgent
+            invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams)
+                .then(response => {
+                    return handleSimpleResponse(dbMsg, agentId, response);
+                })
+                .catch(error => {
+                    const provider = agent.provider || 'anthropic';
+                    const providerLabel = provider === 'openai' ? 'Codex' : provider === 'opencode' ? 'OpenCode' : 'Claude';
+                    log('ERROR', `${providerLabel} error (agent: ${agentId}): ${(error as Error).message}`);
+                    return handleSimpleResponse(dbMsg, agentId, "Sorry, I encountered an error processing your request. Please check the queue logs.");
+                });
 
-            // Detect files
-            const outboundFilesSet = new Set<string>();
-            collectFiles(finalResponse, outboundFilesSet);
-            const outboundFiles = Array.from(outboundFilesSet);
-            if (outboundFiles.length > 0) {
-                finalResponse = finalResponse.replace(/\[send_file:\s*[^\]]+\]/g, '').trim();
-            }
-
-            // Run outgoing hooks
-            const { text: hookedResponse, metadata } = await runOutgoingHooks(finalResponse, { channel, sender, messageId, originalMessage: rawMessage });
-
-            // Handle long responses — send as file attachment
-            const { message: responseMessage, files: allFiles } = handleLongResponse(hookedResponse, outboundFiles);
-
-            enqueueResponse({
-                channel,
-                sender,
-                senderId: dbMsg.sender_id ?? undefined,
-                message: responseMessage,
-                originalMessage: rawMessage,
-                messageId,
-                agent: agentId,
-                files: allFiles.length > 0 ? allFiles : undefined,
-                metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-            });
-
-            log('INFO', `✓ Response ready [${channel}] ${sender} via agent:${agentId} (${finalResponse.length} chars)`);
-            emitEvent('response_ready', { channel, sender, agentId, responseLength: finalResponse.length, responseText: finalResponse, messageId });
-
-            dbCompleteMessage(dbMsg.id);
+            // Return immediately - don't block queue
             return;
         }
 
@@ -217,75 +416,58 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
         let conv: Conversation;
         if (isInternal && messageData.conversationId && conversations.has(messageData.conversationId)) {
             conv = conversations.get(messageData.conversationId)!;
+        } else if (isInternal && messageData.conversationId) {
+            // Try to load from DB (restart recovery case)
+            const dbConv = loadActiveConversations().find(c => c.id === messageData.conversationId);
+            if (dbConv) {
+                const team = teams[dbConv.team_id];
+                if (team) {
+                    conv = {
+                        id: dbConv.id,
+                        channel: dbConv.channel,
+                        sender: dbConv.sender,
+                        originalMessage: dbConv.original_message,
+                        messageId: dbConv.message_id,
+                        pending: dbConv.pending_count,
+                        responses: loadConversationResponses(dbConv.id).map(r => ({ agentId: r.agent_id, response: r.response })),
+                        files: new Set(),
+                        totalMessages: dbConv.total_messages,
+                        maxMessages: dbConv.max_messages,
+                        teamContext: { teamId: dbConv.team_id, team },
+                        startTime: dbConv.start_time,
+                        outgoingMentions: new Map(),
+                        pendingAgents: new Set(loadPendingAgents(dbConv.id)),
+                    };
+                    conversations.set(conv.id, conv);
+                } else {
+                    log('ERROR', `Team ${dbConv.team_id} not found for conversation ${dbConv.id}`);
+                    failMessage(dbMsg.id, 'Team not found');
+                    return;
+                }
+            } else {
+                log('ERROR', `Conversation ${messageData.conversationId} not found`);
+                failMessage(dbMsg.id, 'Conversation not found');
+                return;
+            }
         } else {
             // New conversation
-            const convId = `${messageId}_${Date.now()}`;
-            conv = {
-                id: convId,
-                channel,
-                sender,
-                originalMessage: rawMessage,
-                messageId,
-                pending: 1, // this initial message
-                responses: [],
-                files: new Set(),
-                totalMessages: 0,
-                maxMessages: MAX_CONVERSATION_MESSAGES,
-                teamContext,
-                startTime: Date.now(),
-                outgoingMentions: new Map(),
-                pendingAgents: new Set([agentId]),
-            };
-            conversations.set(convId, conv);
-            log('INFO', `Conversation started: ${convId} (team: ${teamContext.team.name})`);
+            conv = createNewConversation(dbMsg, teamContext);
+            conversations.set(conv.id, conv);
+            persistConversation(conv);  // Persist immediately
+            log('INFO', `Conversation started: ${conv.id} (team: ${teamContext.team.name})`);
             emitEvent('team_chain_start', { teamId: teamContext.teamId, teamName: teamContext.team.name, agents: teamContext.team.agents, leader: teamContext.team.leader_agent });
         }
 
-        // Record this agent's response
-        conv.responses.push({ agentId, response });
-        conv.totalMessages++;
-        conv.pendingAgents.delete(agentId);
-        collectFiles(response, conv.files);
+        // Fire-and-forget: don't await invokeAgent
+        invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams)
+            .then(response => {
+                return handleTeamResponse(dbMsg, conv, agentId, response, teams, agents);
+            })
+            .catch(error => {
+                return handleTeamError(dbMsg, conv, agentId, error as Error);
+            });
 
-        // Check for teammate mentions
-        const teammateMentions = extractTeammateMentions(
-            response, agentId, conv.teamContext.teamId, teams, agents
-        );
-
-        if (teammateMentions.length > 0 && conv.totalMessages < conv.maxMessages) {
-            // Enqueue internal messages for each mention
-            incrementPending(conv, teammateMentions.length);
-            conv.outgoingMentions.set(agentId, teammateMentions.length);
-            for (const mention of teammateMentions) {
-                conv.pendingAgents.add(mention.teammateId);
-                log('INFO', `@${agentId} → @${mention.teammateId}`);
-                emitEvent('chain_handoff', { teamId: conv.teamContext.teamId, fromAgent: agentId, toAgent: mention.teammateId });
-
-                const internalMsg = `[Message from teammate @${agentId}]:\n${mention.message}`;
-                enqueueInternalMessage(conv.id, agentId, mention.teammateId, internalMsg, {
-                    channel: messageData.channel,
-                    sender: messageData.sender,
-                    senderId: messageData.senderId,
-                    messageId: messageData.messageId,
-                });
-            }
-        } else if (teammateMentions.length > 0) {
-            log('WARN', `Conversation ${conv.id} hit max messages (${conv.maxMessages}) — not enqueuing further mentions`);
-        }
-
-        // This branch is done - use atomic decrement with locking
-        await withConversationLock(conv.id, async () => {
-            const shouldComplete = decrementPending(conv);
-
-            if (shouldComplete) {
-                completeConversation(conv);
-            } else {
-                log('INFO', `Conversation ${conv.id}: ${conv.pending} branch(es) still pending`);
-            }
-        });
-
-        // Mark message as completed in DB
-        dbCompleteMessage(dbMsg.id);
+        // Return immediately - don't block queue
 
     } catch (error) {
         log('ERROR', `Processing error: ${(error as Error).message}`);
@@ -293,8 +475,9 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
     }
 }
 
-// Per-agent processing chains - ensures messages to same agent are sequential
-const agentProcessingChains = new Map<string, Promise<void>>();
+// REMOVED: agentProcessingChains - no longer needed with parallel processing
+// Previously this enforced sequential processing per agent, causing "freezes"
+// when one message took a long time.
 
 // Main processing loop
 async function processQueue(): Promise<void> {
@@ -309,24 +492,10 @@ async function processQueue(): Promise<void> {
             const dbMsg = claimNextMessage(agentId);
             if (!dbMsg) continue;
 
-            // Get or create promise chain for this agent
-            const currentChain = agentProcessingChains.get(agentId) || Promise.resolve();
-
-            // Chain this message to the agent's promise
-            const newChain = currentChain
-                .then(() => processMessage(dbMsg))
-                .catch(error => {
-                    log('ERROR', `Error processing message for agent ${agentId}: ${error.message}`);
-                });
-
-            // Update the chain
-            agentProcessingChains.set(agentId, newChain);
-
-            // Clean up completed chains to avoid memory leaks
-            newChain.finally(() => {
-                if (agentProcessingChains.get(agentId) === newChain) {
-                    agentProcessingChains.delete(agentId);
-                }
+            // Process immediately - don't chain promises
+            // Fire-and-forget, errors handled in processMessage
+            processMessage(dbMsg).catch(error => {
+                log('ERROR', `Error processing message for agent ${agentId}: ${error.message}`);
             });
         }
     } catch (error) {
@@ -366,6 +535,56 @@ if (recovered > 0) {
     log('INFO', `Recovered ${recovered} stale message(s) from previous session`);
 }
 
+// NEW: Recover active conversations from DB
+const activeConvs = loadActiveConversations();
+if (activeConvs.length > 0) {
+    log('INFO', `Recovering ${activeConvs.length} active conversation(s) from DB`);
+
+    const settings = getSettings();
+    const teams = getTeams(settings);
+
+    for (const dbConv of activeConvs) {
+        try {
+            const team = teams[dbConv.team_id];
+            if (!team) {
+                log('WARN', `Team ${dbConv.team_id} not found for conversation ${dbConv.id}, marking error`);
+                markConversationCompleted(dbConv.id);  // Mark as completed to clear it
+                continue;
+            }
+
+            const conv: Conversation = {
+                id: dbConv.id,
+                channel: dbConv.channel,
+                sender: dbConv.sender,
+                originalMessage: dbConv.original_message,
+                messageId: dbConv.message_id,
+                pending: dbConv.pending_count,
+                responses: loadConversationResponses(dbConv.id).map(r => ({ agentId: r.agent_id, response: r.response })),
+                files: new Set(),
+                totalMessages: dbConv.total_messages,
+                maxMessages: dbConv.max_messages,
+                teamContext: { teamId: dbConv.team_id, team },
+                startTime: dbConv.start_time,
+                outgoingMentions: new Map(),
+                pendingAgents: new Set(loadPendingAgents(dbConv.id)),
+            };
+
+            conversations.set(conv.id, conv);
+
+            if (conv.pending === 0) {
+                log('INFO', `Conversation ${conv.id} has no pending branches, completing`);
+                completeConversation(conv);
+                markConversationCompleted(conv.id);
+                conversations.delete(conv.id);
+            } else {
+                log('INFO', `Conversation ${conv.id} recovered with ${conv.pending} pending branch(es)`);
+            }
+        } catch (e) {
+            log('ERROR', `Failed to recover conversation ${dbConv.id}: ${(e as Error).message}`);
+        }
+    }
+}
+
 // Start the API server (passes conversations for queue status reporting)
 const apiServer = startApiServer(conversations);
 
@@ -374,7 +593,7 @@ const apiServer = startApiServer(conversations);
     await loadPlugins();
 })();
 
-log('INFO', 'Queue processor started (SQLite-backed)');
+log('INFO', 'Queue processor started (SQLite-backed, parallel processing)');
 logAgentConfig();
 emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), teams: Object.keys(getTeams(getSettings())) });
 
@@ -406,6 +625,12 @@ setInterval(() => {
 setInterval(() => {
     const pruned = pruneCompletedMessages();
     if (pruned > 0) log('INFO', `Pruned ${pruned} completed message(s)`);
+}, 60 * 60 * 1000); // every 1 hr
+
+// NEW: Prune old conversations
+setInterval(() => {
+    const pruned = pruneOldConversations();
+    if (pruned > 0) log('INFO', `Pruned ${pruned} old conversation(s)`);
 }, 60 * 60 * 1000); // every 1 hr
 
 // Graceful shutdown
