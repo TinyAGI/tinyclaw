@@ -439,7 +439,7 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
         ({ text: message } = await runIncomingHooks(message, { channel, sender, messageId, originalMessage: rawMessage }));
 
         // Invoke agent
-        emitEvent('chain_step_start', { agentId, agentName: agent.name, fromAgent: messageData.fromAgent || null });
+        await emitEvent('chain_step_start', { agentId, agentName: agent.name, fromAgent: messageData.fromAgent || null });
 
         // --- No team context: simple response to user ---
         if (!teamContext) {
