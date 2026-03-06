@@ -354,7 +354,7 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
 
         log('INFO', `Processing [${isInternal ? 'internal' : channel}] ${isInternal ? `@${dbMsg.from_agent}→@${dbMsg.agent}` : `from ${sender}`}: ${rawMessage.substring(0, 50)}...`);
         if (!isInternal) {
-            emitEvent('message_received', { channel, sender, message: rawMessage.substring(0, 120), messageId });
+            emitEvent('message_received', { channel, sender, message: rawMessage.substring(0, 120), messageId }).catch(err => log('ERROR', `emitEvent error: ${(err as Error).message}`));
         }
 
         // Get settings, agents, and teams
@@ -408,7 +408,7 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
         
         log('INFO', `Routing to agent: ${agent.name} (${agentId}) [${agent.provider}/${agent.model}]`);
         if (!isInternal) {
-            emitEvent('agent_routed', { agentId, agentName: agent.name, provider: agent.provider, model: agent.model, isTeamRouted });
+            emitEvent('agent_routed', { agentId, agentName: agent.name, provider: agent.provider, model: agent.model, isTeamRouted }).catch(err => log('ERROR', `emitEvent error: ${(err as Error).message}`));
         }
 
         // Determine team context
@@ -629,7 +629,7 @@ if (staleConvDetails.length > 0) {
             teamId: conv.teamId,
             stuckForMs: conv.duration,
             recoveredAt: new Date().toISOString(),
-        });
+        }).catch(err => log('ERROR', `emitEvent error: ${(err as Error).message}`));
     });
 }
 const staleConvs = recoverStaleConversations();
@@ -733,7 +733,7 @@ async function checkRequestTimeouts(): Promise<void> {
             fromAgent: req.from_agent,
             toAgent: req.to_agent,
             reason: 'response_timeout',
-        });
+        }).catch(err => log('ERROR', `emitEvent error: ${(err as Error).message}`));
     }
 }
 
@@ -751,7 +751,7 @@ setInterval(() => {
                 teamId: conv.teamId,
                 stuckForMs: conv.duration,
                 source: 'periodic',
-            });
+            }).catch(err => log('ERROR', `emitEvent error: ${(err as Error).message}`));
         });
     }
     const convCount = recoverStaleConversations();
