@@ -22,6 +22,7 @@ import {
     getSettings, getAgents, getTeams
 } from './lib/config';
 import { log, emitEvent } from './lib/logging';
+import { messageSizeSummary } from './lib/privacy';
 import { parseAgentRouting, findTeamForAgent, getAgentResetFlag, extractTeammateMentions } from './lib/routing';
 import { invokeAgent } from './lib/invoke';
 import { loadPlugins, runIncomingHooks, runOutgoingHooks } from './lib/plugins';
@@ -68,7 +69,7 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
             fromAgent: dbMsg.from_agent ?? undefined,
         };
 
-        log('INFO', `Processing [${isInternal ? 'internal' : channel}] ${isInternal ? `@${dbMsg.from_agent}→@${dbMsg.agent}` : `from ${sender}`}: ${rawMessage.substring(0, 50)}...`);
+        log('INFO', `Processing [${isInternal ? 'internal' : channel}] ${isInternal ? `@${dbMsg.from_agent}→@${dbMsg.agent}` : `from ${sender}`}: ${messageSizeSummary(rawMessage)}`);
         if (!isInternal) {
             emitEvent('message_received', { channel, sender, message: rawMessage.substring(0, 120), messageId });
         }
