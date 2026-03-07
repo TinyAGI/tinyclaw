@@ -517,11 +517,25 @@ agent_provider() {
     local agent_id="$1"
     local provider_arg="$2"
     local model_arg=""
+    local api_key_arg=""
 
-    # Parse optional --model flag
-    if [ "$3" = "--model" ] && [ -n "$4" ]; then
-        model_arg="$4"
-    fi
+    # Parse optional --model and --api-key flags
+    shift 2
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --model)
+                model_arg="$2"
+                shift 2
+                ;;
+            --api-key)
+                api_key_arg="$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
 
     if [ ! -f "$SETTINGS_FILE" ]; then
         echo -e "${RED}No settings file found.${NC}"
@@ -588,13 +602,59 @@ agent_provider() {
                 echo "Use 'tinyclaw agent provider ${agent_id} openai --model {gpt-5.3-codex|gpt-5.2}' to also set the model."
             fi
             ;;
+        kimi)
+            if [ -z "$api_key_arg" ]; then
+                echo -e "${RED}API key required for Kimi provider.${NC}"
+                echo "Usage: tinyclaw agent provider ${agent_id} kimi --api-key <key> [--model kimi2.5]"
+                exit 1
+            fi
+            if [ -n "$model_arg" ]; then
+                jq --arg id "$agent_id" --arg model "$model_arg" --arg apiKey "$api_key_arg" \
+                    '.agents[$id].provider = "kimi" | .agents[$id].model = $model | .agents[$id].apiKey = $apiKey' \
+                    "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                echo -e "${GREEN}✓ Agent '${agent_id}' switched to Kimi with model: ${model_arg}${NC}"
+            else
+                jq --arg id "$agent_id" --arg apiKey "$api_key_arg" \
+                    '.agents[$id].provider = "kimi" | .agents[$id].apiKey = $apiKey' \
+                    "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                echo -e "${GREEN}✓ Agent '${agent_id}' switched to Kimi${NC}"
+                echo ""
+                echo "Use 'tinyclaw agent provider ${agent_id} kimi --api-key <key> --model kimi2.5' to also set the model."
+            fi
+            echo ""
+            echo -e "${BLUE}API key saved to agent config${NC}"
+            ;;
+        minimax)
+            if [ -z "$api_key_arg" ]; then
+                echo -e "${RED}API key required for MiniMax provider.${NC}"
+                echo "Usage: tinyclaw agent provider ${agent_id} minimax --api-key <key> [--model MiniMax-M2.5]"
+                exit 1
+            fi
+            if [ -n "$model_arg" ]; then
+                jq --arg id "$agent_id" --arg model "$model_arg" --arg apiKey "$api_key_arg" \
+                    '.agents[$id].provider = "minimax" | .agents[$id].model = $model | .agents[$id].apiKey = $apiKey' \
+                    "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                echo -e "${GREEN}✓ Agent '${agent_id}' switched to MiniMax with model: ${model_arg}${NC}"
+            else
+                jq --arg id "$agent_id" --arg apiKey "$api_key_arg" \
+                    '.agents[$id].provider = "minimax" | .agents[$id].apiKey = $apiKey' \
+                    "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                echo -e "${GREEN}✓ Agent '${agent_id}' switched to MiniMax${NC}"
+                echo ""
+                echo "Use 'tinyclaw agent provider ${agent_id} minimax --api-key <key> --model MiniMax-M2.5' to also set the model."
+            fi
+            echo ""
+            echo -e "${BLUE}API key saved to agent config${NC}"
+            ;;
         *)
-            echo "Usage: tinyclaw agent provider <agent_id> {anthropic|openai} [--model MODEL_NAME]"
+            echo "Usage: tinyclaw agent provider <agent_id> {anthropic|openai|kimi|minimax} [--model MODEL_NAME] [--api-key KEY]"
             echo ""
             echo "Examples:"
             echo "  tinyclaw agent provider coder                                    # Show current provider/model"
             echo "  tinyclaw agent provider coder anthropic                           # Switch to Anthropic"
             echo "  tinyclaw agent provider coder openai                              # Switch to OpenAI"
+            echo "  tinyclaw agent provider coder kimi --api-key <key>                # Switch to Kimi"
+            echo "  tinyclaw agent provider coder minimax --api-key <key>             # Switch to MiniMax"
             echo "  tinyclaw agent provider coder anthropic --model opus              # Switch to Anthropic Opus"
             echo "  tinyclaw agent provider coder openai --model gpt-5.3-codex        # Switch to OpenAI GPT-5.3 Codex"
             exit 1
