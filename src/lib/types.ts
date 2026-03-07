@@ -1,10 +1,11 @@
 export interface AgentConfig {
     name: string;
-    provider: string;       // 'anthropic', 'openai', or 'opencode'
-    model: string;           // e.g. 'sonnet', 'opus', 'gpt-5.3-codex'
+    provider: string;       // 'anthropic', 'openai', 'opencode', 'kimi', or 'minimax'
+    model: string;           // e.g. 'sonnet', 'opus', 'gpt-5.3-codex', 'kimi2.5', 'MiniMax-M2.5'
     working_directory: string;
     system_prompt?: string;
     prompt_file?: string;
+    apiKey?: string;         // Optional per-agent API key (for kimi/minimax)
 }
 
 export interface TeamConfig {
@@ -43,7 +44,7 @@ export interface Settings {
         whatsapp?: {};
     };
     models?: {
-        provider?: string; // 'anthropic', 'openai', or 'opencode'
+        provider?: string; // 'anthropic', 'openai', 'opencode', 'kimi', or 'minimax'
         anthropic?: {
             model?: string;
         };
@@ -52,6 +53,14 @@ export interface Settings {
         };
         opencode?: {
             model?: string;
+        };
+        kimi?: {
+            model?: string;
+            apiKey?: string;
+        };
+        minimax?: {
+            model?: string;
+            apiKey?: string;
         };
     };
     agents?: Record<string, AgentConfig>;
