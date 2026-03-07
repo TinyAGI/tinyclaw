@@ -524,17 +524,27 @@ DISCORD_TOKEN="$(_get_token discord)"
 TELEGRAM_TOKEN="$(_get_token telegram)"
 
 # Write settings.json with layered structure
-# Use jq to build valid JSON to avoid escaping issues with agent prompts
+# Use jq --arg for all values to safely escape special characters in models/keys
 if [ "$PROVIDER" = "anthropic" ]; then
-    MODELS_SECTION='"models": { "provider": "anthropic", "anthropic": { "model": "'"${MODEL}"'" } }'
+    MODELS_SECTION=$(jq -n --arg m "$MODEL" \
+        '"models": { "provider": "anthropic", "anthropic": { "model": $m } }' \
+        | tr -d '\n')
 elif [ "$PROVIDER" = "opencode" ]; then
-    MODELS_SECTION='"models": { "provider": "opencode", "opencode": { "model": "'"${MODEL}"'" } }'
+    MODELS_SECTION=$(jq -n --arg m "$MODEL" \
+        '"models": { "provider": "opencode", "opencode": { "model": $m } }' \
+        | tr -d '\n')
 elif [ "$PROVIDER" = "kimi" ]; then
-    MODELS_SECTION='"models": { "provider": "kimi", "kimi": { "model": "'"${MODEL}"'", "apiKey": "'"${API_KEY}"'" } }'
+    MODELS_SECTION=$(jq -n --arg m "$MODEL" --arg k "$API_KEY" \
+        '"models": { "provider": "kimi", "kimi": { "model": $m, "apiKey": $k } }' \
+        | tr -d '\n')
 elif [ "$PROVIDER" = "minimax" ]; then
-    MODELS_SECTION='"models": { "provider": "minimax", "minimax": { "model": "'"${MODEL}"'", "apiKey": "'"${API_KEY}"'" } }'
+    MODELS_SECTION=$(jq -n --arg m "$MODEL" --arg k "$API_KEY" \
+        '"models": { "provider": "minimax", "minimax": { "model": $m, "apiKey": $k } }' \
+        | tr -d '\n')
 else
-    MODELS_SECTION='"models": { "provider": "openai", "openai": { "model": "'"${MODEL}"'" } }'
+    MODELS_SECTION=$(jq -n --arg m "$MODEL" \
+        '"models": { "provider": "openai", "openai": { "model": $m } }' \
+        | tr -d '\n')
 fi
 
 cat > "$SETTINGS_FILE" <<EOF
