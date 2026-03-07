@@ -453,12 +453,27 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
 
         NEW_AGENT_DIR="$WORKSPACE_PATH/$NEW_AGENT_ID"
 
-        # Build agent JSON with optional apiKey (store for later jq processing)
+        # Build agent JSON with optional apiKey using jq --arg for all fields
         if [ -n "$NEW_API_KEY" ]; then
             # Store agent data in temp files for later jq merge
-            echo "{\"$NEW_AGENT_ID\": {\"name\": \"$NEW_AGENT_NAME\", \"provider\": \"$NEW_PROVIDER\", \"model\": \"$NEW_MODEL\", \"apiKey\": $(echo "$NEW_API_KEY" | jq -R .), \"working_directory\": \"$NEW_AGENT_DIR\"}}" >> "$TMPDIR/tinyclaw_agents_$$.jsonl"
+            jq -n \
+                --arg id "$NEW_AGENT_ID" \
+                --arg name "$NEW_AGENT_NAME" \
+                --arg provider "$NEW_PROVIDER" \
+                --arg model "$NEW_MODEL" \
+                --arg workdir "$NEW_AGENT_DIR" \
+                --arg apiKey "$NEW_API_KEY" \
+                '{($id): {name: $name, provider: $provider, model: $model, working_directory: $workdir, apiKey: $apiKey}}' \
+                >> "${TMPDIR:-/tmp}/tinyclaw_agents_$$.jsonl"
         else
-            echo "{\"$NEW_AGENT_ID\": {\"name\": \"$NEW_AGENT_NAME\", \"provider\": \"$NEW_PROVIDER\", \"model\": \"$NEW_MODEL\", \"working_directory\": \"$NEW_AGENT_DIR\"}}" >> "$TMPDIR/tinyclaw_agents_$$.jsonl"
+            jq -n \
+                --arg id "$NEW_AGENT_ID" \
+                --arg name "$NEW_AGENT_NAME" \
+                --arg provider "$NEW_PROVIDER" \
+                --arg model "$NEW_MODEL" \
+                --arg workdir "$NEW_AGENT_DIR" \
+                '{($id): {name: $name, provider: $provider, model: $model, working_directory: $workdir}}' \
+                >> "${TMPDIR:-/tmp}/tinyclaw_agents_$$.jsonl"
         fi
 
         # Track this agent for directory creation later
@@ -469,9 +484,9 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
 fi
 
 # Build AGENTS_JSON from temp files using jq for safety
-if [ -f "$TMPDIR/tinyclaw_agents_$$.jsonl" ]; then
-    AGENTS_JSON=$(jq -s 'reduce .[] as $item ({}; . * $item)' "$TMPDIR/tinyclaw_agents_$$.jsonl" | jq -c '.')
-    rm -f "$TMPDIR/tinyclaw_agents_$$.jsonl"
+if [ -f "${TMPDIR:-/tmp}/tinyclaw_agents_$$.jsonl" ]; then
+    AGENTS_JSON=$(jq -s 'reduce .[] as $item ({}; . * $item)' "${TMPDIR:-/tmp}/tinyclaw_agents_$$.jsonl" | jq -c '.')
+    rm -f "${TMPDIR:-/tmp}/tinyclaw_agents_$$.jsonl"
 else
     AGENTS_JSON='{}'
 fi
