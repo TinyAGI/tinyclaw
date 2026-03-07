@@ -401,7 +401,7 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
                 # Validate the new key
                 echo "  Validating API key..."
                 VALIDATION_URL=""
-                [ "$NEW_PROVIDER" = "kimi" ] && VALIDATION_URL="https://api.kimi.com/v1/models"
+                [ "$NEW_PROVIDER" = "kimi" ] && VALIDATION_URL="https://api.kimi.com/coding/models"
                 [ "$NEW_PROVIDER" = "minimax" ] && VALIDATION_URL="https://api.minimax.io/anthropic/v1/models"
 
                 if command -v curl > /dev/null 2>&1; then
@@ -453,11 +453,12 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
 
         NEW_AGENT_DIR="$WORKSPACE_PATH/$NEW_AGENT_ID"
 
-        # Build agent JSON with optional apiKey
+        # Build agent JSON with optional apiKey (store for later jq processing)
         if [ -n "$NEW_API_KEY" ]; then
-            AGENTS_JSON="$AGENTS_JSON, \"$NEW_AGENT_ID\": { \"name\": \"$NEW_AGENT_NAME\", \"provider\": \"$NEW_PROVIDER\", \"model\": \"$NEW_MODEL\", \"apiKey\": \"$NEW_API_KEY\", \"working_directory\": \"$NEW_AGENT_DIR\" }"
+            # Store agent data in temp files for later jq merge
+            echo "{\"$NEW_AGENT_ID\": {\"name\": \"$NEW_AGENT_NAME\", \"provider\": \"$NEW_PROVIDER\", \"model\": \"$NEW_MODEL\", \"apiKey\": $(echo "$NEW_API_KEY" | jq -R .), \"working_directory\": \"$NEW_AGENT_DIR\"}}" >> "$TMPDIR/tinyclaw_agents_$$.jsonl"
         else
-            AGENTS_JSON="$AGENTS_JSON, \"$NEW_AGENT_ID\": { \"name\": \"$NEW_AGENT_NAME\", \"provider\": \"$NEW_PROVIDER\", \"model\": \"$NEW_MODEL\", \"working_directory\": \"$NEW_AGENT_DIR\" }"
+            echo "{\"$NEW_AGENT_ID\": {\"name\": \"$NEW_AGENT_NAME\", \"provider\": \"$NEW_PROVIDER\", \"model\": \"$NEW_MODEL\", \"working_directory\": \"$NEW_AGENT_DIR\"}}" >> "$TMPDIR/tinyclaw_agents_$$.jsonl"
         fi
 
         # Track this agent for directory creation later
@@ -467,7 +468,13 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
     done
 fi
 
-AGENTS_JSON="$AGENTS_JSON },"
+# Build AGENTS_JSON from temp files using jq for safety
+if [ -f "$TMPDIR/tinyclaw_agents_$$.jsonl" ]; then
+    AGENTS_JSON=$(jq -s 'reduce .[] as $item ({}; . * $item)' "$TMPDIR/tinyclaw_agents_$$.jsonl" | jq -c '.')
+    rm -f "$TMPDIR/tinyclaw_agents_$$.jsonl"
+else
+    AGENTS_JSON='{}'
+fi
 
 # Build enabled channels array JSON
 CHANNELS_JSON="["
