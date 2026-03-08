@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { TeamConfig } from '../../lib/types';
 import { getSettings, getTeams } from '../../lib/config';
-import { log } from '../../lib/logging';
+import { createLogger } from '../../lib/logging';
 import { mutateSettings } from './settings';
 
 const app = new Hono();
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'teams-route' });
 
 // GET /api/teams
 app.get('/api/teams', (c) => {
@@ -26,7 +27,7 @@ app.put('/api/teams/:id', async (c) => {
             leader_agent: body.leader_agent!,
         };
     });
-    log('INFO', `[API] Team '${teamId}' saved`);
+    logger.info({ teamId }, 'Team saved');
     return c.json({ ok: true, team: settings.teams![teamId] });
 });
 
@@ -38,7 +39,7 @@ app.delete('/api/teams/:id', (c) => {
         return c.json({ error: `team '${teamId}' not found` }, 404);
     }
     mutateSettings(s => { delete s.teams![teamId]; });
-    log('INFO', `[API] Team '${teamId}' deleted`);
+    logger.info({ teamId }, 'Team deleted');
     return c.json({ ok: true });
 });
 

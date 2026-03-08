@@ -83,10 +83,11 @@ TinyOffice calls TinyClaw API endpoints such as:
 - `PUT /api/settings`
 - `GET /api/queue/status`
 - `GET /api/responses`
-- `GET /api/logs`
+- `GET /api/logs` - Unified structured log history (`limit`, `source`, `level`, `channel`, `agentId`, `messageId`, `conversationId`, `search`)
 - `GET /api/events/stream` (SSE)
 
 ## Notes
 
 - TinyOffice is UI-only; it does not replace TinyClaw daemon processes.
 - Start TinyClaw first so queue processor, channels, and API are available.
+- `LOG_LEVEL=debug|info|warn|error` controls backend verbosity; `debug` includes agent handoff excerpts in the Logs view.

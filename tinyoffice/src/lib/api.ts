@@ -7,7 +7,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error || res.statusText);
+    throw new Error(body.error || body.message || res.statusText);
   }
   return res.json();
 }
@@ -66,10 +66,86 @@ export interface ResponseData {
   files?: string[];
 }
 
+export type QueueMessageStatus = "pending" | "processing" | "completed" | "dead";
+export type QueueResponseStatus = "pending" | "acked";
+
+export interface QueueMessageRow {
+  id: number;
+  messageId: string;
+  channel: string;
+  sender: string;
+  senderId: string | null;
+  agent: string | null;
+  conversationId: string | null;
+  fromAgent: string | null;
+  status: QueueMessageStatus;
+  message: string;
+  files: string[];
+  retryCount: number;
+  lastError: string | null;
+  claimedBy: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface QueueResponseRow {
+  id: number;
+  messageId: string;
+  channel: string;
+  sender: string;
+  senderId: string | null;
+  agent: string | null;
+  conversationId: string | null;
+  message: string;
+  originalMessage: string | null;
+  files: string[];
+  metadata: Record<string, unknown> | null;
+  status: QueueResponseStatus;
+  createdAt: number;
+  ackedAt: number | null;
+}
+
+export interface QueueRowsResponse {
+  messages: QueueMessageRow[];
+  responses: QueueResponseRow[];
+  counts: {
+    pending: number;
+    processing: number;
+    completed: number;
+    dead: number;
+    responsesPending: number;
+    responsesAcked: number;
+  };
+}
+
 export interface EventData {
   type: string;
   timestamp: number;
   [key: string]: unknown;
+}
+
+export interface LogEntry {
+  time: string;
+  level: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
+  source: string;
+  component: string;
+  msg: string;
+  channel?: string;
+  agentId?: string;
+  messageId?: string;
+  conversationId?: string;
+  fromAgent?: string;
+  toAgent?: string;
+  teamId?: string;
+  sender?: string;
+  excerpt?: string;
+  context?: Record<string, unknown>;
+  err?: {
+    type?: string;
+    message?: string;
+    stack?: string;
+    [key: string]: unknown;
+  };
 }
 
 // ── API Functions ─────────────────────────────────────────────────────────
@@ -98,8 +174,39 @@ export async function getResponses(limit = 20): Promise<ResponseData[]> {
   return apiFetch(`/api/responses?limit=${limit}`);
 }
 
-export async function getLogs(limit = 100): Promise<{ lines: string[] }> {
+export async function getLogs(limit = 100): Promise<{ entries: LogEntry[] }> {
   return apiFetch(`/api/logs?limit=${limit}`);
+}
+
+export async function getQueueRows(params?: {
+  messageStatus?: QueueMessageStatus[];
+  responseStatus?: QueueResponseStatus[];
+  search?: string;
+  limit?: number;
+  channel?: string;
+  agentId?: string;
+  sender?: string;
+  messageId?: string;
+  conversationId?: string;
+}): Promise<QueueRowsResponse> {
+  const searchParams = new URLSearchParams();
+
+  if (params?.messageStatus && params.messageStatus.length > 0) {
+    searchParams.set("messageStatus", params.messageStatus.join(","));
+  }
+  if (params?.responseStatus && params.responseStatus.length > 0) {
+    searchParams.set("responseStatus", params.responseStatus.join(","));
+  }
+  if (params?.search) searchParams.set("search", params.search);
+  if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
+  if (params?.channel) searchParams.set("channel", params.channel);
+  if (params?.agentId) searchParams.set("agentId", params.agentId);
+  if (params?.sender) searchParams.set("sender", params.sender);
+  if (params?.messageId) searchParams.set("messageId", params.messageId);
+  if (params?.conversationId) searchParams.set("conversationId", params.conversationId);
+
+  const query = searchParams.toString();
+  return apiFetch(`/api/queue/rows${query ? `?${query}` : ""}`);
 }
 
 export async function saveAgent(

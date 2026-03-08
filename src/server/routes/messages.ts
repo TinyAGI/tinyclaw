@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
-import { log, emitEvent } from '../../lib/logging';
+import { emitEvent } from '../../lib/events';
+import { createLogger, excerptText } from '../../lib/logging';
 import { enqueueMessage } from '../../lib/db';
 
 const app = new Hono();
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'messages-route' });
 
 // POST /api/message
 app.post('/api/message', async (c) => {
@@ -33,13 +35,19 @@ app.post('/api/message', async (c) => {
         files: files && files.length > 0 ? files : undefined,
     });
 
-    log('INFO', `[API] Message enqueued: ${message.substring(0, 60)}...`);
+    logger.info({
+        channel: resolvedChannel,
+        sender: resolvedSender,
+        agentId: agent || undefined,
+        messageId,
+        excerpt: excerptText(message, 120),
+    }, 'Message enqueued');
     emitEvent('message_enqueued', {
         messageId,
         agent: agent || null,
         channel: resolvedChannel,
         sender: resolvedSender,
-        message: message.substring(0, 120),
+        message: excerptText(message, 120),
     });
 
     return c.json({ ok: true, messageId });

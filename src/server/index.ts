@@ -12,7 +12,7 @@ import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
 import { RESPONSE_ALREADY_SENT } from '@hono/node-server/utils/response';
 import { Conversation } from '../lib/types';
-import { log } from '../lib/logging';
+import { createLogger, logError } from '../lib/logging';
 import { addSSEClient, removeSSEClient } from './sse';
 
 import messagesRoutes from './routes/messages';
@@ -25,6 +25,7 @@ import logsRoutes from './routes/logs';
 import chatsRoutes from './routes/chats';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'server' });
 
 /**
  * Create and start the API server.
@@ -73,7 +74,7 @@ export function startApiServer(
 
     // Error handler
     app.onError((err, c) => {
-        log('ERROR', `[API] ${err.message}`);
+        logError(logger, err, 'API request failed');
         return c.json({ error: 'Internal server error' }, 500);
     });
 
@@ -81,7 +82,7 @@ export function startApiServer(
         fetch: app.fetch,
         port: API_PORT,
     }, () => {
-        log('INFO', `API server listening on http://localhost:${API_PORT}`);
+        logger.info({ context: { port: API_PORT } }, `API server listening on http://localhost:${API_PORT}`);
     });
 
     return server as unknown as http.Server;

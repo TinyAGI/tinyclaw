@@ -3,6 +3,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/lib/common.sh"
 if [ -z "$TINYCLAW_HOME" ]; then
     if [ -f "$PROJECT_ROOT/.tinyclaw/settings.json" ]; then
         TINYCLAW_HOME="$PROJECT_ROOT/.tinyclaw"
@@ -11,6 +12,7 @@ if [ -z "$TINYCLAW_HOME" ]; then
     fi
 fi
 LOG_FILE="$TINYCLAW_HOME/logs/heartbeat.log"
+LOG_DIR="$(dirname "$LOG_FILE")"
 SETTINGS_FILE="$TINYCLAW_HOME/settings.json"
 API_PORT="${TINYCLAW_API_PORT:-3777}"
 API_URL="http://localhost:${API_PORT}"
@@ -26,7 +28,26 @@ INTERVAL=${INTERVAL:-3600}
 mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+    local candidate_level="${1:-}"
+    local level="info"
+    local threshold
+    local msg
+
+    if is_explicit_log_level "$candidate_level"; then
+        level="$(normalize_log_level "$candidate_level")"
+        shift
+    fi
+
+    msg="$*"
+    [ -n "$msg" ] || return 0
+
+    threshold="$(normalize_log_level "${LOG_LEVEL:-info}")"
+    if [ "$(log_level_priority "$level")" -lt "$(log_level_priority "$threshold")" ]; then
+        return 0
+    fi
+
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg"
+    write_structured_log "heartbeat" "heartbeat" "$level" "$msg"
 }
 
 log "Heartbeat started (interval: ${INTERVAL}s, API: ${API_URL})"
@@ -38,7 +59,7 @@ while true; do
 
     # Get all agents from settings
     if [ ! -f "$SETTINGS_FILE" ]; then
-        log "WARNING: No settings file found, skipping heartbeat"
+        log warn "No settings file found, skipping heartbeat"
         continue
     fi
 
@@ -93,7 +114,7 @@ while true; do
             MESSAGE_ID=$(echo "$RESPONSE" | jq -r '.messageId')
             log "  ✓ Queued for @$AGENT_ID: $MESSAGE_ID"
         else
-            log "  ✗ Failed to queue for @$AGENT_ID: $RESPONSE"
+            log error "  ✗ Failed to queue for @$AGENT_ID: $RESPONSE"
         fi
     done
 

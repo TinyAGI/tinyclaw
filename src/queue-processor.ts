@@ -21,7 +21,8 @@ import {
     LOG_FILE, CHATS_DIR, FILES_DIR,
     getSettings, getAgents, getTeams
 } from './lib/config';
-import { log, emitEvent } from './lib/logging';
+import { emitEvent } from './lib/events';
+import { createLogger, excerptText, isDebugEnabled, logError } from './lib/logging';
 import { parseAgentRouting, findTeamForAgent, getAgentResetFlag, extractTeammateMentions } from './lib/routing';
 import { invokeAgent } from './lib/invoke';
 import { loadPlugins, runIncomingHooks, runOutgoingHooks } from './lib/plugins';
@@ -36,6 +37,8 @@ import {
     conversations, MAX_CONVERSATION_MESSAGES, enqueueInternalMessage, completeConversation,
     withConversationLock, incrementPending, decrementPending,
 } from './lib/conversation';
+
+const logger = createLogger({ runtime: 'queue', source: 'queue', component: 'processor' });
 
 // Ensure directories exist
 [FILES_DIR, path.dirname(LOG_FILE), CHATS_DIR].forEach(dir => {
@@ -68,7 +71,18 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
             fromAgent: dbMsg.from_agent ?? undefined,
         };
 
-        log('INFO', `Processing [${isInternal ? 'internal' : channel}] ${isInternal ? `@${dbMsg.from_agent}→@${dbMsg.agent}` : `from ${sender}`}: ${rawMessage.substring(0, 50)}...`);
+        const processingBindings: Record<string, unknown> = {
+            channel,
+            sender,
+            messageId,
+            conversationId: messageData.conversationId,
+            fromAgent: messageData.fromAgent,
+            toAgent: dbMsg.agent ?? undefined,
+        };
+        if (isDebugEnabled(logger)) {
+            processingBindings.excerpt = excerptText(rawMessage);
+        }
+        logger.info(processingBindings, isInternal ? 'Processing internal message' : 'Processing inbound message');
         if (!isInternal) {
             emitEvent('message_received', { channel, sender, message: rawMessage.substring(0, 120), messageId });
         }
@@ -110,7 +124,13 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
         }
 
         const agent = agents[agentId];
-        log('INFO', `Routing to agent: ${agent.name} (${agentId}) [${agent.provider}/${agent.model}]`);
+        logger.info({
+            channel,
+            sender,
+            messageId,
+            agentId,
+            context: { agentName: agent.name, provider: agent.provider, model: agent.model },
+        }, 'Routing to agent');
         if (!isInternal) {
             emitEvent('agent_routed', { agentId, agentName: agent.name, provider: agent.provider, model: agent.model, isTeamRouted });
         }
@@ -168,7 +188,12 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
         } catch (error) {
             const provider = agent.provider || 'anthropic';
             const providerLabel = provider === 'openai' ? 'Codex' : provider === 'opencode' ? 'OpenCode' : 'Claude';
-            log('ERROR', `${providerLabel} error (agent: ${agentId}): ${(error as Error).message}`);
+            logError(logger, error, `${providerLabel} error during agent invocation`, {
+                agentId,
+                channel,
+                sender,
+                messageId,
+            });
             response = "Sorry, I encountered an error processing your request. Please check the queue logs.";
         }
 
@@ -204,7 +229,13 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
                 metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
             });
 
-            log('INFO', `✓ Response ready [${channel}] ${sender} via agent:${agentId} (${finalResponse.length} chars)`);
+            logger.info({
+                channel,
+                sender,
+                messageId,
+                agentId,
+                context: { responseLength: finalResponse.length },
+            }, 'Response ready');
             emitEvent('response_ready', { channel, sender, agentId, responseLength: finalResponse.length, responseText: finalResponse, messageId });
 
             dbCompleteMessage(dbMsg.id);
@@ -237,7 +268,14 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
                 pendingAgents: new Set([agentId]),
             };
             conversations.set(convId, conv);
-            log('INFO', `Conversation started: ${convId} (team: ${teamContext.team.name})`);
+            logger.info({
+                conversationId: convId,
+                channel,
+                sender,
+                messageId,
+                teamId: teamContext.teamId,
+                context: { teamName: teamContext.team.name },
+            }, 'Conversation started');
             emitEvent('team_chain_start', { teamId: teamContext.teamId, teamName: teamContext.team.name, agents: teamContext.team.agents, leader: teamContext.team.leader_agent });
         }
 
@@ -258,7 +296,18 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
             conv.outgoingMentions.set(agentId, teammateMentions.length);
             for (const mention of teammateMentions) {
                 conv.pendingAgents.add(mention.teammateId);
-                log('INFO', `@${agentId} → @${mention.teammateId}`);
+                const handoffBindings: Record<string, unknown> = {
+                    conversationId: conv.id,
+                    channel: messageData.channel,
+                    messageId: messageData.messageId,
+                    teamId: conv.teamContext.teamId,
+                    fromAgent: agentId,
+                    toAgent: mention.teammateId,
+                };
+                if (isDebugEnabled(logger)) {
+                    handoffBindings.excerpt = excerptText(mention.message);
+                }
+                logger.info(handoffBindings, 'Agent handoff queued');
                 emitEvent('chain_handoff', { teamId: conv.teamContext.teamId, fromAgent: agentId, toAgent: mention.teammateId });
 
                 const internalMsg = `[Message from teammate @${agentId}]:\n${mention.message}`;
@@ -270,7 +319,11 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
                 });
             }
         } else if (teammateMentions.length > 0) {
-            log('WARN', `Conversation ${conv.id} hit max messages (${conv.maxMessages}) — not enqueuing further mentions`);
+            logger.warn({
+                conversationId: conv.id,
+                teamId: conv.teamContext.teamId,
+                context: { maxMessages: conv.maxMessages },
+            }, 'Conversation hit max messages; skipping further mentions');
         }
 
         // This branch is done - use atomic decrement with locking
@@ -280,7 +333,7 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
             if (shouldComplete) {
                 completeConversation(conv);
             } else {
-                log('INFO', `Conversation ${conv.id}: ${conv.pending} branch(es) still pending`);
+                logger.info({ conversationId: conv.id, context: { pending: conv.pending } }, 'Conversation branches still pending');
             }
         });
 
@@ -288,13 +341,30 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
         dbCompleteMessage(dbMsg.id);
 
     } catch (error) {
-        log('ERROR', `Processing error: ${(error as Error).message}`);
+        logError(logger, error, 'Processing error', {
+            channel: dbMsg.channel,
+            sender: dbMsg.sender,
+            messageId: dbMsg.message_id,
+            conversationId: dbMsg.conversation_id ?? undefined,
+            agentId: dbMsg.agent ?? undefined,
+        });
         failMessage(dbMsg.id, (error as Error).message);
     }
 }
 
 // Per-agent processing chains - ensures messages to same agent are sequential
 const agentProcessingChains = new Map<string, Promise<void>>();
+let drainScheduled = false;
+
+function scheduleQueueDrain(): void {
+    if (drainScheduled) return;
+    drainScheduled = true;
+
+    queueMicrotask(() => {
+        drainScheduled = false;
+        void processQueue();
+    });
+}
 
 // Main processing loop
 async function processQueue(): Promise<void> {
@@ -316,7 +386,7 @@ async function processQueue(): Promise<void> {
             const newChain = currentChain
                 .then(() => processMessage(dbMsg))
                 .catch(error => {
-                    log('ERROR', `Error processing message for agent ${agentId}: ${error.message}`);
+                    logError(logger, error, 'Error processing message for agent', { agentId });
                 });
 
             // Update the chain
@@ -327,10 +397,13 @@ async function processQueue(): Promise<void> {
                 if (agentProcessingChains.get(agentId) === newChain) {
                     agentProcessingChains.delete(agentId);
                 }
+
+                // Keep draining until the backlog for this agent is exhausted.
+                scheduleQueueDrain();
             });
         }
     } catch (error) {
-        log('ERROR', `Queue processing error: ${(error as Error).message}`);
+        logError(logger, error, 'Queue processing error');
     }
 }
 
@@ -341,16 +414,27 @@ function logAgentConfig(): void {
     const teams = getTeams(settings);
 
     const agentCount = Object.keys(agents).length;
-    log('INFO', `Loaded ${agentCount} agent(s):`);
+    logger.info({ context: { agentCount } }, 'Loaded agents');
     for (const [id, agent] of Object.entries(agents)) {
-        log('INFO', `  ${id}: ${agent.name} [${agent.provider}/${agent.model}] cwd=${agent.working_directory}`);
+        logger.info({
+            agentId: id,
+            context: {
+                agentName: agent.name,
+                provider: agent.provider,
+                model: agent.model,
+                workingDirectory: agent.working_directory,
+            },
+        }, 'Agent configuration loaded');
     }
 
     const teamCount = Object.keys(teams).length;
     if (teamCount > 0) {
-        log('INFO', `Loaded ${teamCount} team(s):`);
+        logger.info({ context: { teamCount } }, 'Loaded teams');
         for (const [id, team] of Object.entries(teams)) {
-            log('INFO', `  ${id}: ${team.name} [agents: ${team.agents.join(', ')}] leader=${team.leader_agent}`);
+            logger.info({
+                teamId: id,
+                context: { teamName: team.name, agents: team.agents, leader: team.leader_agent },
+            }, 'Team configuration loaded');
         }
     }
 }
@@ -363,7 +447,7 @@ initQueueDb();
 // Recover stale messages from previous crash
 const recovered = recoverStaleMessages();
 if (recovered > 0) {
-    log('INFO', `Recovered ${recovered} stale message(s) from previous session`);
+    logger.info({ context: { recovered } }, 'Recovered stale messages from previous session');
 }
 
 // Start the API server (passes conversations for queue status reporting)
@@ -374,17 +458,23 @@ const apiServer = startApiServer(conversations);
     await loadPlugins();
 })();
 
-log('INFO', 'Queue processor started (SQLite-backed)');
+logger.info('Queue processor started (SQLite-backed)');
 logAgentConfig();
 emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), teams: Object.keys(getTeams(getSettings())) });
 
+// Drain any backlog already present at startup, even when nothing was recovered.
+scheduleQueueDrain();
+
 // Event-driven: all messages come through the API server (same process)
-queueEvents.on('message:enqueued', () => processQueue());
+queueEvents.on('message:enqueued', () => scheduleQueueDrain());
 
 // Periodic maintenance
 setInterval(() => {
     const count = recoverStaleMessages();
-    if (count > 0) log('INFO', `Recovered ${count} stale message(s)`);
+    if (count > 0) {
+        logger.info({ context: { recovered: count } }, 'Recovered stale messages');
+        scheduleQueueDrain();
+    }
 }, 5 * 60 * 1000); // every 5 min
 
 setInterval(() => {
@@ -392,7 +482,7 @@ setInterval(() => {
     const cutoff = Date.now() - 30 * 60 * 1000;
     for (const [id, conv] of conversations.entries()) {
         if (conv.startTime < cutoff) {
-            log('WARN', `Conversation ${id} timed out after 30 min — cleaning up`);
+            logger.warn({ conversationId: id }, 'Conversation timed out after 30 minutes; cleaning up');
             conversations.delete(id);
         }
     }
@@ -400,24 +490,24 @@ setInterval(() => {
 
 setInterval(() => {
     const pruned = pruneAckedResponses();
-    if (pruned > 0) log('INFO', `Pruned ${pruned} acked response(s)`);
+    if (pruned > 0) logger.info({ context: { pruned } }, 'Pruned acked responses');
 }, 60 * 60 * 1000); // every 1 hr
 
 setInterval(() => {
     const pruned = pruneCompletedMessages();
-    if (pruned > 0) log('INFO', `Pruned ${pruned} completed message(s)`);
+    if (pruned > 0) logger.info({ context: { pruned } }, 'Pruned completed messages');
 }, 60 * 60 * 1000); // every 1 hr
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-    log('INFO', 'Shutting down queue processor...');
+    logger.info('Shutting down queue processor');
     closeQueueDb();
     apiServer.close();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-    log('INFO', 'Shutting down queue processor...');
+    logger.info('Shutting down queue processor');
     closeQueueDb();
     apiServer.close();
     process.exit(0);

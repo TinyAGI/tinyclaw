@@ -141,7 +141,7 @@ TinyClaw includes `tinyoffice/`, a Next.js web portal for operating TinyClaw fro
 - **Chat Console** - Send messages to default agent, `@agent`, or `@team`
 - **Agents & Teams** - Create, edit, and remove agents/teams
 - **Tasks (Kanban)** - Create tasks, drag across stages, assign to agent/team
-- **Logs & Events** - Inspect queue logs and streaming events
+- **Logs & Events** - Inspect structured runtime logs and streaming events
 - **Settings** - Edit TinyClaw configuration (`settings.json`) via UI
 - **Office View** - Visual simulation of agent interactions
 
@@ -179,6 +179,13 @@ Commands work with `tinyclaw` (if CLI installed) or `./tinyclaw.sh` (direct scri
 | `setup`       | Run setup wizard (reconfigure)                            | `tinyclaw setup`      |
 | `logs [type]` | View logs (discord/telegram/whatsapp/queue/heartbeat/all) | `tinyclaw logs queue` |
 | `attach`      | Attach to tmux session                                    | `tinyclaw attach`     |
+
+### Logging
+
+- TinyClaw uses structured JSON logs backed by `pino` for Node runtimes.
+- Set `LOG_LEVEL=debug|info|warn|error` before starting TinyClaw to control verbosity.
+- `/api/logs` returns merged historical entries across `queue`, `api`, `telegram`, `discord`, `whatsapp`, `daemon`, and `heartbeat`.
+- Log files rotate at `10 MB` with `5` retained archives per source.
 
 ### Agent Commands
 
@@ -423,7 +430,7 @@ tinyclaw/
 │   │   ├── incoming/
 │   │   ├── processing/
 │   │   └── outgoing/
-│   ├── logs/             # All logs
+│   ├── logs/             # Structured NDJSON logs + rotated archives
 │   ├── channels/         # Channel state
 │   ├── files/            # Uploaded files
 │   ├── pairing.json      # Sender allowlist state (pending + approved)

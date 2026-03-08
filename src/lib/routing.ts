@@ -1,6 +1,8 @@
 import path from 'path';
 import { AgentConfig, TeamConfig } from './types';
-import { log } from './logging';
+import { createLogger } from './logging';
+
+const logger = createLogger({ runtime: 'queue', source: 'queue', component: 'routing' });
 
 /**
  * Find the first team that contains the given agent.
@@ -26,22 +28,27 @@ export function isTeammate(
 ): boolean {
     const team = teams[teamId];
     if (!team) {
-        log('WARN', `isTeammate check failed: Team '${teamId}' not found`);
+        logger.warn({ teamId, agentId: currentAgentId, toAgent: mentionedId }, 'Teammate check failed: team not found');
         return false;
     }
 
     if (mentionedId === currentAgentId) {
-        log('DEBUG', `isTeammate check failed: Self-mention (agent: ${mentionedId})`);
+        logger.debug({ teamId, agentId: currentAgentId, toAgent: mentionedId }, 'Teammate check failed: self mention');
         return false;
     }
 
     if (!team.agents.includes(mentionedId)) {
-        log('WARN', `isTeammate check failed: Agent '${mentionedId}' not in team '${teamId}' (members: ${team.agents.join(', ')})`);
+        logger.warn({
+            teamId,
+            agentId: currentAgentId,
+            toAgent: mentionedId,
+            context: { members: team.agents },
+        }, 'Teammate check failed: agent not in team');
         return false;
     }
 
     if (!agents[mentionedId]) {
-        log('WARN', `isTeammate check failed: Agent '${mentionedId}' not found in agents config`);
+        logger.warn({ teamId, agentId: currentAgentId, toAgent: mentionedId }, 'Teammate check failed: agent missing from config');
         return false;
     }
 

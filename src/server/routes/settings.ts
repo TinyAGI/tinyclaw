@@ -2,7 +2,7 @@ import fs from 'fs';
 import { Hono } from 'hono';
 import { Settings } from '../../lib/types';
 import { SETTINGS_FILE, getSettings } from '../../lib/config';
-import { log } from '../../lib/logging';
+import { createLogger } from '../../lib/logging';
 
 /** Read, mutate, and persist settings.json atomically. */
 export function mutateSettings(fn: (settings: Settings) => void): Settings {
@@ -13,6 +13,7 @@ export function mutateSettings(fn: (settings: Settings) => void): Settings {
 }
 
 const app = new Hono();
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'settings-route' });
 
 // GET /api/settings
 app.get('/api/settings', (c) => {
@@ -25,7 +26,7 @@ app.put('/api/settings', async (c) => {
     const current = getSettings();
     const merged = { ...current, ...body } as Settings;
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(merged, null, 2) + '\n');
-    log('INFO', '[API] Settings updated');
+    logger.info('Settings updated');
     return c.json({ ok: true, settings: merged });
 });
 

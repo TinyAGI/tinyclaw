@@ -1,13 +1,31 @@
 import { Hono } from 'hono';
 import { Conversation } from '../../lib/types';
-import { log } from '../../lib/logging';
+import { createLogger, logError } from '../../lib/logging';
 import {
     getQueueStatus, getRecentResponses, getResponsesForChannel, ackResponse,
     enqueueResponse, getDeadMessages, retryDeadMessage, deleteDeadMessage,
+    getQueueMessages, getQueueResponses, getQueueRowCounts,
+    type QueueMessageStatus, type QueueResponseStatus,
 } from '../../lib/db';
 
 export function createQueueRoutes(conversations: Map<string, Conversation>) {
     const app = new Hono();
+    const logger = createLogger({ runtime: 'api', source: 'api', component: 'queue-route' });
+    const validMessageStatuses: QueueMessageStatus[] = ['pending', 'processing', 'completed', 'dead'];
+    const validResponseStatuses: QueueResponseStatus[] = ['pending', 'acked'];
+
+    const parseStatusList = <T extends string>(value: string | undefined, valid: readonly T[], defaults: T[]): T[] => {
+        const parsed = (value || '')
+            .split(',')
+            .map(item => item.trim().toLowerCase())
+            .filter((item): item is T => valid.includes(item as T));
+        return parsed.length > 0 ? parsed : defaults;
+    };
+
+    const parseOptionalString = (value: string | undefined): string | undefined => {
+        const trimmed = value?.trim();
+        return trimmed ? trimmed : undefined;
+    };
 
     // GET /api/queue/status
     app.get('/api/queue/status', (c) => {
@@ -81,7 +99,7 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
             files: files && files.length > 0 ? files : undefined,
         });
 
-        log('INFO', `[API] Proactive response enqueued for ${channel}/${sender}`);
+        logger.info({ channel, sender, agentId: agent, messageId }, 'Proactive response enqueued');
         return c.json({ ok: true, messageId });
     });
 
@@ -90,6 +108,76 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
         const id = parseInt(c.req.param('id'), 10);
         ackResponse(id);
         return c.json({ ok: true });
+    });
+
+    // GET /api/queue/rows
+    app.get('/api/queue/rows', (c) => {
+        const messageStatuses = parseStatusList(c.req.query('messageStatus'), validMessageStatuses, ['pending', 'processing', 'dead']);
+        const responseStatuses = parseStatusList(c.req.query('responseStatus'), validResponseStatuses, ['pending']);
+        const channel = parseOptionalString(c.req.query('channel'));
+        const agentId = parseOptionalString(c.req.query('agentId'));
+        const sender = parseOptionalString(c.req.query('sender'));
+        const messageId = parseOptionalString(c.req.query('messageId'));
+        const conversationId = parseOptionalString(c.req.query('conversationId'));
+        const search = parseOptionalString(c.req.query('search'));
+        const rawLimit = parseInt(c.req.query('limit') || '100', 10);
+        const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 500) : 100;
+
+        try {
+            const messages = getQueueMessages({
+                statuses: messageStatuses,
+                channel,
+                agentId,
+                sender,
+                messageId,
+                conversationId,
+                search,
+                limit,
+            });
+            const responses = getQueueResponses({
+                statuses: responseStatuses,
+                channel,
+                agentId,
+                sender,
+                messageId,
+                conversationId,
+                search,
+                limit,
+            });
+            const counts = getQueueRowCounts();
+
+            logger.debug({
+                messageStatuses,
+                responseStatuses,
+                channel,
+                agentId,
+                sender,
+                messageId,
+                conversationId,
+                search,
+                limit,
+                context: {
+                    messageCount: messages.length,
+                    responseCount: responses.length,
+                    counts,
+                },
+            }, 'Queue rows fetched');
+
+            return c.json({ messages, responses, counts });
+        } catch (error) {
+            logError(logger, error, 'Failed to fetch queue rows', {
+                messageStatuses,
+                responseStatuses,
+                channel,
+                agentId,
+                sender,
+                messageId,
+                conversationId,
+                search,
+                limit,
+            });
+            return c.json({ ok: false, error: 'Failed to fetch queue rows', message: 'Failed to fetch queue rows' }, 500);
+        }
     });
 
     // GET /api/queue/dead
@@ -102,7 +190,7 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
         const id = parseInt(c.req.param('id'), 10);
         const ok = retryDeadMessage(id);
         if (!ok) return c.json({ error: 'dead message not found' }, 404);
-        log('INFO', `[API] Dead message ${id} retried`);
+        logger.info({ context: { deadMessageId: id } }, 'Dead message retried');
         return c.json({ ok: true });
     });
 
@@ -111,7 +199,7 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
         const id = parseInt(c.req.param('id'), 10);
         const ok = deleteDeadMessage(id);
         if (!ok) return c.json({ error: 'dead message not found' }, 404);
-        log('INFO', `[API] Dead message ${id} deleted`);
+        logger.info({ context: { deadMessageId: id } }, 'Dead message deleted');
         return c.json({ ok: true });
     });
 

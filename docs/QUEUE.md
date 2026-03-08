@@ -251,6 +251,7 @@ The API server runs on port 3777 (configurable via `TINYCLAW_API_PORT`):
 | `POST /api/message` | Enqueue a message |
 | `GET /api/queue/status` | Queue depth (pending, processing, dead) |
 | `GET /api/responses` | Recent responses |
+| `GET /api/logs` | Unified structured log history across queue, API, channels, daemon, and heartbeat |
 | `GET /api/queue/dead` | Dead messages |
 | `POST /api/queue/dead/:id/retry` | Retry a dead message |
 | `DELETE /api/queue/dead/:id` | Delete a dead message |
@@ -263,6 +264,13 @@ Periodic cleanup tasks run automatically:
 - **Stale message recovery**: Every 5 minutes (messages stuck in `processing` > 10 min)
 - **Acked response pruning**: Every hour (responses acked > 24h ago)
 - **Conversation TTL**: Every 30 minutes (team conversations older than 30 min)
+
+## Logging
+
+- Node runtimes write structured NDJSON logs with `pino`.
+- `LOG_LEVEL=debug|info|warn|error` controls verbosity for queue, API, and channel clients.
+- `/api/logs` merges current and rotated files for `queue`, `api`, `telegram`, `discord`, `whatsapp`, `daemon`, and `heartbeat`.
+- Log files rotate at `10 MB` and retain the previous `5` archives per source.
 
 ## Debugging
 

@@ -18,18 +18,23 @@ start_daemon() {
         PUPPETEER_SKIP_DOWNLOAD=true npm install
     fi
 
-    # Build TypeScript if any src file is newer than its dist counterpart
+    # Build TypeScript if any source file is newer than its dist counterpart
     local needs_build=false
     if [ ! -d "$SCRIPT_DIR/dist" ]; then
         needs_build=true
     else
-        for ts_file in "$SCRIPT_DIR"/src/*.ts; do
-            local js_file="$SCRIPT_DIR/dist/$(basename "${ts_file%.ts}.js")"
+        while IFS= read -r ts_file; do
+            local relative_path="${ts_file#"$SCRIPT_DIR/src/"}"
+            local js_file="$SCRIPT_DIR/dist/${relative_path%.ts}.js"
             if [ ! -f "$js_file" ] || [ "$ts_file" -nt "$js_file" ]; then
                 needs_build=true
                 break
             fi
-        done
+        done < <(find "$SCRIPT_DIR/src" -type f -name '*.ts' ! -path "$SCRIPT_DIR/src/visualizer/*")
+
+        if [ "$needs_build" = false ] && { [ "$SCRIPT_DIR/tsconfig.json" -nt "$SCRIPT_DIR/dist/queue-processor.js" ] || [ "$SCRIPT_DIR/package.json" -nt "$SCRIPT_DIR/dist/queue-processor.js" ]; }; then
+            needs_build=true
+        fi
     fi
     if [ "$needs_build" = true ]; then
         echo -e "${YELLOW}Building TypeScript...${NC}"
@@ -102,6 +107,11 @@ start_daemon() {
     # Write tokens to .env for the Node.js clients
     local env_file="$SCRIPT_DIR/.env"
     : > "$env_file"
+    if [ -n "${LOG_LEVEL:-}" ]; then
+        local normalized_log_level
+        normalized_log_level="$(normalize_log_level "$LOG_LEVEL")"
+        echo "LOG_LEVEL=${normalized_log_level}" >> "$env_file"
+    fi
     for ch in "${ACTIVE_CHANNELS[@]}"; do
         local env_var
         env_var="$(channel_token_env "$ch")"

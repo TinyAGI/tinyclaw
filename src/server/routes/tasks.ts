@@ -3,9 +3,10 @@ import path from 'path';
 import { Hono } from 'hono';
 import { Task, TaskStatus } from '../../lib/types';
 import { TINYCLAW_HOME } from '../../lib/config';
-import { log } from '../../lib/logging';
+import { createLogger } from '../../lib/logging';
 
 const TASKS_FILE = path.join(TINYCLAW_HOME, 'tasks.json');
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'tasks-route' });
 
 function readTasks(): Task[] {
     try {
@@ -46,7 +47,7 @@ app.post('/api/tasks', async (c) => {
     };
     tasks.push(task);
     writeTasks(tasks);
-    log('INFO', `[API] Task created: ${task.title}`);
+    logger.info({ taskId: task.id, excerpt: task.title }, 'Task created');
     return c.json({ ok: true, task });
 });
 
@@ -79,7 +80,7 @@ app.put('/api/tasks/:id', async (c) => {
     if (idx === -1) return c.json({ error: 'task not found' }, 404);
     tasks[idx] = { ...tasks[idx], ...body, id: taskId, updatedAt: Date.now() };
     writeTasks(tasks);
-    log('INFO', `[API] Task updated: ${taskId}`);
+    logger.info({ taskId }, 'Task updated');
     return c.json({ ok: true, task: tasks[idx] });
 });
 
@@ -91,7 +92,7 @@ app.delete('/api/tasks/:id', (c) => {
     if (idx === -1) return c.json({ error: 'task not found' }, 404);
     tasks.splice(idx, 1);
     writeTasks(tasks);
-    log('INFO', `[API] Task deleted: ${taskId}`);
+    logger.info({ taskId }, 'Task deleted');
     return c.json({ ok: true });
 });
 

@@ -10,6 +10,7 @@ import qrcode from 'qrcode-terminal';
 import fs from 'fs';
 import path from 'path';
 import { ensureSenderPaired } from '../lib/pairing';
+import { createLogger, excerptText, logError } from '../lib/logging';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -20,14 +21,14 @@ const TINYCLAW_HOME = process.env.TINYCLAW_HOME
     || (fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
         ? _localTinyclaw
         : path.join(require('os').homedir(), '.tinyclaw'));
-const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/whatsapp.log');
 const SESSION_DIR = path.join(SCRIPT_DIR, '.tinyclaw/whatsapp-session');
 const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
 const PAIRING_FILE = path.join(TINYCLAW_HOME, 'pairing.json');
+const logger = createLogger({ runtime: 'whatsapp', source: 'whatsapp', component: 'client' });
 
 // Ensure directories exist
-[path.dirname(LOG_FILE), SESSION_DIR, FILES_DIR].forEach(dir => {
+[SESSION_DIR, FILES_DIR].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -78,10 +79,10 @@ async function downloadWhatsAppMedia(message: Message, queueMessageId: string): 
 
         // Write base64 data to file
         fs.writeFileSync(localPath, Buffer.from(media.data, 'base64'));
-        log('INFO', `Downloaded media: ${filename} (${media.mimetype})`);
+        logger.info({ messageId: queueMessageId, context: { file: filename, mimeType: media.mimetype } }, 'Downloaded media');
         return localPath;
     } catch (error) {
-        log('ERROR', `Failed to download media: ${(error as Error).message}`);
+        logError(logger, error, 'Failed to download media', { messageId: queueMessageId });
         return null;
     }
 }
@@ -89,14 +90,6 @@ async function downloadWhatsAppMedia(message: Message, queueMessageId: string): 
 // Track pending messages (waiting for response)
 const pendingMessages = new Map<string, PendingMessage>();
 let processingOutgoingQueue = false;
-
-// Logger
-function log(level: string, message: string): void {
-    const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] [${level}] ${message}\n`;
-    console.log(logMessage.trim());
-    fs.appendFileSync(LOG_FILE, logMessage);
-}
 
 // Load teams from settings for /team command
 function getTeamListText(): string {
@@ -174,7 +167,7 @@ const client = new Client({
 
 // QR Code for authentication
 client.on('qr', (qr: string) => {
-    log('INFO', 'Scan this QR code with WhatsApp:');
+    logger.info('Scan this QR code with WhatsApp');
     console.log('\n');
 
     // Display in tmux pane
@@ -188,22 +181,22 @@ client.on('qr', (qr: string) => {
     const qrFile = path.join(channelsDir, 'whatsapp_qr.txt');
     qrcode.generate(qr, { small: true }, (code: string) => {
         fs.writeFileSync(qrFile, code);
-        log('INFO', 'QR code saved to .tinyclaw/channels/whatsapp_qr.txt');
+        logger.info('QR code saved to .tinyclaw/channels/whatsapp_qr.txt');
     });
 
     console.log('\n');
-    log('INFO', 'Open WhatsApp → Settings → Linked Devices → Link a Device');
+    logger.info('Open WhatsApp → Settings → Linked Devices → Link a Device');
 });
 
 // Authentication success
 client.on('authenticated', () => {
-    log('INFO', 'WhatsApp authenticated successfully!');
+    logger.info('WhatsApp authenticated successfully');
 });
 
 // Client ready
 client.on('ready', () => {
-    log('INFO', '✓ WhatsApp client connected and ready!');
-    log('INFO', 'Listening for messages...');
+    logger.info('WhatsApp client connected and ready');
+    logger.info('Listening for messages');
 
     // Create ready flag for tinyclaw.sh
     const readyFile = path.join(TINYCLAW_HOME, 'channels/whatsapp_ready');
@@ -259,22 +252,28 @@ client.on('message_create', async (message: Message) => {
             return;
         }
 
-        log('INFO', `📱 Message from ${sender}: ${messageText.substring(0, 50)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}...`);
+        logger.info({
+            channel: 'whatsapp',
+            sender,
+            messageId,
+            excerpt: excerptText(messageText || '[media only]'),
+            context: { fileCount: downloadedFiles.length, senderId: message.from },
+        }, 'Message received');
 
         const pairing = ensureSenderPaired(PAIRING_FILE, 'whatsapp', message.from, sender);
         if (!pairing.approved && pairing.code) {
             if (pairing.isNewPending) {
-                log('INFO', `Blocked unpaired WhatsApp sender ${sender} (${message.from}) with code ${pairing.code}`);
+                logger.info({ channel: 'whatsapp', sender, context: { senderId: message.from, pairingCode: pairing.code } }, 'Blocked unpaired sender');
                 await message.reply(pairingMessage(pairing.code));
             } else {
-                log('INFO', `Blocked pending WhatsApp sender ${sender} (${message.from}) without re-sending pairing message`);
+                logger.info({ channel: 'whatsapp', sender, context: { senderId: message.from } }, 'Blocked pending sender without re-sending pairing message');
             }
             return;
         }
 
         // Check for agent list command
         if (message.body.trim().match(/^[!/]agent$/i)) {
-            log('INFO', 'Agent list command received');
+            logger.info({ channel: 'whatsapp', sender, messageId }, 'Agent list command received');
             const agentList = getAgentListText();
             await message.reply(agentList);
             return;
@@ -282,7 +281,7 @@ client.on('message_create', async (message: Message) => {
 
         // Check for team list command
         if (message.body.trim().match(/^[!/]team$/i)) {
-            log('INFO', 'Team list command received');
+            logger.info({ channel: 'whatsapp', sender, messageId }, 'Team list command received');
             const teamList = getTeamListText();
             await message.reply(teamList);
             return;
@@ -295,7 +294,7 @@ client.on('message_create', async (message: Message) => {
             return;
         }
         if (resetMatch) {
-            log('INFO', 'Per-agent reset command received');
+            logger.info({ channel: 'whatsapp', sender, messageId }, 'Per-agent reset command received');
             const agentArgs = resetMatch[1].split(/\s+/).map(a => a.replace(/^@/, '').toLowerCase());
             try {
                 const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
@@ -322,7 +321,7 @@ client.on('message_create', async (message: Message) => {
 
         // Check for restart command
         if (messageText.trim().match(/^[!/]restart$/i)) {
-            log('INFO', 'Restart command received');
+            logger.info({ channel: 'whatsapp', sender, messageId }, 'Restart command received');
             await message.reply('Restarting TinyClaw...');
             const { exec } = require('child_process');
             exec(`"${path.join(SCRIPT_DIR, 'tinyclaw.sh')}" restart`, { detached: true, stdio: 'ignore' });
@@ -353,7 +352,7 @@ client.on('message_create', async (message: Message) => {
             }),
         });
 
-        log('INFO', `✓ Queued message ${messageId}`);
+        logger.info({ channel: 'whatsapp', sender, messageId, context: { fileCount: downloadedFiles.length, senderId: message.from } }, 'Queued message');
 
         // Store pending message for response
         pendingMessages.set(messageId, {
@@ -371,7 +370,7 @@ client.on('message_create', async (message: Message) => {
         }
 
     } catch (error) {
-        log('ERROR', `Message handling error: ${(error as Error).message}`);
+        logError(logger, error, 'Message handling error');
     }
 });
 
@@ -405,7 +404,7 @@ async function checkOutgoingQueue(): Promise<void> {
                         const chatId = senderId.includes('@') ? senderId : `${senderId}@c.us`;
                         targetChat = await client.getChatById(chatId);
                     } catch (err) {
-                        log('ERROR', `Could not get chat for senderId ${senderId}: ${(err as Error).message}`);
+                        logError(logger, err, 'Could not get chat for senderId', { senderId, messageId });
                     }
                 }
 
@@ -417,9 +416,9 @@ async function checkOutgoingQueue(): Promise<void> {
                                 if (!fs.existsSync(file)) continue;
                                 const media = MessageMedia.fromFilePath(file);
                                 await targetChat.sendMessage(media);
-                                log('INFO', `Sent file to WhatsApp: ${path.basename(file)}`);
+                                logger.info({ channel: 'whatsapp', sender, messageId, context: { file: path.basename(file) } }, 'Sent file to WhatsApp');
                             } catch (fileErr) {
-                                log('ERROR', `Failed to send file ${file}: ${(fileErr as Error).message}`);
+                                logError(logger, fileErr, 'Failed to send file to WhatsApp', { messageId, file });
                             }
                         }
                     }
@@ -433,21 +432,30 @@ async function checkOutgoingQueue(): Promise<void> {
                         }
                     }
 
-                    log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
+                    logger.info({
+                        channel: 'whatsapp',
+                        sender,
+                        messageId,
+                        context: {
+                            kind: pending ? 'response' : 'proactive message',
+                            responseLength: responseText.length,
+                            fileCount: files.length,
+                        },
+                    }, 'Sent outbound message');
 
                     if (pending) pendingMessages.delete(messageId);
                     await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
                 } else {
-                    log('WARN', `No pending message for ${messageId} and no senderId, acking`);
+                    logger.warn({ channel: 'whatsapp', sender, messageId, context: { senderId } }, 'No pending message and no senderId; acking');
                     await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
                 }
             } catch (error) {
-                log('ERROR', `Error processing response ${resp.id}: ${(error as Error).message}`);
+                logError(logger, error, 'Error processing WhatsApp response', { responseId: resp.id });
                 // Don't ack on error, will retry next poll
             }
         }
     } catch (error) {
-        log('ERROR', `Outgoing queue error: ${(error as Error).message}`);
+        logError(logger, error, 'Outgoing queue error');
     } finally {
         processingOutgoingQueue = false;
     }
@@ -458,12 +466,12 @@ setInterval(checkOutgoingQueue, 1000);
 
 // Error handlers
 client.on('auth_failure', (msg: string) => {
-    log('ERROR', `Authentication failure: ${msg}`);
+    logger.error({ context: { reason: msg } }, 'Authentication failure');
     process.exit(1);
 });
 
 client.on('disconnected', (reason: string) => {
-    log('WARN', `WhatsApp disconnected: ${reason}, attempting reconnect in 10s...`);
+    logger.warn({ context: { reason } }, 'WhatsApp disconnected; attempting reconnect in 10s');
 
     // Remove ready flag
     const readyFile = path.join(TINYCLAW_HOME, 'channels/whatsapp_ready');
@@ -472,46 +480,46 @@ client.on('disconnected', (reason: string) => {
     }
 
     setTimeout(() => {
-        log('INFO', 'Reconnecting WhatsApp client...');
+        logger.info('Reconnecting WhatsApp client');
         client.initialize();
     }, 10000);
 });
 
+async function shutdownWhatsApp(exitCode: number): Promise<void> {
+    logger.info({ context: { exitCode } }, 'Shutting down WhatsApp client');
+
+    const readyFile = path.join(TINYCLAW_HOME, 'channels/whatsapp_ready');
+    if (fs.existsSync(readyFile)) {
+        fs.unlinkSync(readyFile);
+    }
+
+    try {
+        await client.destroy();
+    } catch {
+        // Ignore shutdown destroy errors.
+    }
+
+    process.exit(exitCode);
+}
+
 // Catch unhandled errors so we can see what kills the bot
 process.on('unhandledRejection', (reason) => {
-    log('ERROR', `Unhandled rejection: ${reason}`);
+    logError(logger, reason, 'Unhandled rejection');
 });
 process.on('uncaughtException', (error) => {
-    log('ERROR', `Uncaught exception: ${error.message}\n${error.stack}`);
+    logError(logger, error, 'Uncaught exception');
+    void shutdownWhatsApp(1);
 });
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
-    log('INFO', 'Shutting down WhatsApp client...');
-
-    // Remove ready flag
-    const readyFile = path.join(TINYCLAW_HOME, 'channels/whatsapp_ready');
-    if (fs.existsSync(readyFile)) {
-        fs.unlinkSync(readyFile);
-    }
-
-    await client.destroy();
-    process.exit(0);
+    await shutdownWhatsApp(0);
 });
 
 process.on('SIGTERM', async () => {
-    log('INFO', 'Shutting down WhatsApp client...');
-
-    // Remove ready flag
-    const readyFile = path.join(TINYCLAW_HOME, 'channels/whatsapp_ready');
-    if (fs.existsSync(readyFile)) {
-        fs.unlinkSync(readyFile);
-    }
-
-    await client.destroy();
-    process.exit(0);
+    await shutdownWhatsApp(0);
 });
 
 // Start client
-log('INFO', 'Starting WhatsApp client...');
+logger.info('Starting WhatsApp client');
 client.initialize();

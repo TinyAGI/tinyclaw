@@ -14,6 +14,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
+import { createLogger, excerptText, logError } from '../lib/logging';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -24,13 +25,13 @@ const TINYCLAW_HOME = process.env.TINYCLAW_HOME
     || (fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
         ? _localTinyclaw
         : path.join(require('os').homedir(), '.tinyclaw'));
-const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/telegram.log');
 const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
 const PAIRING_FILE = path.join(TINYCLAW_HOME, 'pairing.json');
+const logger = createLogger({ runtime: 'telegram', source: 'telegram', component: 'client' });
 
 // Ensure directories exist
-[path.dirname(LOG_FILE), FILES_DIR].forEach(dir => {
+[FILES_DIR].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -39,7 +40,7 @@ const PAIRING_FILE = path.join(TINYCLAW_HOME, 'pairing.json');
 // Validate bot token
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN === 'your_token_here') {
-    console.error('ERROR: TELEGRAM_BOT_TOKEN is not set in .env file');
+    logger.error('TELEGRAM_BOT_TOKEN is not set in .env file');
     process.exit(1);
 }
 
@@ -79,14 +80,6 @@ const pendingMessages = new Map<string, PendingMessage>();
 let processingOutgoingQueue = false;
 let lastPollingActivity = Date.now();
 let pollingRestartInProgress = false;
-
-// Logger
-function log(level: string, message: string): void {
-    const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] [${level}] ${message}\n`;
-    console.log(logMessage.trim());
-    fs.appendFileSync(LOG_FILE, logMessage);
-}
 
 // Load teams from settings for /team command
 function getTeamListText(): string {
@@ -185,7 +178,7 @@ async function sendTelegramMessage(
             throw error;
         }
 
-        log('WARN', 'Failed to parse Telegram Markdown, retrying without Markdown parsing');
+        logger.warn('Failed to parse Telegram Markdown, retrying without Markdown parsing');
         await bot.sendMessage(chatId, text, options);
     }
 }
@@ -231,10 +224,10 @@ async function downloadTelegramFile(fileId: string, ext: string, messageId: stri
         const localPath = buildUniqueFilePath(FILES_DIR, filename);
 
         await downloadFile(url, localPath);
-        log('INFO', `Downloaded file: ${path.basename(localPath)}`);
+        logger.info({ messageId, context: { file: path.basename(localPath) } }, 'Downloaded file');
         return localPath;
     } catch (error) {
-        log('ERROR', `Failed to download file: ${(error as Error).message}`);
+        logError(logger, error, 'Failed to download file', { messageId, fileId });
         return null;
     }
 }
@@ -264,7 +257,7 @@ const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
 
 // Bot ready
 bot.getMe().then(async (me: TelegramBot.User) => {
-    log('INFO', `Telegram bot connected as @${me.username}`);
+    logger.info({ context: { username: me.username } }, 'Telegram bot connected');
     lastPollingActivity = Date.now();
 
     // Register bot commands so they appear in Telegram's "/" menu
@@ -273,11 +266,11 @@ bot.getMe().then(async (me: TelegramBot.User) => {
         { command: 'team', description: 'List available teams' },
         { command: 'reset', description: 'Reset conversation history' },
         { command: 'restart', description: 'Restart TinyClaw' },
-    ]).catch((err: Error) => log('WARN', `Failed to register commands: ${err.message}`));
+    ]).catch((err: Error) => logger.warn({ context: { error: err.message } }, 'Failed to register commands'));
 
-    log('INFO', 'Listening for messages...');
+    logger.info('Listening for messages');
 }).catch((err: Error) => {
-    log('ERROR', `Failed to connect: ${err.message}`);
+    logError(logger, err, 'Failed to connect Telegram bot');
     process.exit(1);
 });
 
@@ -357,24 +350,30 @@ bot.on('message', async (msg: TelegramBot.Message) => {
             : 'Unknown';
         const senderId = msg.chat.id.toString();
 
-        log('INFO', `Message from ${sender}: ${messageText.substring(0, 50)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}...`);
+        logger.info({
+            channel: 'telegram',
+            sender,
+            messageId: queueMessageId,
+            excerpt: excerptText(messageText || '[media only]'),
+            context: { fileCount: downloadedFiles.length },
+        }, 'Message received');
 
         const pairing = ensureSenderPaired(PAIRING_FILE, 'telegram', senderId, sender);
         if (!pairing.approved && pairing.code) {
             if (pairing.isNewPending) {
-                log('INFO', `Blocked unpaired Telegram sender ${sender} (${senderId}) with code ${pairing.code}`);
+                logger.info({ channel: 'telegram', sender, context: { senderId, pairingCode: pairing.code } }, 'Blocked unpaired sender');
                 await bot.sendMessage(msg.chat.id, pairingMessage(pairing.code), {
                     reply_to_message_id: msg.message_id,
                 });
             } else {
-                log('INFO', `Blocked pending Telegram sender ${sender} (${senderId}) without re-sending pairing message`);
+                logger.info({ channel: 'telegram', sender, context: { senderId } }, 'Blocked pending sender without re-sending pairing message');
             }
             return;
         }
 
         // Check for agent list command
         if (msg.text && msg.text.trim().match(/^[!/]agent$/i)) {
-            log('INFO', 'Agent list command received');
+            logger.info({ channel: 'telegram', sender, messageId: queueMessageId }, 'Agent list command received');
             const agentList = getAgentListText();
             await bot.sendMessage(msg.chat.id, agentList, {
                 reply_to_message_id: msg.message_id,
@@ -384,7 +383,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
 
         // Check for team list command
         if (msg.text && msg.text.trim().match(/^[!/]team$/i)) {
-            log('INFO', 'Team list command received');
+            logger.info({ channel: 'telegram', sender, messageId: queueMessageId }, 'Team list command received');
             const teamList = getTeamListText();
             await bot.sendMessage(msg.chat.id, teamList, {
                 reply_to_message_id: msg.message_id,
@@ -401,7 +400,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
             return;
         }
         if (resetMatch) {
-            log('INFO', 'Per-agent reset command received');
+            logger.info({ channel: 'telegram', sender, messageId: queueMessageId }, 'Per-agent reset command received');
             const agentArgs = resetMatch[1].split(/\s+/).map(a => a.replace(/^@/, '').toLowerCase());
             try {
                 const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
@@ -432,7 +431,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
 
         // Check for restart command
         if (messageText.trim().match(/^[!/]restart$/i)) {
-            log('INFO', 'Restart command received');
+            logger.info({ channel: 'telegram', sender, messageId: queueMessageId }, 'Restart command received');
             await bot.sendMessage(msg.chat.id, 'Restarting TinyClaw...', {
                 reply_to_message_id: msg.message_id,
             });
@@ -465,7 +464,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
             }),
         });
 
-        log('INFO', `Queued message ${queueMessageId}`);
+        logger.info({ channel: 'telegram', sender, messageId: queueMessageId, context: { senderId, fileCount: downloadedFiles.length } }, 'Queued message');
 
         // Store pending message for response
         pendingMessages.set(queueMessageId, {
@@ -483,7 +482,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
         }
 
     } catch (error) {
-        log('ERROR', `Message handling error: ${(error as Error).message}`);
+        logError(logger, error, 'Message handling error');
     }
 });
 
@@ -528,9 +527,9 @@ async function checkOutgoingQueue(): Promise<void> {
                                 } else {
                                     await bot.sendDocument(targetChatId, file);
                                 }
-                                log('INFO', `Sent file to Telegram: ${path.basename(file)}`);
+                                logger.info({ channel: 'telegram', sender, messageId, context: { file: path.basename(file) } }, 'Sent file to Telegram');
                             } catch (fileErr) {
-                                log('ERROR', `Failed to send file ${file}: ${(fileErr as Error).message}`);
+                                logError(logger, fileErr, 'Failed to send file to Telegram', { messageId, file });
                             }
                         }
                     }
@@ -552,21 +551,30 @@ async function checkOutgoingQueue(): Promise<void> {
                         }
                     }
 
-                    log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
+                    logger.info({
+                        channel: 'telegram',
+                        sender,
+                        messageId,
+                        context: {
+                            kind: pending ? 'response' : 'proactive message',
+                            responseLength: responseText.length,
+                            fileCount: files.length,
+                        },
+                    }, 'Sent outbound message');
 
                     if (pending) pendingMessages.delete(messageId);
                     await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
                 } else {
-                    log('WARN', `No pending message for ${messageId} and no valid senderId, acking`);
+                    logger.warn({ channel: 'telegram', sender, messageId, context: { senderId } }, 'No pending message and no valid senderId; acking');
                     await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
                 }
             } catch (error) {
-                log('ERROR', `Error processing response ${resp.id}: ${(error as Error).message}`);
+                logError(logger, error, 'Error processing Telegram response', { responseId: resp.id });
                 // Don't ack on error, will retry next poll
             }
         }
     } catch (error) {
-        log('ERROR', `Outgoing queue error: ${(error as Error).message}`);
+        logError(logger, error, 'Outgoing queue error');
 
     } finally {
         processingOutgoingQueue = false;
@@ -588,27 +596,27 @@ setInterval(() => {
 // Restart polling with proper cleanup to avoid duplicate polling loops
 async function restartPolling(reason: string, delayMs = 5000): Promise<void> {
     if (pollingRestartInProgress) {
-        log('INFO', `Polling restart already in progress, skipping (${reason})`);
+        logger.info({ context: { reason } }, 'Polling restart already in progress, skipping');
         return;
     }
     pollingRestartInProgress = true;
-    log('WARN', `${reason} — stopping polling, will restart in ${delayMs / 1000}s...`);
+    logger.warn({ context: { reason, delayMs } }, 'Stopping polling before restart');
 
     try {
         await bot.stopPolling();
     } catch (e) {
-        log('WARN', `stopPolling error (ignored): ${(e as Error).message}`);
+        logError(logger, e, 'stopPolling error (ignored)');
     }
 
     await new Promise(resolve => setTimeout(resolve, delayMs));
 
     try {
-        log('INFO', `Restarting polling (${reason})...`);
+        logger.info({ context: { reason } }, 'Restarting polling');
         await bot.startPolling();
         lastPollingActivity = Date.now();
-        log('INFO', 'Polling restarted successfully');
+        logger.info('Polling restarted successfully');
     } catch (e) {
-        log('ERROR', `Failed to restart polling: ${(e as Error).message}`);
+        logError(logger, e, 'Failed to restart polling', { reason });
     } finally {
         pollingRestartInProgress = false;
     }
@@ -616,7 +624,7 @@ async function restartPolling(reason: string, delayMs = 5000): Promise<void> {
 
 // Handle polling errors with automatic recovery
 bot.on('polling_error', (error: Error) => {
-    log('ERROR', `Polling error: ${error.message}`);
+    logError(logger, error, 'Polling error');
 
     // ETELEGRAM 409 = another instance running (stale connection after sleep)
     // EFATAL = unrecoverable
@@ -637,7 +645,7 @@ setInterval(async () => {
             await bot.getMe();
             // API works fine — polling is just idle (no messages). Reset timer.
             lastPollingActivity = Date.now();
-            log('INFO', `Watchdog: no messages for ${Math.round(silentMs / 1000)}s but API reachable, polling is healthy`);
+            logger.info({ context: { silentSeconds: Math.round(silentMs / 1000) } }, 'Watchdog check passed; polling is healthy');
         } catch {
             // API unreachable — polling is actually broken, restart it
             restartPolling(`No polling activity for ${Math.round(silentMs / 1000)}s and API unreachable (watchdog)`, 5000);
@@ -645,26 +653,33 @@ setInterval(async () => {
     }
 }, 30000);
 
+async function shutdownTelegram(exitCode: number): Promise<void> {
+    logger.info({ context: { exitCode } }, 'Shutting down Telegram client');
+    try {
+        await bot.stopPolling();
+    } catch {
+        // Ignore shutdown polling errors.
+    }
+    process.exit(exitCode);
+}
+
 // Catch unhandled errors so we can see what kills the bot
 process.on('unhandledRejection', (reason) => {
-    log('ERROR', `Unhandled rejection: ${reason}`);
+    logError(logger, reason, 'Unhandled rejection');
 });
 process.on('uncaughtException', (error) => {
-    log('ERROR', `Uncaught exception: ${error.message}\n${error.stack}`);
+    logError(logger, error, 'Uncaught exception');
+    void shutdownTelegram(1);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-    log('INFO', 'Shutting down Telegram client...');
-    bot.stopPolling();
-    process.exit(0);
+    void shutdownTelegram(0);
 });
 
 process.on('SIGTERM', () => {
-    log('INFO', 'Shutting down Telegram client...');
-    bot.stopPolling();
-    process.exit(0);
+    void shutdownTelegram(0);
 });
 
 // Start
-log('INFO', 'Starting Telegram client...');
+logger.info('Starting Telegram client');

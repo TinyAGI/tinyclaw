@@ -12,6 +12,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
+import { createLogger, excerptText, logError } from '../lib/logging';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -22,13 +23,13 @@ const TINYCLAW_HOME = process.env.TINYCLAW_HOME
     || (fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
         ? _localTinyclaw
         : path.join(require('os').homedir(), '.tinyclaw'));
-const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/discord.log');
 const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
 const PAIRING_FILE = path.join(TINYCLAW_HOME, 'pairing.json');
+const logger = createLogger({ runtime: 'discord', source: 'discord', component: 'client' });
 
 // Ensure directories exist
-[path.dirname(LOG_FILE), FILES_DIR].forEach(dir => {
+[FILES_DIR].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -37,7 +38,7 @@ const PAIRING_FILE = path.join(TINYCLAW_HOME, 'pairing.json');
 // Validate bot token
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 if (!DISCORD_BOT_TOKEN || DISCORD_BOT_TOKEN === 'your_token_here') {
-    console.error('ERROR: DISCORD_BOT_TOKEN is not set in .env file');
+    logger.error('DISCORD_BOT_TOKEN is not set in .env file');
     process.exit(1);
 }
 
@@ -95,14 +96,6 @@ function downloadFile(url: string, destPath: string): Promise<void> {
 // Track pending messages (waiting for response)
 const pendingMessages = new Map<string, PendingMessage>();
 let processingOutgoingQueue = false;
-
-// Logger
-function log(level: string, message: string): void {
-    const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] [${level}] ${message}\n`;
-    console.log(logMessage.trim());
-    fs.appendFileSync(LOG_FILE, logMessage);
-}
 
 // Load teams from settings for /team command
 function getTeamListText(): string {
@@ -209,8 +202,8 @@ const client = new Client({
 
 // Client ready
 client.on(Events.ClientReady, (readyClient) => {
-    log('INFO', `Discord bot connected as ${readyClient.user.tag}`);
-    log('INFO', 'Listening for DMs...');
+    logger.info({ context: { userTag: readyClient.user.tag } }, 'Discord bot connected');
+    logger.info('Listening for DMs');
 });
 
 // Message received - Write to queue
@@ -250,31 +243,42 @@ client.on(Events.MessageCreate, async (message: Message) => {
 
                     await downloadFile(attachment.url, localPath);
                     downloadedFiles.push(localPath);
-                    log('INFO', `Downloaded attachment: ${path.basename(localPath)} (${attachment.contentType || 'unknown'})`);
+                    logger.info({ messageId, context: { file: path.basename(localPath), contentType: attachment.contentType || 'unknown' } }, 'Downloaded attachment');
                 } catch (dlErr) {
-                    log('ERROR', `Failed to download attachment ${attachment.name}: ${(dlErr as Error).message}`);
+                    logError(logger, dlErr, 'Failed to download attachment', { messageId, attachmentName: attachment.name || undefined });
                 }
             }
         }
 
         let messageText = message.content || '';
 
-        log('INFO', `Message from ${sender}: ${messageText.substring(0, 50)}${downloadedFiles.length > 0 ? ` [+${downloadedFiles.length} file(s)]` : ''}...`);
+        logger.info({
+            channel: 'discord',
+            sender,
+            messageId,
+            context: { fileCount: downloadedFiles.length, senderId: message.author.id },
+        }, 'Message received');
+        logger.debug({
+            channel: 'discord',
+            sender,
+            messageId,
+            excerpt: excerptText(messageText || '[attachment only]'),
+        }, 'Message received excerpt');
 
         const pairing = ensureSenderPaired(PAIRING_FILE, 'discord', message.author.id, sender);
         if (!pairing.approved && pairing.code) {
             if (pairing.isNewPending) {
-                log('INFO', `Blocked unpaired Discord sender ${sender} (${message.author.id}) with code ${pairing.code}`);
+                logger.info({ channel: 'discord', sender, context: { senderId: message.author.id } }, 'Blocked unpaired sender');
                 await message.reply(pairingMessage(pairing.code));
             } else {
-                log('INFO', `Blocked pending Discord sender ${sender} (${message.author.id}) without re-sending pairing message`);
+                logger.info({ channel: 'discord', sender, context: { senderId: message.author.id } }, 'Blocked pending sender without re-sending pairing message');
             }
             return;
         }
 
         // Check for agent list command
         if (message.content.trim().match(/^[!/]agent$/i)) {
-            log('INFO', 'Agent list command received');
+            logger.info({ channel: 'discord', sender, messageId }, 'Agent list command received');
             const agentList = getAgentListText();
             await message.reply(agentList);
             return;
@@ -282,7 +286,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
 
         // Check for team list command
         if (message.content.trim().match(/^[!/]team$/i)) {
-            log('INFO', 'Team list command received');
+            logger.info({ channel: 'discord', sender, messageId }, 'Team list command received');
             const teamList = getTeamListText();
             await message.reply(teamList);
             return;
@@ -295,7 +299,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
             return;
         }
         if (resetMatch) {
-            log('INFO', 'Per-agent reset command received');
+            logger.info({ channel: 'discord', sender, messageId }, 'Per-agent reset command received');
             const agentArgs = resetMatch[1].split(/\s+/).map(a => a.replace(/^@/, '').toLowerCase());
             try {
                 const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
@@ -322,7 +326,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
 
         // Check for restart command
         if (message.content.trim().match(/^[!/]restart$/i)) {
-            log('INFO', 'Restart command received');
+            logger.info({ channel: 'discord', sender, messageId }, 'Restart command received');
             await message.reply('Restarting TinyClaw...');
             const { exec } = require('child_process');
             exec(`"${path.join(SCRIPT_DIR, 'tinyclaw.sh')}" restart`, { detached: true, stdio: 'ignore' });
@@ -353,7 +357,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
             }),
         });
 
-        log('INFO', `Queued message ${messageId}`);
+        logger.info({ channel: 'discord', sender, messageId, context: { fileCount: downloadedFiles.length, senderId: message.author.id } }, 'Queued message');
 
         // Store pending message for response
         pendingMessages.set(messageId, {
@@ -371,7 +375,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
         }
 
     } catch (error) {
-        log('ERROR', `Message handling error: ${(error as Error).message}`);
+        logError(logger, error, 'Message handling error');
     }
 });
 
@@ -405,7 +409,7 @@ async function checkOutgoingQueue(): Promise<void> {
                         const user = await client.users.fetch(senderId);
                         dmChannel = await user.createDM();
                     } catch (err) {
-                        log('ERROR', `Could not open DM for senderId ${senderId}: ${(err as Error).message}`);
+                        logError(logger, err, 'Could not open DM for senderId', { senderId, messageId });
                     }
                 }
 
@@ -418,12 +422,12 @@ async function checkOutgoingQueue(): Promise<void> {
                                 if (!fs.existsSync(file)) continue;
                                 attachments.push(new AttachmentBuilder(file));
                             } catch (fileErr) {
-                                log('ERROR', `Failed to prepare file ${file}: ${(fileErr as Error).message}`);
+                                logError(logger, fileErr, 'Failed to prepare file for Discord', { messageId, file });
                             }
                         }
                         if (attachments.length > 0) {
                             await dmChannel.send({ files: attachments });
-                            log('INFO', `Sent ${attachments.length} file(s) to Discord`);
+                            logger.info({ channel: 'discord', sender, messageId, context: { fileCount: attachments.length } }, 'Sent files to Discord');
                         }
                     }
 
@@ -443,21 +447,30 @@ async function checkOutgoingQueue(): Promise<void> {
                         }
                     }
 
-                    log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
+                    logger.info({
+                        channel: 'discord',
+                        sender,
+                        messageId,
+                        context: {
+                            kind: pending ? 'response' : 'proactive message',
+                            responseLength: responseText.length,
+                            fileCount: files.length,
+                        },
+                    }, 'Sent outbound message');
 
                     if (pending) pendingMessages.delete(messageId);
                     await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
                 } else {
-                    log('WARN', `No pending message for ${messageId} and no senderId, acking`);
+                    logger.warn({ channel: 'discord', sender, messageId, context: { senderId } }, 'No pending message and no senderId; acking');
                     await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
                 }
             } catch (error) {
-                log('ERROR', `Error processing response ${resp.id}: ${(error as Error).message}`);
+                logError(logger, error, 'Error processing Discord response', { responseId: resp.id });
                 // Don't ack on error, will retry next poll
             }
         }
     } catch (error) {
-        log('ERROR', `Outgoing queue error: ${(error as Error).message}`);
+        logError(logger, error, 'Outgoing queue error');
     } finally {
         processingOutgoingQueue = false;
     }
@@ -475,27 +488,30 @@ setInterval(() => {
     }
 }, 8000);
 
+function shutdownDiscord(exitCode: number): void {
+    logger.info({ context: { exitCode } }, 'Shutting down Discord client');
+    client.destroy();
+    process.exit(exitCode);
+}
+
 // Catch unhandled errors so we can see what kills the bot
 process.on('unhandledRejection', (reason) => {
-    log('ERROR', `Unhandled rejection: ${reason}`);
+    logError(logger, reason, 'Unhandled rejection');
 });
 process.on('uncaughtException', (error) => {
-    log('ERROR', `Uncaught exception: ${error.message}\n${error.stack}`);
+    logError(logger, error, 'Uncaught exception');
+    shutdownDiscord(1);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-    log('INFO', 'Shutting down Discord client...');
-    client.destroy();
-    process.exit(0);
+    shutdownDiscord(0);
 });
 
 process.on('SIGTERM', () => {
-    log('INFO', 'Shutting down Discord client...');
-    client.destroy();
-    process.exit(0);
+    shutdownDiscord(0);
 });
 
 // Start client
-log('INFO', 'Starting Discord client...');
+logger.info('Starting Discord client');
 client.login(DISCORD_BOT_TOKEN);

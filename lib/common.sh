@@ -86,9 +86,117 @@ get_channel_token() {
     done
 }
 
-# Logging function
+# Structured log helpers
+rotate_log_file() {
+    local file="$1"
+    local max_bytes=$((10 * 1024 * 1024))
+    local max_files=5
+
+    [ -f "$file" ] || return 0
+
+    local size
+    size=$(wc -c < "$file" | tr -d ' ')
+    if [ "$size" -lt "$max_bytes" ]; then
+        return 0
+    fi
+
+    local ext="${file##*.}"
+    local base="${file%.*}"
+    local i
+    for ((i=max_files; i>=1; i--)); do
+        local current="${base}.${i}.${ext}"
+        local previous
+        if [ "$i" -eq 1 ]; then
+            previous="$file"
+        else
+            previous="${base}.$((i-1)).${ext}"
+        fi
+
+        [ -f "$previous" ] || continue
+        [ ! -f "$current" ] || rm -f "$current"
+        mv "$previous" "$current"
+    done
+}
+
+write_structured_log() {
+    local source="$1"
+    local component="$2"
+    local level="$3"
+    shift 3
+
+    local msg="$*"
+    local file="$LOG_DIR/${source}.log"
+    local timestamp
+    timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+    mkdir -p "$LOG_DIR"
+    rotate_log_file "$file"
+
+    if command -v jq >/dev/null 2>&1; then
+        jq -nc \
+            --arg time "$timestamp" \
+            --arg level "$level" \
+            --arg source "$source" \
+            --arg component "$component" \
+            --arg msg "$msg" \
+            '{time:$time,level:$level,source:$source,component:$component,msg:$msg}' >> "$file"
+    else
+        node -e 'const [time, level, source, component, msg] = process.argv.slice(1); console.log(JSON.stringify({ time, level, source, component, msg }));' \
+            "$timestamp" "$level" "$source" "$component" "$msg" >> "$file"
+    fi
+}
+
+normalize_log_level() {
+    local raw
+    raw=$(printf '%s' "${1:-info}" | tr '[:upper:]' '[:lower:]')
+    case "$raw" in
+        trace|verbose) echo "debug" ;;
+        debug) echo "debug" ;;
+        info|"") echo "info" ;;
+        warn|warning) echo "warn" ;;
+        error|err|fatal) echo "error" ;;
+        *) echo "info" ;;
+    esac
+}
+
+is_explicit_log_level() {
+    case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+        trace|verbose|debug|info|warn|warning|error|err|fatal) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+log_level_priority() {
+    case "$(normalize_log_level "$1")" in
+        debug) echo 0 ;;
+        info) echo 1 ;;
+        warn) echo 2 ;;
+        error) echo 3 ;;
+        *) echo 1 ;;
+    esac
+}
+
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_DIR/daemon.log"
+    local candidate_level="${1:-}"
+    local level="info"
+    local threshold
+    local msg
+
+    if is_explicit_log_level "$candidate_level"; then
+        level="$(normalize_log_level "$candidate_level")"
+        shift
+    fi
+
+    msg="$*"
+    [ -n "$msg" ] || return 0
+
+    threshold="$(normalize_log_level "${LOG_LEVEL:-info}")"
+    if [ "$(log_level_priority "$level")" -lt "$(log_level_priority "$threshold")" ]; then
+        return 0
+    fi
+
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg"
+    write_structured_log "daemon" "daemon" "$level" "$msg"
 }
 
 # Load settings from JSON

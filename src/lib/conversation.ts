@@ -2,12 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import { Conversation } from './types';
 import { CHATS_DIR, getSettings, getAgents } from './config';
-import { log, emitEvent } from './logging';
+import { emitEvent } from './events';
+import { createLogger, excerptText, isDebugEnabled, logError } from './logging';
 import { enqueueMessage, enqueueResponse } from './db';
 import { handleLongResponse, collectFiles } from './response';
 
 // Active conversations — tracks in-flight team message passing
 export const conversations = new Map<string, Conversation>();
+const logger = createLogger({ runtime: 'queue', source: 'queue', component: 'conversation' });
 
 export const MAX_CONVERSATION_MESSAGES = 50;
 
@@ -53,7 +55,7 @@ export async function withConversationLock<T>(
  */
 export function incrementPending(conv: Conversation, count: number): void {
     conv.pending += count;
-    log('DEBUG', `Conversation ${conv.id}: pending incremented to ${conv.pending} (+${count})`);
+    logger.debug({ conversationId: conv.id, context: { pending: conv.pending, increment: count } }, 'Conversation pending incremented');
 }
 
 /**
@@ -62,10 +64,10 @@ export function incrementPending(conv: Conversation, count: number): void {
  */
 export function decrementPending(conv: Conversation): boolean {
     conv.pending--;
-    log('DEBUG', `Conversation ${conv.id}: pending decremented to ${conv.pending}`);
+    logger.debug({ conversationId: conv.id, context: { pending: conv.pending } }, 'Conversation pending decremented');
 
     if (conv.pending < 0) {
-        log('WARN', `Conversation ${conv.id}: pending went negative (${conv.pending}), resetting to 0`);
+        logger.warn({ conversationId: conv.id, context: { pending: conv.pending } }, 'Conversation pending went negative, resetting to 0');
         conv.pending = 0;
     }
 
@@ -93,7 +95,17 @@ export function enqueueInternalMessage(
         conversationId,
         fromAgent,
     });
-    log('INFO', `Enqueued internal message: @${fromAgent} → @${targetAgent}`);
+    const bindings: Record<string, unknown> = {
+        conversationId,
+        messageId,
+        fromAgent,
+        toAgent: targetAgent,
+        channel: originalData.channel,
+    };
+    if (isDebugEnabled(logger)) {
+        bindings.excerpt = excerptText(message);
+    }
+    logger.info(bindings, 'Enqueued internal message');
 }
 
 /**
@@ -103,7 +115,13 @@ export function completeConversation(conv: Conversation): void {
     const settings = getSettings();
     const agents = getAgents(settings);
 
-    log('INFO', `Conversation ${conv.id} complete — ${conv.responses.length} response(s), ${conv.totalMessages} total message(s)`);
+    logger.info({
+        conversationId: conv.id,
+        channel: conv.channel,
+        sender: conv.sender,
+        teamId: conv.teamContext.teamId,
+        context: { responseCount: conv.responses.length, totalMessages: conv.totalMessages },
+    }, 'Conversation complete');
     emitEvent('team_chain_end', {
         teamId: conv.teamContext.teamId,
         totalSteps: conv.responses.length,
@@ -152,9 +170,9 @@ export function completeConversation(conv: Conversation): void {
         const now = new Date();
         const dateTime = now.toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '');
         fs.writeFileSync(path.join(teamChatsDir, `${dateTime}.md`), chatLines.join('\n'));
-        log('INFO', `Chat history saved`);
+        logger.info({ conversationId: conv.id, teamId: conv.teamContext.teamId }, 'Chat history saved');
     } catch (e) {
-        log('ERROR', `Failed to save chat history: ${(e as Error).message}`);
+        logError(logger, e, 'Failed to save chat history', { conversationId: conv.id, teamId: conv.teamContext.teamId });
     }
 
     // Detect file references
@@ -181,10 +199,18 @@ export function completeConversation(conv: Conversation): void {
         message: responseMessage,
         originalMessage: conv.originalMessage,
         messageId: conv.messageId,
+        conversationId: conv.id,
         files: allFiles.length > 0 ? allFiles : undefined,
     });
 
-    log('INFO', `✓ Response ready [${conv.channel}] ${conv.sender} (${finalResponse.length} chars)`);
+    logger.info({
+        conversationId: conv.id,
+        channel: conv.channel,
+        sender: conv.sender,
+        messageId: conv.messageId,
+        teamId: conv.teamContext.teamId,
+        context: { responseLength: finalResponse.length },
+    }, 'Team response ready');
     emitEvent('response_ready', { channel: conv.channel, sender: conv.sender, responseLength: finalResponse.length, responseText: finalResponse, messageId: conv.messageId });
 
     // Clean up
