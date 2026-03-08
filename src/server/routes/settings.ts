@@ -13,7 +13,7 @@ export function mutateSettings(fn: (settings: Settings) => void): Settings {
 }
 
 const app = new Hono();
-const logger = createLogger({ runtime: 'queue', source: 'api', component: 'settings-route' });
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'settings-route' });
 
 // GET /api/settings
 app.get('/api/settings', (c) => {

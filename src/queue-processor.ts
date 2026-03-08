@@ -354,6 +354,17 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
 
 // Per-agent processing chains - ensures messages to same agent are sequential
 const agentProcessingChains = new Map<string, Promise<void>>();
+let drainScheduled = false;
+
+function scheduleQueueDrain(): void {
+    if (drainScheduled) return;
+    drainScheduled = true;
+
+    queueMicrotask(() => {
+        drainScheduled = false;
+        void processQueue();
+    });
+}
 
 // Main processing loop
 async function processQueue(): Promise<void> {
@@ -386,6 +397,9 @@ async function processQueue(): Promise<void> {
                 if (agentProcessingChains.get(agentId) === newChain) {
                     agentProcessingChains.delete(agentId);
                 }
+
+                // Keep draining until the backlog for this agent is exhausted.
+                scheduleQueueDrain();
             });
         }
     } catch (error) {
@@ -448,13 +462,19 @@ logger.info('Queue processor started (SQLite-backed)');
 logAgentConfig();
 emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), teams: Object.keys(getTeams(getSettings())) });
 
+// Drain any backlog already present at startup, even when nothing was recovered.
+scheduleQueueDrain();
+
 // Event-driven: all messages come through the API server (same process)
-queueEvents.on('message:enqueued', () => processQueue());
+queueEvents.on('message:enqueued', () => scheduleQueueDrain());
 
 // Periodic maintenance
 setInterval(() => {
     const count = recoverStaleMessages();
-    if (count > 0) logger.info({ context: { recovered: count } }, 'Recovered stale messages');
+    if (count > 0) {
+        logger.info({ context: { recovered: count } }, 'Recovered stale messages');
+        scheduleQueueDrain();
+    }
 }, 5 * 60 * 1000); // every 5 min
 
 setInterval(() => {

@@ -56,9 +56,60 @@ rotate_log_file() {
     done
 }
 
+normalize_log_level() {
+    local raw
+    raw=$(printf '%s' "${1:-info}" | tr '[:upper:]' '[:lower:]')
+    case "$raw" in
+        trace|verbose) echo "debug" ;;
+        debug) echo "debug" ;;
+        info|"") echo "info" ;;
+        warn|warning) echo "warn" ;;
+        error|err|fatal) echo "error" ;;
+        *) echo "info" ;;
+    esac
+}
+
+log_level_priority() {
+    case "$(normalize_log_level "$1")" in
+        debug) echo 0 ;;
+        info) echo 1 ;;
+        warn) echo 2 ;;
+        error) echo 3 ;;
+        *) echo 1 ;;
+    esac
+}
+
 log() {
-    local msg="$*"
+    local candidate_level="${1:-}"
+    local level="info"
+    local threshold
+    local msg
     local timestamp
+
+    case "$(normalize_log_level "$candidate_level")" in
+        debug|info|warn|error)
+            if [ "$candidate_level" = "$(normalize_log_level "$candidate_level")" ] || \
+               [ "$candidate_level" = "DEBUG" ] || [ "$candidate_level" = "INFO" ] || \
+               [ "$candidate_level" = "WARN" ] || [ "$candidate_level" = "WARNING" ] || \
+               [ "$candidate_level" = "ERROR" ] || [ "$candidate_level" = "verbose" ] || \
+               [ "$candidate_level" = "VERBOSE" ] || [ "$candidate_level" = "trace" ] || \
+               [ "$candidate_level" = "TRACE" ] || [ "$candidate_level" = "fatal" ] || \
+               [ "$candidate_level" = "FATAL" ] || [ "$candidate_level" = "err" ] || \
+               [ "$candidate_level" = "ERR" ]; then
+                level="$(normalize_log_level "$candidate_level")"
+                shift
+            fi
+            ;;
+    esac
+
+    msg="$*"
+    [ -n "$msg" ] || return 0
+
+    threshold="$(normalize_log_level "${LOG_LEVEL:-info}")"
+    if [ "$(log_level_priority "$level")" -lt "$(log_level_priority "$threshold")" ]; then
+        return 0
+    fi
+
     timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg"
@@ -66,14 +117,14 @@ log() {
     if command -v jq >/dev/null 2>&1; then
         jq -nc \
             --arg time "$timestamp" \
-            --arg level "info" \
+            --arg level "$level" \
             --arg source "heartbeat" \
             --arg component "heartbeat" \
             --arg msg "$msg" \
             '{time:$time,level:$level,source:$source,component:$component,msg:$msg}' >> "$LOG_FILE"
     else
         node -e 'const [time, level, source, component, msg] = process.argv.slice(1); console.log(JSON.stringify({ time, level, source, component, msg }));' \
-            "$timestamp" "info" "heartbeat" "heartbeat" "$msg" >> "$LOG_FILE"
+            "$timestamp" "$level" "heartbeat" "heartbeat" "$msg" >> "$LOG_FILE"
     fi
     printf '\n' >> "$LOG_FILE"
 }
@@ -87,7 +138,7 @@ while true; do
 
     # Get all agents from settings
     if [ ! -f "$SETTINGS_FILE" ]; then
-        log "WARNING: No settings file found, skipping heartbeat"
+        log warn "No settings file found, skipping heartbeat"
         continue
     fi
 
@@ -142,7 +193,7 @@ while true; do
             MESSAGE_ID=$(echo "$RESPONSE" | jq -r '.messageId')
             log "  ✓ Queued for @$AGENT_ID: $MESSAGE_ID"
         else
-            log "  ✗ Failed to queue for @$AGENT_ID: $RESPONSE"
+            log error "  ✗ Failed to queue for @$AGENT_ID: $RESPONSE"
         fi
     done
 

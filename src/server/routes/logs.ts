@@ -4,7 +4,7 @@ import { readLogEntries } from '../../lib/logging';
 const app = new Hono();
 
 // GET /api/logs
-app.get('/api/logs', (c) => {
+app.get('/api/logs', async (c) => {
     const limit = parseInt(c.req.query('limit') || '100', 10);
     const source = c.req.query('source')?.split(',').map(item => item.trim()).filter(Boolean) ?? [];
     const level = c.req.query('level') || undefined;
@@ -15,7 +15,7 @@ app.get('/api/logs', (c) => {
     const search = c.req.query('search') || undefined;
 
     return c.json({
-        entries: readLogEntries({
+        entries: await readLogEntries({
             limit,
             source,
             level,

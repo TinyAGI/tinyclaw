@@ -71,6 +71,75 @@ export interface EnqueueResponseData {
     metadata?: Record<string, unknown>;
 }
 
+export type QueueMessageStatus = DbMessage['status'];
+export type QueueResponseStatus = DbResponse['status'];
+
+export interface QueueMessageRow {
+    id: number;
+    messageId: string;
+    channel: string;
+    sender: string;
+    senderId: string | null;
+    agent: string | null;
+    conversationId: string | null;
+    fromAgent: string | null;
+    status: QueueMessageStatus;
+    message: string;
+    files: string[];
+    retryCount: number;
+    lastError: string | null;
+    claimedBy: string | null;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface QueueResponseRow {
+    id: number;
+    messageId: string;
+    channel: string;
+    sender: string;
+    senderId: string | null;
+    agent: string | null;
+    message: string;
+    originalMessage: string | null;
+    files: string[];
+    metadata: Record<string, unknown> | null;
+    status: QueueResponseStatus;
+    createdAt: number;
+    ackedAt: number | null;
+}
+
+export interface GetQueueMessagesOptions {
+    statuses: QueueMessageStatus[];
+    channel?: string;
+    agentId?: string;
+    sender?: string;
+    messageId?: string;
+    conversationId?: string;
+    search?: string;
+    limit: number;
+}
+
+export interface GetQueueResponsesOptions {
+    statuses: QueueResponseStatus[];
+    channel?: string;
+    agentId?: string;
+    sender?: string;
+    messageId?: string;
+    conversationId?: string;
+    search?: string;
+    limit: number;
+}
+
+export interface QueueRowCounts {
+    pending: number;
+    processing: number;
+    completed: number;
+    dead: number;
+    responsesPending: number;
+    responsesAcked: number;
+}
+
 // ── Singleton ────────────────────────────────────────────────────────────────
 
 const QUEUE_DB_PATH = path.join(TINYCLAW_HOME, 'tinyclaw.db');
@@ -145,6 +214,77 @@ export function initQueueDb(): void {
 function getDb(): Database.Database {
     if (!db) throw new Error('Queue DB not initialized — call initQueueDb() first');
     return db;
+}
+
+function safeParseStringArray(value: string | null): string[] {
+    if (!value) return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
+function safeParseObject(value: string | null): Record<string, unknown> | null {
+    if (!value) return null;
+    try {
+        const parsed = JSON.parse(value);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return parsed as Record<string, unknown>;
+        }
+    } catch {
+        // Ignore malformed metadata
+    }
+    return null;
+}
+
+function mapQueueMessageRow(row: DbMessage): QueueMessageRow {
+    return {
+        id: row.id,
+        messageId: row.message_id,
+        channel: row.channel,
+        sender: row.sender,
+        senderId: row.sender_id,
+        agent: row.agent,
+        conversationId: row.conversation_id,
+        fromAgent: row.from_agent,
+        status: row.status,
+        message: row.message,
+        files: safeParseStringArray(row.files),
+        retryCount: row.retry_count,
+        lastError: row.last_error,
+        claimedBy: row.claimed_by,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
+}
+
+function mapQueueResponseRow(row: DbResponse): QueueResponseRow {
+    return {
+        id: row.id,
+        messageId: row.message_id,
+        channel: row.channel,
+        sender: row.sender,
+        senderId: row.sender_id,
+        agent: row.agent,
+        message: row.message,
+        originalMessage: row.original_message ?? null,
+        files: safeParseStringArray(row.files),
+        metadata: safeParseObject(row.metadata),
+        status: row.status,
+        createdAt: row.created_at,
+        ackedAt: row.acked_at,
+    };
+}
+
+function buildInClause(values: readonly string[]): string {
+    return values.map(() => '?').join(', ');
+}
+
+function normalizeSearchTerm(search?: string): string | undefined {
+    const trimmed = search?.trim();
+    return trimmed ? `%${trimmed.toLowerCase()}%` : undefined;
 }
 
 // ── Messages (incoming queue) ────────────────────────────────────────────────
@@ -261,6 +401,103 @@ export function getRecentResponses(limit: number): DbResponse[] {
     `).all(limit) as DbResponse[];
 }
 
+export function getQueueMessages(options: GetQueueMessagesOptions): QueueMessageRow[] {
+    const clauses: string[] = [];
+    const params: Array<string | number> = [];
+
+    clauses.push(`status IN (${buildInClause(options.statuses)})`);
+    params.push(...options.statuses);
+
+    if (options.channel) {
+        clauses.push('channel = ?');
+        params.push(options.channel);
+    }
+    if (options.agentId) {
+        clauses.push('agent = ?');
+        params.push(options.agentId);
+    }
+    if (options.sender) {
+        clauses.push('sender = ?');
+        params.push(options.sender);
+    }
+    if (options.messageId) {
+        clauses.push('message_id = ?');
+        params.push(options.messageId);
+    }
+    if (options.conversationId) {
+        clauses.push('conversation_id = ?');
+        params.push(options.conversationId);
+    }
+
+    const searchTerm = normalizeSearchTerm(options.search);
+    if (searchTerm) {
+        clauses.push(`(
+            LOWER(message) LIKE ?
+            OR LOWER(sender) LIKE ?
+            OR LOWER(message_id) LIKE ?
+            OR LOWER(COALESCE(agent, '')) LIKE ?
+            OR LOWER(COALESCE(conversation_id, '')) LIKE ?
+        )`);
+        params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    }
+
+    params.push(options.limit);
+    const rows = getDb().prepare(`
+        SELECT * FROM messages
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY created_at DESC
+        LIMIT ?
+    `).all(...params) as DbMessage[];
+
+    return rows.map(mapQueueMessageRow);
+}
+
+export function getQueueResponses(options: GetQueueResponsesOptions): QueueResponseRow[] {
+    const clauses: string[] = [];
+    const params: Array<string | number> = [];
+
+    clauses.push(`status IN (${buildInClause(options.statuses)})`);
+    params.push(...options.statuses);
+
+    if (options.channel) {
+        clauses.push('channel = ?');
+        params.push(options.channel);
+    }
+    if (options.agentId) {
+        clauses.push('agent = ?');
+        params.push(options.agentId);
+    }
+    if (options.sender) {
+        clauses.push('sender = ?');
+        params.push(options.sender);
+    }
+    if (options.messageId) {
+        clauses.push('message_id = ?');
+        params.push(options.messageId);
+    }
+    const searchTerm = normalizeSearchTerm(options.search);
+    if (searchTerm) {
+        clauses.push(`(
+            LOWER(message) LIKE ?
+            OR LOWER(COALESCE(original_message, '')) LIKE ?
+            OR LOWER(sender) LIKE ?
+            OR LOWER(message_id) LIKE ?
+            OR LOWER(COALESCE(agent, '')) LIKE ?
+        )`);
+        params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    }
+
+    params.push(options.limit);
+    const rows = getDb().prepare(`
+        SELECT * FROM responses
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY created_at DESC
+        LIMIT ?
+    `).all(...params) as DbResponse[];
+
+    return rows.map(mapQueueResponseRow);
+}
+
 // ── Queue status & management ────────────────────────────────────────────────
 
 export function getQueueStatus(): {
@@ -281,6 +518,43 @@ export function getQueueStatus(): {
         SELECT COUNT(*) as cnt FROM responses WHERE status = 'pending'
     `).get() as { cnt: number };
     result.responsesPending = respCount.cnt;
+
+    return result;
+}
+
+export function getQueueRowCounts(): QueueRowCounts {
+    const d = getDb();
+    const messageCounts = d.prepare(`
+        SELECT status, COUNT(*) as cnt FROM messages GROUP BY status
+    `).all() as { status: QueueMessageStatus; cnt: number }[];
+    const responseCounts = d.prepare(`
+        SELECT status, COUNT(*) as cnt FROM responses GROUP BY status
+    `).all() as { status: QueueResponseStatus; cnt: number }[];
+
+    const result: QueueRowCounts = {
+        pending: 0,
+        processing: 0,
+        completed: 0,
+        dead: 0,
+        responsesPending: 0,
+        responsesAcked: 0,
+    };
+
+    for (const row of messageCounts) {
+        switch (row.status) {
+            case 'pending':
+            case 'processing':
+            case 'completed':
+            case 'dead':
+                result[row.status] = row.cnt;
+                break;
+        }
+    }
+
+    for (const row of responseCounts) {
+        if (row.status === 'pending') result.responsesPending = row.cnt;
+        if (row.status === 'acked') result.responsesAcked = row.cnt;
+    }
 
     return result;
 }

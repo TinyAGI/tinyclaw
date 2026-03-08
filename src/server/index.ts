@@ -25,7 +25,7 @@ import logsRoutes from './routes/logs';
 import chatsRoutes from './routes/chats';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
-const logger = createLogger({ runtime: 'queue', source: 'api', component: 'server' });
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'server' });
 
 /**
  * Create and start the API server.

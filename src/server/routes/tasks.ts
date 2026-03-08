@@ -6,7 +6,7 @@ import { TINYCLAW_HOME } from '../../lib/config';
 import { createLogger } from '../../lib/logging';
 
 const TASKS_FILE = path.join(TINYCLAW_HOME, 'tasks.json');
-const logger = createLogger({ runtime: 'queue', source: 'api', component: 'tasks-route' });
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'tasks-route' });
 
 function readTasks(): Task[] {
     try {
@@ -47,7 +47,7 @@ app.post('/api/tasks', async (c) => {
     };
     tasks.push(task);
     writeTasks(tasks);
-    logger.info({ context: { taskId: task.id }, excerpt: task.title }, 'Task created');
+    logger.info({ taskId: task.id, excerpt: task.title }, 'Task created');
     return c.json({ ok: true, task });
 });
 
@@ -80,7 +80,7 @@ app.put('/api/tasks/:id', async (c) => {
     if (idx === -1) return c.json({ error: 'task not found' }, 404);
     tasks[idx] = { ...tasks[idx], ...body, id: taskId, updatedAt: Date.now() };
     writeTasks(tasks);
-    logger.info({ context: { taskId } }, 'Task updated');
+    logger.info({ taskId }, 'Task updated');
     return c.json({ ok: true, task: tasks[idx] });
 });
 
@@ -92,7 +92,7 @@ app.delete('/api/tasks/:id', (c) => {
     if (idx === -1) return c.json({ error: 'task not found' }, 404);
     tasks.splice(idx, 1);
     writeTasks(tasks);
-    logger.info({ context: { taskId } }, 'Task deleted');
+    logger.info({ taskId }, 'Task deleted');
     return c.json({ ok: true });
 });
 

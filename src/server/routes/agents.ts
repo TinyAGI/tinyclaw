@@ -7,7 +7,7 @@ import { createLogger, logError } from '../../lib/logging';
 import { mutateSettings } from './settings';
 
 const app = new Hono();
-const logger = createLogger({ runtime: 'queue', source: 'api', component: 'agents-route' });
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'agents-route' });
 
 // ── Agent workspace provisioning ─────────────────────────────────────────────
 
@@ -105,21 +105,24 @@ app.put('/api/agents/:id', async (c) => {
     });
 
     let provisionSteps: string[] = [];
+    let provisionError: string | null = null;
     if (isNew) {
         try {
             provisionSteps = provisionAgentWorkspace(workingDir, agentId);
             logger.info({ agentId, context: { provisionSteps } }, 'Agent provisioned');
         } catch (err) {
             logError(logger, err, 'Agent provisioning failed', { agentId });
+            provisionError = (err as Error).message;
         }
     }
 
     logger.info({ agentId }, 'Agent saved');
     return c.json({
-        ok: true,
+        ok: !provisionError,
         agent: settings.agents![agentId],
-        provisioned: isNew,
+        provisioned: isNew && !provisionError,
         provisionSteps,
+        ...(provisionError ? { provisionError } : {}),
     });
 });
 

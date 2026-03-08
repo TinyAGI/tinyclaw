@@ -485,39 +485,40 @@ client.on('disconnected', (reason: string) => {
     }, 10000);
 });
 
+async function shutdownWhatsApp(exitCode: number): Promise<void> {
+    logger.info({ context: { exitCode } }, 'Shutting down WhatsApp client');
+
+    const readyFile = path.join(TINYCLAW_HOME, 'channels/whatsapp_ready');
+    if (fs.existsSync(readyFile)) {
+        fs.unlinkSync(readyFile);
+    }
+
+    try {
+        await client.destroy();
+    } catch {
+        // Ignore shutdown destroy errors.
+    }
+
+    process.exit(exitCode);
+}
+
 // Catch unhandled errors so we can see what kills the bot
 process.on('unhandledRejection', (reason) => {
     logError(logger, reason, 'Unhandled rejection');
+    void shutdownWhatsApp(1);
 });
 process.on('uncaughtException', (error) => {
     logError(logger, error, 'Uncaught exception');
+    void shutdownWhatsApp(1);
 });
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
-    logger.info('Shutting down WhatsApp client');
-
-    // Remove ready flag
-    const readyFile = path.join(TINYCLAW_HOME, 'channels/whatsapp_ready');
-    if (fs.existsSync(readyFile)) {
-        fs.unlinkSync(readyFile);
-    }
-
-    await client.destroy();
-    process.exit(0);
+    await shutdownWhatsApp(0);
 });
 
 process.on('SIGTERM', async () => {
-    logger.info('Shutting down WhatsApp client');
-
-    // Remove ready flag
-    const readyFile = path.join(TINYCLAW_HOME, 'channels/whatsapp_ready');
-    if (fs.existsSync(readyFile)) {
-        fs.unlinkSync(readyFile);
-    }
-
-    await client.destroy();
-    process.exit(0);
+    await shutdownWhatsApp(0);
 });
 
 // Start client

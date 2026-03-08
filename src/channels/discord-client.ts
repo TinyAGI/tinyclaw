@@ -483,25 +483,29 @@ setInterval(() => {
     }
 }, 8000);
 
+function shutdownDiscord(exitCode: number): void {
+    logger.info({ context: { exitCode } }, 'Shutting down Discord client');
+    client.destroy();
+    process.exit(exitCode);
+}
+
 // Catch unhandled errors so we can see what kills the bot
 process.on('unhandledRejection', (reason) => {
     logError(logger, reason, 'Unhandled rejection');
+    shutdownDiscord(1);
 });
 process.on('uncaughtException', (error) => {
     logError(logger, error, 'Uncaught exception');
+    shutdownDiscord(1);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-    logger.info('Shutting down Discord client');
-    client.destroy();
-    process.exit(0);
+    shutdownDiscord(0);
 });
 
 process.on('SIGTERM', () => {
-    logger.info('Shutting down Discord client');
-    client.destroy();
-    process.exit(0);
+    shutdownDiscord(0);
 });
 
 // Start client

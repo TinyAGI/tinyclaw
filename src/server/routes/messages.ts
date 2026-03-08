@@ -4,7 +4,7 @@ import { createLogger, excerptText } from '../../lib/logging';
 import { enqueueMessage } from '../../lib/db';
 
 const app = new Hono();
-const logger = createLogger({ runtime: 'queue', source: 'api', component: 'messages-route' });
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'messages-route' });
 
 // POST /api/message
 app.post('/api/message', async (c) => {
@@ -47,7 +47,7 @@ app.post('/api/message', async (c) => {
         agent: agent || null,
         channel: resolvedChannel,
         sender: resolvedSender,
-        message: message.substring(0, 120),
+        message: excerptText(message, 120),
     });
 
     return c.json({ ok: true, messageId });

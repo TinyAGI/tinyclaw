@@ -1,10 +1,11 @@
 import fs from 'fs';
 import path from 'path';
+import readline from 'readline';
 import { Writable } from 'stream';
 import pino, { type Logger } from 'pino';
 import { LOG_DIR } from './config';
 
-export type RuntimeLogFile = 'queue' | 'telegram' | 'discord' | 'whatsapp' | 'daemon' | 'heartbeat';
+export type RuntimeLogFile = 'queue' | 'api' | 'telegram' | 'discord' | 'whatsapp' | 'daemon' | 'heartbeat';
 export type LogSource = RuntimeLogFile | 'api';
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -53,7 +54,6 @@ interface ReadLogsOptions {
 
 const MAX_LOG_BYTES = 10 * 1024 * 1024;
 const MAX_ROTATED_FILES = 5;
-const LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 const LEVEL_MAP: Record<string, LogLevel> = {
     DEBUG: 'debug',
     INFO: 'info',
@@ -68,7 +68,7 @@ const LEVEL_MAP: Record<string, LogLevel> = {
 };
 const SOURCE_TO_RUNTIME: Record<string, RuntimeLogFile> = {
     queue: 'queue',
-    api: 'queue',
+    api: 'api',
     telegram: 'telegram',
     discord: 'discord',
     whatsapp: 'whatsapp',
@@ -228,10 +228,16 @@ export function isDebugEnabled(logger: Logger): boolean {
 
 export function excerptText(value: string, maxLength = 160): string {
     const compact = value.replace(/\s+/g, ' ').trim();
+    if (maxLength <= 0) {
+        return '';
+    }
+    if (maxLength <= 3) {
+        return '.'.repeat(maxLength);
+    }
     if (compact.length <= maxLength) {
         return compact;
     }
-    return `${compact.slice(0, maxLength - 1)}...`;
+    return `${compact.slice(0, maxLength - 3)}...`;
 }
 
 function listFilesForRuntime(runtime: RuntimeLogFile): string[] {
@@ -243,26 +249,121 @@ function listFilesForRuntime(runtime: RuntimeLogFile): string[] {
     return files.filter(file => fs.existsSync(file));
 }
 
-function readEntriesFromFile(filePath: string): LogEntry[] {
-    try {
-        const raw = fs.readFileSync(filePath, 'utf8');
-        if (!raw.trim()) {
-            return [];
-        }
-        return raw
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .flatMap((line) => {
-                try {
-                    return [JSON.parse(line) as LogEntry];
-                } catch {
-                    return [];
-                }
-            });
-    } catch {
+function matchesFilters(entry: LogEntry, options: ReadLogsOptions, sourceFilter: string[]): boolean {
+    if (sourceFilter.length > 0 && !sourceFilter.includes(String(entry.source))) {
+        return false;
+    }
+    if (options.level && String(entry.level) !== options.level) {
+        return false;
+    }
+    if (options.channel && String(entry.channel ?? '') !== options.channel) {
+        return false;
+    }
+    if (options.agentId && String(entry.agentId ?? '') !== options.agentId) {
+        return false;
+    }
+    if (options.messageId && String(entry.messageId ?? '') !== options.messageId) {
+        return false;
+    }
+    if (options.conversationId && String(entry.conversationId ?? '') !== options.conversationId) {
+        return false;
+    }
+    if (options.search && !includesSearch(entry, options.search.toLowerCase())) {
+        return false;
+    }
+    return true;
+}
+
+async function readNewestEntriesFromFile(
+    filePath: string,
+    limit: number,
+    matcher: (entry: LogEntry) => boolean
+): Promise<LogEntry[]> {
+    if (limit <= 0) {
         return [];
     }
+
+    const matches: LogEntry[] = [];
+    const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+    const reader = readline.createInterface({
+        input: stream,
+        crlfDelay: Infinity,
+    });
+
+    try {
+        for await (const line of reader) {
+            const trimmed = line.trim();
+            if (!trimmed) {
+                continue;
+            }
+
+            try {
+                const entry = JSON.parse(trimmed) as LogEntry;
+                if (!matcher(entry)) {
+                    continue;
+                }
+                matches.push(entry);
+                if (matches.length > limit) {
+                    matches.shift();
+                }
+            } catch {
+                // Ignore malformed lines to keep log reads resilient.
+            }
+        }
+    } finally {
+        reader.close();
+        stream.close();
+    }
+
+    return matches.reverse();
+}
+
+async function readEntriesForRuntime(
+    runtime: RuntimeLogFile,
+    limit: number,
+    matcher: (entry: LogEntry) => boolean
+): Promise<LogEntry[]> {
+    const results: LogEntry[] = [];
+    for (const filePath of listFilesForRuntime(runtime)) {
+        const remaining = limit - results.length;
+        if (remaining <= 0) {
+            break;
+        }
+        const entries = await readNewestEntriesFromFile(filePath, remaining, matcher);
+        results.push(...entries);
+    }
+    return results;
+}
+
+function mergeEntryLists(lists: LogEntry[][], limit: number): LogEntry[] {
+    const positions = lists.map(() => 0);
+    const merged: LogEntry[] = [];
+
+    while (merged.length < limit) {
+        let nextList = -1;
+        let nextTime = -Infinity;
+
+        for (let index = 0; index < lists.length; index++) {
+            const entry = lists[index][positions[index]];
+            if (!entry) {
+                continue;
+            }
+            const parsed = Date.parse(String(entry.time));
+            if (parsed > nextTime) {
+                nextTime = parsed;
+                nextList = index;
+            }
+        }
+
+        if (nextList === -1) {
+            break;
+        }
+
+        merged.push(lists[nextList][positions[nextList]]!);
+        positions[nextList] += 1;
+    }
+
+    return merged;
 }
 
 function includesSearch(entry: LogEntry, search: string): boolean {
@@ -285,42 +386,26 @@ function includesSearch(entry: LogEntry, search: string): boolean {
     return haystacks.some((item) => typeof item === 'string' && item.toLowerCase().includes(search));
 }
 
-export function readLogEntries(options: ReadLogsOptions = {}): LogEntry[] {
+export async function readLogEntries(options: ReadLogsOptions = {}): Promise<LogEntry[]> {
     const sourceFilter = (options.source ?? []).map(item => item.trim()).filter(Boolean);
+    const limit = options.limit ?? 100;
+    if (limit <= 0) {
+        return [];
+    }
     const runtimes = sourceFilter.length > 0
         ? Array.from(new Set(sourceFilter.map(source => SOURCE_TO_RUNTIME[source]).filter(Boolean)))
         : (Object.keys(SOURCE_TO_RUNTIME) as Array<keyof typeof SOURCE_TO_RUNTIME>)
             .map(source => SOURCE_TO_RUNTIME[source])
             .filter((runtime, index, list) => list.indexOf(runtime) === index);
 
-    const entries = runtimes
-        .flatMap(runtime => listFilesForRuntime(runtime).flatMap(readEntriesFromFile))
-        .filter((entry) => {
-            if (sourceFilter.length > 0 && !sourceFilter.includes(String(entry.source))) {
-                return false;
-            }
-            if (options.level && String(entry.level) !== options.level) {
-                return false;
-            }
-            if (options.channel && String(entry.channel ?? '') !== options.channel) {
-                return false;
-            }
-            if (options.agentId && String(entry.agentId ?? '') !== options.agentId) {
-                return false;
-            }
-            if (options.messageId && String(entry.messageId ?? '') !== options.messageId) {
-                return false;
-            }
-            if (options.conversationId && String(entry.conversationId ?? '') !== options.conversationId) {
-                return false;
-            }
-            if (options.search && !includesSearch(entry, options.search.toLowerCase())) {
-                return false;
-            }
-            return true;
-        })
-        .sort((a, b) => Date.parse(String(b.time)) - Date.parse(String(a.time)));
+    const matcher = (entry: LogEntry) => matchesFilters(entry, options, sourceFilter);
+    const runtimeLists = await Promise.all(
+        runtimes.map(runtime => readEntriesForRuntime(runtime, limit, matcher))
+    );
 
-    return entries.slice(0, options.limit ?? 100);
+    if (runtimeLists.length === 1) {
+        return runtimeLists[0]!.slice(0, limit);
+    }
+
+    return mergeEntryLists(runtimeLists, limit);
 }
-

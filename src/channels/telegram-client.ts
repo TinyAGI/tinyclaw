@@ -653,25 +653,33 @@ setInterval(async () => {
     }
 }, 30000);
 
+async function shutdownTelegram(exitCode: number): Promise<void> {
+    logger.info({ context: { exitCode } }, 'Shutting down Telegram client');
+    try {
+        await bot.stopPolling();
+    } catch {
+        // Ignore shutdown polling errors.
+    }
+    process.exit(exitCode);
+}
+
 // Catch unhandled errors so we can see what kills the bot
 process.on('unhandledRejection', (reason) => {
     logError(logger, reason, 'Unhandled rejection');
+    void shutdownTelegram(1);
 });
 process.on('uncaughtException', (error) => {
     logError(logger, error, 'Uncaught exception');
+    void shutdownTelegram(1);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-    logger.info('Shutting down Telegram client');
-    bot.stopPolling();
-    process.exit(0);
+    void shutdownTelegram(0);
 });
 
 process.on('SIGTERM', () => {
-    logger.info('Shutting down Telegram client');
-    bot.stopPolling();
-    process.exit(0);
+    void shutdownTelegram(0);
 });
 
 // Start

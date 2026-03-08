@@ -5,7 +5,7 @@ import { createLogger } from '../../lib/logging';
 import { mutateSettings } from './settings';
 
 const app = new Hono();
-const logger = createLogger({ runtime: 'queue', source: 'api', component: 'teams-route' });
+const logger = createLogger({ runtime: 'api', source: 'api', component: 'teams-route' });
 
 // GET /api/teams
 app.get('/api/teams', (c) => {

@@ -7,8 +7,19 @@ type EventListener = (type: string, data: Record<string, unknown>) => void;
 
 const eventListeners: EventListener[] = [];
 
-export function onEvent(listener: EventListener): void {
+export function onEvent(listener: EventListener): () => void {
     eventListeners.push(listener);
+    let removed = false;
+    return () => {
+        if (removed) {
+            return;
+        }
+        removed = true;
+        const index = eventListeners.indexOf(listener);
+        if (index >= 0) {
+            eventListeners.splice(index, 1);
+        }
+    };
 }
 
 export function emitEvent(type: string, data: Record<string, unknown>): void {
