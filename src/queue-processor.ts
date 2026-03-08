@@ -741,7 +741,12 @@ async function checkRequestTimeouts(): Promise<void> {
     for (const req of needsEscalation) {
         log('ERROR', `Request ${req.request_id} to @${req.to_agent} timed out after ACK - no response received`);
         
-        escalateRequest(req.request_id, `No response within ${req.response_deadline - req.acked_at!}ms`);
+        // Calculate timeout duration, fallback to created_at if acked_at is null (defensive)
+        const timeoutMs = req.acked_at != null 
+            ? req.response_deadline - req.acked_at 
+            : req.response_deadline - req.created_at;
+        
+        escalateRequest(req.request_id, `No response within ${timeoutMs}ms`);
         
         emitEvent('request_escalated', {
             requestId: req.request_id,
