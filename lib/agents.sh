@@ -549,7 +549,12 @@ agent_provider() {
                 exit 1
             fi
             if [ -z "$model_arg" ]; then
-                echo -e "${YELLOW}Warning: --model not specified. Existing model name will be kept; it may be incompatible with the custom endpoint.${NC}"
+                echo -e "${YELLOW}Warning: --model not specified.${NC}"
+                read -rp "Enter model name for custom endpoint (e.g. Qwen/Qwen3-32B): " model_arg
+                if [ -z "$model_arg" ]; then
+                    echo -e "${RED}model is required for the custom provider.${NC}"
+                    exit 1
+                fi
             fi
             read -rp "Enter API key (leave blank if not required): " new_api_key
             jq --arg id "$agent_id" --arg model "$model_arg" --arg base_url "$new_base_url" --arg api_key "$new_api_key" \
