@@ -204,11 +204,12 @@ export async function invokeAgent(
         } catch (err) {
             throw new Error(`Custom provider returned non-JSON response: ${(err as Error).message}`);
         }
-        const content = data.choices?.[0]?.message?.content || 'No response';
-        // Only strip <think> blocks for models known to emit them (e.g. Qwen)
+        const rawContent = data.choices?.[0]?.message?.content ?? '';
+        // Only strip <think> blocks for models known to emit them (e.g. Qwen, DeepSeek-R)
         const modelLower = agent.model?.toLowerCase() ?? '';
         const stripsThinkBlocks = modelLower.includes('qwen') || modelLower.includes('deepseek-r');
-        return (stripsThinkBlocks ? content.replace(/<think>[\s\S]*?<\/think>/g, '') : content).trim();
+        const stripped = stripsThinkBlocks ? rawContent.replace(/<think>[\s\S]*?<\/think>/g, '').trim() : rawContent.trim();
+        return stripped || 'No response';
     } else {
         // Default to Claude (Anthropic)
         log('INFO', `Using Claude provider (agent: ${agentId})`);
