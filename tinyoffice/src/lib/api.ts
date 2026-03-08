@@ -72,6 +72,30 @@ export interface EventData {
   [key: string]: unknown;
 }
 
+export interface LogEntry {
+  time: string;
+  level: "debug" | "info" | "warn" | "error";
+  source: string;
+  component: string;
+  msg: string;
+  channel?: string;
+  agentId?: string;
+  messageId?: string;
+  conversationId?: string;
+  fromAgent?: string;
+  toAgent?: string;
+  teamId?: string;
+  sender?: string;
+  excerpt?: string;
+  context?: Record<string, unknown>;
+  err?: {
+    type?: string;
+    message?: string;
+    stack?: string;
+    [key: string]: unknown;
+  };
+}
+
 // ── API Functions ─────────────────────────────────────────────────────────
 
 export async function getAgents(): Promise<Record<string, AgentConfig>> {
@@ -98,7 +122,7 @@ export async function getResponses(limit = 20): Promise<ResponseData[]> {
   return apiFetch(`/api/responses?limit=${limit}`);
 }
 
-export async function getLogs(limit = 100): Promise<{ lines: string[] }> {
+export async function getLogs(limit = 100): Promise<{ entries: LogEntry[] }> {
   return apiFetch(`/api/logs?limit=${limit}`);
 }
 

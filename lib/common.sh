@@ -86,9 +86,71 @@ get_channel_token() {
     done
 }
 
-# Logging function
+# Structured log helpers
+rotate_log_file() {
+    local file="$1"
+    local max_bytes=$((10 * 1024 * 1024))
+    local max_files=5
+
+    [ -f "$file" ] || return 0
+
+    local size
+    size=$(wc -c < "$file" | tr -d ' ')
+    if [ "$size" -lt "$max_bytes" ]; then
+        return 0
+    fi
+
+    local ext="${file##*.}"
+    local base="${file%.*}"
+    local i
+    for ((i=max_files; i>=1; i--)); do
+        local current="${base}.${i}.${ext}"
+        local previous
+        if [ "$i" -eq 1 ]; then
+            previous="$file"
+        else
+            previous="${base}.$((i-1)).${ext}"
+        fi
+
+        [ -f "$previous" ] || continue
+        [ ! -f "$current" ] || rm -f "$current"
+        mv "$previous" "$current"
+    done
+}
+
+write_structured_log() {
+    local source="$1"
+    local component="$2"
+    local level="$3"
+    shift 3
+
+    local msg="$*"
+    local file="$LOG_DIR/${source}.log"
+    local timestamp
+    timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+    mkdir -p "$LOG_DIR"
+    rotate_log_file "$file"
+
+    if command -v jq >/dev/null 2>&1; then
+        jq -nc \
+            --arg time "$timestamp" \
+            --arg level "$level" \
+            --arg source "$source" \
+            --arg component "$component" \
+            --arg msg "$msg" \
+            '{time:$time,level:$level,source:$source,component:$component,msg:$msg}' >> "$file"
+    else
+        node -e 'const [time, level, source, component, msg] = process.argv.slice(1); console.log(JSON.stringify({ time, level, source, component, msg }));' \
+            "$timestamp" "$level" "$source" "$component" "$msg" >> "$file"
+    fi
+    printf '\n' >> "$file"
+}
+
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_DIR/daemon.log"
+    local msg="$*"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg"
+    write_structured_log "daemon" "daemon" "info" "$msg"
 }
 
 # Load settings from JSON

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { Conversation } from '../../lib/types';
-import { log } from '../../lib/logging';
+import { createLogger } from '../../lib/logging';
 import {
     getQueueStatus, getRecentResponses, getResponsesForChannel, ackResponse,
     enqueueResponse, getDeadMessages, retryDeadMessage, deleteDeadMessage,
@@ -8,6 +8,7 @@ import {
 
 export function createQueueRoutes(conversations: Map<string, Conversation>) {
     const app = new Hono();
+    const logger = createLogger({ runtime: 'queue', source: 'api', component: 'queue-route' });
 
     // GET /api/queue/status
     app.get('/api/queue/status', (c) => {
@@ -81,7 +82,7 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
             files: files && files.length > 0 ? files : undefined,
         });
 
-        log('INFO', `[API] Proactive response enqueued for ${channel}/${sender}`);
+        logger.info({ channel, sender, agentId: agent, messageId }, 'Proactive response enqueued');
         return c.json({ ok: true, messageId });
     });
 
@@ -102,7 +103,7 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
         const id = parseInt(c.req.param('id'), 10);
         const ok = retryDeadMessage(id);
         if (!ok) return c.json({ error: 'dead message not found' }, 404);
-        log('INFO', `[API] Dead message ${id} retried`);
+        logger.info({ context: { deadMessageId: id } }, 'Dead message retried');
         return c.json({ ok: true });
     });
 
@@ -111,7 +112,7 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
         const id = parseInt(c.req.param('id'), 10);
         const ok = deleteDeadMessage(id);
         if (!ok) return c.json({ error: 'dead message not found' }, 404);
-        log('INFO', `[API] Dead message ${id} deleted`);
+        logger.info({ context: { deadMessageId: id } }, 'Dead message deleted');
         return c.json({ ok: true });
     });
 

@@ -8,7 +8,8 @@
 import fs from 'fs';
 import path from 'path';
 import { TINYCLAW_HOME } from './config';
-import { log, onEvent } from './logging';
+import { onEvent } from './events';
+import { createLogger, logAtLevel, logError } from './logging';
 
 // Types
 export interface PluginEvent {
@@ -53,6 +54,7 @@ interface LoadedPlugin {
 // Internal state
 const loadedPlugins: LoadedPlugin[] = [];
 const eventHandlers = new Map<string, Array<(event: PluginEvent) => void>>();
+const logger = createLogger({ runtime: 'queue', source: 'queue', component: 'plugins' });
 
 /**
  * Create the plugin context passed to activate() functions.
@@ -65,7 +67,11 @@ function createPluginContext(pluginName: string): PluginContext {
             eventHandlers.set(eventType, handlers);
         },
         log(level: string, message: string): void {
-            log(level, `[plugin:${pluginName}] ${message}`);
+            logAtLevel(
+                logger.child({ context: { pluginName }, component: 'plugin' }),
+                level,
+                message
+            );
         },
         getTinyClawHome(): string {
             return TINYCLAW_HOME;
@@ -83,7 +89,7 @@ export async function loadPlugins(): Promise<void> {
     const pluginsDir = path.join(TINYCLAW_HOME, 'plugins');
 
     if (!fs.existsSync(pluginsDir)) {
-        log('DEBUG', 'No plugins directory found');
+        logger.debug('No plugins directory found');
         return;
     }
 
@@ -107,7 +113,7 @@ export async function loadPlugins(): Promise<void> {
         }
 
         if (!indexPath) {
-            log('WARN', `Plugin '${pluginName}' has no index.js or index.ts, skipping`);
+            logger.warn({ context: { pluginName } }, 'Plugin has no index.js or index.ts, skipping');
             continue;
         }
 
@@ -128,14 +134,14 @@ export async function loadPlugins(): Promise<void> {
             }
 
             loadedPlugins.push(plugin);
-            log('INFO', `Loaded plugin: ${pluginName}`);
+            logger.info({ context: { pluginName } }, 'Loaded plugin');
         } catch (error) {
-            log('ERROR', `Failed to load plugin '${pluginName}': ${(error as Error).message}`);
+            logError(logger, error, 'Failed to load plugin', { pluginName });
         }
     }
 
     if (loadedPlugins.length > 0) {
-        log('INFO', `${loadedPlugins.length} plugin(s) loaded`);
+        logger.info({ context: { loadedPlugins: loadedPlugins.length } }, 'Plugins loaded');
 
         // Register as an event listener so all emitEvent() calls get broadcast to plugins
         onEvent((type, data) => {
@@ -162,7 +168,7 @@ export async function runOutgoingHooks(message: string, ctx: HookContext): Promi
                     metadata = { ...metadata, ...result.metadata };
                 }
             } catch (error) {
-                log('ERROR', `Plugin '${plugin.name}' transformOutgoing error: ${(error as Error).message}`);
+                logError(logger, error, 'Plugin transformOutgoing error', { pluginName: plugin.name });
             }
         }
     }
@@ -188,7 +194,7 @@ export async function runIncomingHooks(message: string, ctx: HookContext): Promi
                     metadata = { ...metadata, ...result.metadata };
                 }
             } catch (error) {
-                log('ERROR', `Plugin '${plugin.name}' transformIncoming error: ${(error as Error).message}`);
+                logError(logger, error, 'Plugin transformIncoming error', { pluginName: plugin.name });
             }
         }
     }
@@ -206,7 +212,7 @@ export function broadcastEvent(event: PluginEvent): void {
         try {
             handler(event);
         } catch (error) {
-            log('ERROR', `Plugin event handler error: ${(error as Error).message}`);
+            logError(logger, error, 'Plugin event handler error', { eventType: event.type });
         }
     }
 
@@ -216,7 +222,7 @@ export function broadcastEvent(event: PluginEvent): void {
         try {
             handler(event);
         } catch (error) {
-            log('ERROR', `Plugin wildcard handler error: ${(error as Error).message}`);
+            logError(logger, error, 'Plugin wildcard handler error', { eventType: event.type });
         }
     }
 }

@@ -9,10 +9,15 @@ export const TINYCLAW_HOME = process.env.TINYCLAW_HOME
     || (fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
         ? _localTinyclaw
         : path.join(require('os').homedir(), '.tinyclaw'));
-export const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/queue.log');
+export const LOG_DIR = path.join(TINYCLAW_HOME, 'logs');
+export const LOG_FILE = path.join(LOG_DIR, 'queue.log');
 export const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 export const CHATS_DIR = path.join(TINYCLAW_HOME, 'chats');
 export const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
+
+function writeStderr(message: string): void {
+    process.stderr.write(`${message}\n`);
+}
 
 export function getSettings(): Settings {
     try {
@@ -23,7 +28,7 @@ export function getSettings(): Settings {
             settings = JSON.parse(settingsData);
         } catch (parseError) {
             // JSON is invalid — attempt auto-fix with jsonrepair
-            console.error(`[WARN] settings.json contains invalid JSON: ${(parseError as Error).message}`);
+            writeStderr(`[WARN] settings.json contains invalid JSON: ${(parseError as Error).message}`);
 
             try {
                 const repaired = jsonrepair(settingsData);
@@ -33,9 +38,9 @@ export function getSettings(): Settings {
                 const backupPath = SETTINGS_FILE + '.bak';
                 fs.copyFileSync(SETTINGS_FILE, backupPath);
                 fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2) + '\n');
-                console.error(`[WARN] Auto-fixed settings.json (backup: ${backupPath})`);
+                writeStderr(`[WARN] Auto-fixed settings.json (backup: ${backupPath})`);
             } catch {
-                console.error(`[ERROR] Could not auto-fix settings.json — returning empty config`);
+                writeStderr('[ERROR] Could not auto-fix settings.json — returning empty config');
                 return {};
             }
         }

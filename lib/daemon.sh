@@ -102,6 +102,9 @@ start_daemon() {
     # Write tokens to .env for the Node.js clients
     local env_file="$SCRIPT_DIR/.env"
     : > "$env_file"
+    if [ -n "${LOG_LEVEL:-}" ]; then
+        echo "LOG_LEVEL=${LOG_LEVEL}" >> "$env_file"
+    fi
     for ch in "${ACTIVE_CHANNELS[@]}"; do
         local env_var
         env_var="$(channel_token_env "$ch")"

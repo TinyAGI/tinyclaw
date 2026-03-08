@@ -3,8 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import { AgentConfig, TeamConfig } from './types';
 import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel } from './config';
-import { log } from './logging';
+import { createLogger } from './logging';
 import { ensureAgentDirectory, updateAgentTeammates } from './agent';
+
+const logger = createLogger({ runtime: 'queue', source: 'queue', component: 'invoke' });
 
 export async function runCommand(command: string, args: string[], cwd?: string): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -65,7 +67,7 @@ export async function invokeAgent(
     const isNewAgent = !fs.existsSync(agentDir);
     ensureAgentDirectory(agentDir);
     if (isNewAgent) {
-        log('INFO', `Initialized agent directory with config files: ${agentDir}`);
+        logger.info({ agentId, context: { agentDir } }, 'Initialized agent directory with config files');
     }
 
     // Update AGENTS.md with current teammate info
@@ -81,12 +83,12 @@ export async function invokeAgent(
     const provider = agent.provider || 'anthropic';
 
     if (provider === 'openai') {
-        log('INFO', `Using Codex CLI (agent: ${agentId})`);
+        logger.info({ agentId }, 'Using Codex CLI');
 
         const shouldResume = !shouldReset;
 
         if (shouldReset) {
-            log('INFO', `🔄 Resetting Codex conversation for agent: ${agentId}`);
+            logger.info({ agentId }, 'Resetting Codex conversation');
         }
 
         const modelId = resolveCodexModel(agent.model);
@@ -122,12 +124,12 @@ export async function invokeAgent(
         // Model passed via --model in provider/model format (e.g. opencode/claude-sonnet-4-5).
         // Supports -c flag for conversation continuation (resumes last session).
         const modelId = resolveOpenCodeModel(agent.model);
-        log('INFO', `Using OpenCode CLI (agent: ${agentId}, model: ${modelId})`);
+        logger.info({ agentId, context: { modelId } }, 'Using OpenCode CLI');
 
         const continueConversation = !shouldReset;
 
         if (shouldReset) {
-            log('INFO', `🔄 Resetting OpenCode conversation for agent: ${agentId}`);
+            logger.info({ agentId }, 'Resetting OpenCode conversation');
         }
 
         const opencodeArgs = ['run', '--format', 'json'];
@@ -158,12 +160,12 @@ export async function invokeAgent(
         return response || 'Sorry, I could not generate a response from OpenCode.';
     } else {
         // Default to Claude (Anthropic)
-        log('INFO', `Using Claude provider (agent: ${agentId})`);
+        logger.info({ agentId }, 'Using Claude provider');
 
         const continueConversation = !shouldReset;
 
         if (shouldReset) {
-            log('INFO', `🔄 Resetting conversation for agent: ${agentId}`);
+            logger.info({ agentId }, 'Resetting conversation');
         }
 
         const modelId = resolveClaudeModel(agent.model);

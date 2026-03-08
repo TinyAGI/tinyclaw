@@ -25,8 +25,57 @@ INTERVAL=${INTERVAL:-3600}
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
+rotate_log_file() {
+    local file="$1"
+    local max_bytes=$((10 * 1024 * 1024))
+    local max_files=5
+
+    [ -f "$file" ] || return 0
+
+    local size
+    size=$(wc -c < "$file" | tr -d ' ')
+    if [ "$size" -lt "$max_bytes" ]; then
+        return 0
+    fi
+
+    local ext="${file##*.}"
+    local base="${file%.*}"
+    local i
+    for ((i=max_files; i>=1; i--)); do
+        local current="${base}.${i}.${ext}"
+        local previous
+        if [ "$i" -eq 1 ]; then
+            previous="$file"
+        else
+            previous="${base}.$((i-1)).${ext}"
+        fi
+
+        [ -f "$previous" ] || continue
+        [ ! -f "$current" ] || rm -f "$current"
+        mv "$previous" "$current"
+    done
+}
+
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+    local msg="$*"
+    local timestamp
+    timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg"
+    rotate_log_file "$LOG_FILE"
+    if command -v jq >/dev/null 2>&1; then
+        jq -nc \
+            --arg time "$timestamp" \
+            --arg level "info" \
+            --arg source "heartbeat" \
+            --arg component "heartbeat" \
+            --arg msg "$msg" \
+            '{time:$time,level:$level,source:$source,component:$component,msg:$msg}' >> "$LOG_FILE"
+    else
+        node -e 'const [time, level, source, component, msg] = process.argv.slice(1); console.log(JSON.stringify({ time, level, source, component, msg }));' \
+            "$timestamp" "info" "heartbeat" "heartbeat" "$msg" >> "$LOG_FILE"
+    fi
+    printf '\n' >> "$LOG_FILE"
 }
 
 log "Heartbeat started (interval: ${INTERVAL}s, API: ${API_URL})"

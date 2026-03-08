@@ -1,5 +1,5 @@
 import http from 'http';
-import { onEvent } from '../lib/logging';
+import { onEvent } from '../lib/events';
 
 const sseClients = new Set<http.ServerResponse>();
 

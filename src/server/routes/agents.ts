@@ -3,10 +3,11 @@ import path from 'path';
 import { Hono } from 'hono';
 import { AgentConfig } from '../../lib/types';
 import { SCRIPT_DIR, getSettings, getAgents } from '../../lib/config';
-import { log } from '../../lib/logging';
+import { createLogger, logError } from '../../lib/logging';
 import { mutateSettings } from './settings';
 
 const app = new Hono();
+const logger = createLogger({ runtime: 'queue', source: 'api', component: 'agents-route' });
 
 // ── Agent workspace provisioning ─────────────────────────────────────────────
 
@@ -107,13 +108,13 @@ app.put('/api/agents/:id', async (c) => {
     if (isNew) {
         try {
             provisionSteps = provisionAgentWorkspace(workingDir, agentId);
-            log('INFO', `[API] Agent '${agentId}' provisioned: ${provisionSteps.join(', ')}`);
+            logger.info({ agentId, context: { provisionSteps } }, 'Agent provisioned');
         } catch (err) {
-            log('ERROR', `[API] Agent '${agentId}' provisioning failed: ${(err as Error).message}`);
+            logError(logger, err, 'Agent provisioning failed', { agentId });
         }
     }
 
-    log('INFO', `[API] Agent '${agentId}' saved`);
+    logger.info({ agentId }, 'Agent saved');
     return c.json({
         ok: true,
         agent: settings.agents![agentId],
@@ -130,7 +131,7 @@ app.delete('/api/agents/:id', (c) => {
         return c.json({ error: `agent '${agentId}' not found` }, 404);
     }
     mutateSettings(s => { delete s.agents![agentId]; });
-    log('INFO', `[API] Agent '${agentId}' deleted`);
+    logger.info({ agentId }, 'Agent deleted');
     return c.json({ ok: true });
 });
 

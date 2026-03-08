@@ -1,9 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { FILES_DIR } from './config';
-import { log } from './logging';
+import { createLogger } from './logging';
 
 export const LONG_RESPONSE_THRESHOLD = 4000;
+const logger = createLogger({ runtime: 'queue', source: 'queue', component: 'response' });
 
 /**
  * If a response exceeds the threshold, save full text as a .md file
@@ -21,7 +22,7 @@ export function handleLongResponse(
     const filename = `response_${Date.now()}.md`;
     const filePath = path.join(FILES_DIR, filename);
     fs.writeFileSync(filePath, response);
-    log('INFO', `Long response (${response.length} chars) saved to ${filename}`);
+    logger.info({ context: { filename, responseLength: response.length } }, 'Long response saved to file');
 
     // Truncate to preview
     const preview = response.substring(0, LONG_RESPONSE_THRESHOLD) + '\n\n_(Full response attached as file)_';
