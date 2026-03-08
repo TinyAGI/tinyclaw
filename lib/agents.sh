@@ -194,8 +194,7 @@ agent_add() {
             *) AGENT_MODEL="opencode/claude-sonnet-4-5" ;;
         esac
     elif [ "$AGENT_PROVIDER" = "custom" ]; then
-        AGENT_MODEL=""
-    else
+        : # model is collected in the "Custom provider extras" block below
         echo "Model:"
         echo "  1) GPT-5.3 Codex"
         echo "  2) GPT-5.2"
