@@ -195,6 +195,7 @@ agent_add() {
         esac
     elif [ "$AGENT_PROVIDER" = "custom" ]; then
         : # model is collected in the "Custom provider extras" block below
+    else
         echo "Model:"
         echo "  1) GPT-5.3 Codex"
         echo "  2) GPT-5.2"
