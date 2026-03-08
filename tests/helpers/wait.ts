@@ -7,7 +7,7 @@ export async function waitFor<T>(
 
     while (Date.now() - start < timeoutMs) {
         const result = await check();
-        if (result !== undefined) {
+        if (result !== undefined && result !== null) {
             return result;
         }
         await new Promise(resolve => setTimeout(resolve, intervalMs));

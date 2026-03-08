@@ -20,7 +20,7 @@ interface CreateFixtureOptions {
     teams?: Record<string, TeamConfig>;
 }
 
-async function getFreePort(): Promise<number> {
+export async function getFreePort(): Promise<number> {
     return await new Promise((resolve, reject) => {
         const server = net.createServer();
         server.listen(0, '127.0.0.1', () => {
