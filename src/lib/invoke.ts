@@ -168,6 +168,8 @@ export async function invokeAgent(
         const apiKey = agent.api_key || process.env.CUSTOM_API_KEY || '';
 
         let response: Response;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
         try {
             response = await fetch(`${baseUrl}/chat/completions`, {
                 method: 'POST',
@@ -178,10 +180,13 @@ export async function invokeAgent(
                 body: JSON.stringify({
                     model: agent.model,
                     messages: [{ role: 'user', content: message }]
-                })
+                }),
+                signal: controller.signal
             });
         } catch (err) {
             throw new Error(`Custom provider fetch failed: ${(err as Error).message}`);
+        } finally {
+            clearTimeout(timeout);
         }
 
         if (!response.ok) {
