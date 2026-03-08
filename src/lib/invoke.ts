@@ -205,6 +205,9 @@ export async function invokeAgent(
             throw new Error(`Custom provider returned non-JSON response: ${(err as Error).message}`);
         }
         const rawContent = data.choices?.[0]?.message?.content ?? '';
+        if (!rawContent) {
+            log('WARN', `Custom provider returned no content for agent ${agentId}. Raw response: ${JSON.stringify(data)}`);
+        }
         // Only strip <think> blocks for models known to emit them (e.g. Qwen, DeepSeek-R)
         const modelLower = agent.model?.toLowerCase() ?? '';
         const stripsThinkBlocks = modelLower.includes('qwen') || modelLower.includes('deepseek-r');
