@@ -10,13 +10,19 @@ function getMode(): 'success' | 'always-fail' {
         : 'success';
 }
 
+function getFailOnSubstring(): string | null {
+    const value = process.env.TINYCLAW_FAKE_PROVIDER_FAIL_ON;
+    return value && value.length > 0 ? value : null;
+}
+
 export async function fakeProvider(prompt: string): Promise<string> {
     const delayMs = getDelayMs();
     if (delayMs > 0) {
         await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 
-    if (getMode() === 'always-fail') {
+    const failOnSubstring = getFailOnSubstring();
+    if (getMode() === 'always-fail' || (failOnSubstring && prompt.includes(failOnSubstring))) {
         throw new Error('simulated failure');
     }
 

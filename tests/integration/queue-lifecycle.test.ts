@@ -1,6 +1,7 @@
 import assert from 'assert/strict';
 import test from 'node:test';
 import { createTestFixture } from '../helpers/fixture';
+import { MAX_RETRIES } from '../../src/lib/db';
 import { getMessageByMessageId, getResponsesByMessageId, openQueueDb } from '../helpers/db';
 import { getDeadMessages, getQueueStatus, postMessage, retryDeadMessage, waitForResponse } from '../helpers/http';
 import { startProcessor } from '../helpers/processor';
@@ -58,7 +59,7 @@ test('provider failures dead-letter the message and retry succeeds after restart
         }, 10_000);
         const deadMessages = await getDeadMessages(fixture.baseUrl);
 
-        assert.equal(deadMessage.retry_count, 5);
+        assert.equal(deadMessage.retry_count, MAX_RETRIES);
         assert.match(deadMessage.last_error || '', /simulated failure/);
         assert.ok(deadMessages.some(message => message.message_id === messageId));
 

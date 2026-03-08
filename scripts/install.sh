@@ -25,10 +25,12 @@ fi
 
 # Determine installation directory
 INSTALL_DIR=""
+USED_INSTALL_DIR_OVERRIDE=0
 
 if [ -n "$TINYCLAW_INSTALL_DIR" ]; then
     mkdir -p "$TINYCLAW_INSTALL_DIR"
     INSTALL_DIR="$TINYCLAW_INSTALL_DIR"
+    USED_INSTALL_DIR_OVERRIDE=1
     echo -e "Installing to: ${GREEN}${INSTALL_DIR}${NC} (env override)"
 elif [ -w "/usr/local/bin" ]; then
     INSTALL_DIR="/usr/local/bin"
@@ -129,6 +131,9 @@ elif [ "$INSTALL_DIR" = "$HOME/.local/bin" ]; then
 else
     echo -e "${YELLOW}⚠ 'tinyclaw' command not found in PATH${NC}"
     echo "  Add $INSTALL_DIR to your PATH."
+    if [ "$USED_INSTALL_DIR_OVERRIDE" -eq 1 ]; then
+        echo "  Note: TINYCLAW_INSTALL_DIR is primarily intended for testing/custom installs and does not auto-update your shell profile."
+    fi
 fi
 
 echo ""

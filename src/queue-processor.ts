@@ -162,7 +162,18 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
 
         // Invoke agent
         emitEvent('chain_step_start', { agentId, agentName: agent.name, fromAgent: messageData.fromAgent || null });
-        const response = await invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams);
+        let response: string;
+        try {
+            response = await invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams);
+        } catch (error) {
+            emitEvent('chain_step_done', {
+                agentId,
+                agentName: agent.name,
+                responseLength: 0,
+                error: (error as Error).message,
+            });
+            throw error;
+        }
 
         emitEvent('chain_step_done', { agentId, agentName: agent.name, responseLength: response.length, responseText: response });
 
@@ -297,6 +308,22 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
                 failResult.status === 'dead' ? 'message_dead' : 'message_retry_scheduled',
                 eventData
             );
+
+            if (failResult.status === 'dead' && dbMsg.conversation_id) {
+                const conv = conversations.get(dbMsg.conversation_id);
+                if (conv) {
+                    await withConversationLock(conv.id, async () => {
+                        conv.pendingAgents.delete(dbMsg.agent ?? 'default');
+                        const shouldComplete = decrementPending(conv);
+
+                        if (shouldComplete) {
+                            completeConversation(conv);
+                        } else {
+                            log('INFO', `Conversation ${conv.id}: ${conv.pending} branch(es) still pending after dead branch @${dbMsg.agent ?? 'default'}`);
+                        }
+                    });
+                }
+            }
         }
     }
 }

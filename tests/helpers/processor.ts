@@ -21,6 +21,7 @@ export async function startProcessor(
         cwd: REPO_ROOT,
         env: {
             ...process.env,
+            NODE_ENV: 'test',
             HOME: fixture.homeDir,
             TINYCLAW_HOME: fixture.tinyclawHome,
             TINYCLAW_API_PORT: String(fixture.apiPort),

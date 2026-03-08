@@ -82,6 +82,9 @@ export async function invokeAgent(
     const provider = agent.provider || 'anthropic';
 
     if (provider === 'fake') {
+        if (process.env.NODE_ENV !== 'test' && !process.env.TINYCLAW_ALLOW_FAKE_PROVIDER) {
+            throw new Error('Fake provider is only available in test environments');
+        }
         log('INFO', `Using Fake provider (agent: ${agentId})`);
         return await fakeProvider(message);
     } else if (provider === 'openai') {

@@ -79,7 +79,7 @@ export interface EnqueueResponseData {
 // ── Singleton ────────────────────────────────────────────────────────────────
 
 const QUEUE_DB_PATH = path.join(TINYCLAW_HOME, 'tinyclaw.db');
-const MAX_RETRIES = 5;
+export const MAX_RETRIES = 5;
 
 let db: Database.Database | null = null;
 
