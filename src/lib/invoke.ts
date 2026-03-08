@@ -169,7 +169,8 @@ export async function invokeAgent(
 
         let response: Response;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
+        const timeoutMs = (agent as any).timeout_ms ?? 120000;
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
         try {
             response = await fetch(`${baseUrl}/chat/completions`, {
                 method: 'POST',
@@ -184,7 +185,11 @@ export async function invokeAgent(
                 signal: controller.signal
             });
         } catch (err) {
-            throw new Error(`Custom provider fetch failed: ${(err as Error).message}`);
+            const e = err as Error;
+            if (e.name === 'AbortError') {
+                throw new Error(`Custom provider timed out after ${timeoutMs / 1000}s. Consider setting timeout_ms in agent config.`);
+            }
+            throw new Error(`Custom provider fetch failed: ${e.message}`);
         } finally {
             clearTimeout(timeout);
         }

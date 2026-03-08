@@ -553,7 +553,7 @@ agent_provider() {
             fi
             read -rp "Enter API key (leave blank if not required): " new_api_key
             jq --arg id "$agent_id" --arg model "$model_arg" --arg base_url "$new_base_url" --arg api_key "$new_api_key" \
-                '.agents[$id].provider = "custom" | .agents[$id].base_url = $base_url | if $model != "" then .agents[$id].model = $model else . end | if $api_key != "" then .agents[$id].api_key = $api_key else . end' \
+                '.agents[$id].provider = "custom" | .agents[$id].base_url = $base_url | if $model != "" then .agents[$id].model = $model else . end | if $api_key != "" then .agents[$id].api_key = $api_key else del(.agents[$id].api_key) end' \
                 "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
             echo -e "${GREEN}✓ Agent '${agent_id}' switched to custom provider.${NC}"
             ;;
