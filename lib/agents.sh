@@ -515,12 +515,12 @@ agent_provider() {
         anthropic)
             if [ -n "$model_arg" ]; then
                 jq --arg id "$agent_id" --arg model "$model_arg" \
-                    '.agents[$id].provider = "anthropic" | .agents[$id].model = $model' \
+                    'del(.agents[$id].base_url) | del(.agents[$id].api_key) | .agents[$id].provider = "anthropic" | .agents[$id].model = $model' \
                     "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
                 echo -e "${GREEN}✓ Agent '${agent_id}' switched to Anthropic with model: ${model_arg}${NC}"
             else
                 jq --arg id "$agent_id" \
-                    '.agents[$id].provider = "anthropic"' \
+                    'del(.agents[$id].base_url) | del(.agents[$id].api_key) | .agents[$id].provider = "anthropic"' \
                     "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
                 echo -e "${GREEN}✓ Agent '${agent_id}' switched to Anthropic${NC}"
                 echo ""
@@ -530,12 +530,12 @@ agent_provider() {
         openai)
             if [ -n "$model_arg" ]; then
                 jq --arg id "$agent_id" --arg model "$model_arg" \
-                    '.agents[$id].provider = "openai" | .agents[$id].model = $model' \
+                    'del(.agents[$id].base_url) | del(.agents[$id].api_key) | .agents[$id].provider = "openai" | .agents[$id].model = $model' \
                     "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
                 echo -e "${GREEN}✓ Agent '${agent_id}' switched to OpenAI with model: ${model_arg}${NC}"
             else
                 jq --arg id "$agent_id" \
-                    '.agents[$id].provider = "openai"' \
+                    'del(.agents[$id].base_url) | del(.agents[$id].api_key) | .agents[$id].provider = "openai"' \
                     "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
                 echo -e "${GREEN}✓ Agent '${agent_id}' switched to OpenAI${NC}"
                 echo ""

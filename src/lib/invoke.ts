@@ -206,7 +206,8 @@ export async function invokeAgent(
         }
         const content = data.choices?.[0]?.message?.content || 'No response';
         // Only strip <think> blocks for models known to emit them (e.g. Qwen)
-        const stripsThinkBlocks = agent.model?.toLowerCase().includes('qwen');
+        const modelLower = agent.model?.toLowerCase() ?? '';
+        const stripsThinkBlocks = modelLower.includes('qwen') || modelLower.includes('deepseek-r');
         return (stripsThinkBlocks ? content.replace(/<think>[\s\S]*?<\/think>/g, '') : content).trim();
     } else {
         // Default to Claude (Anthropic)
