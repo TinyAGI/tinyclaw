@@ -159,7 +159,10 @@ export async function invokeAgent(
     } else if (provider === 'custom') {
         log('INFO', `Using custom OpenAI-compatible API (agent: ${agentId})`);
 
-        const baseUrl = agent.base_url || 'http://localhost:30000/v1';
+        if (!agent.base_url) {
+            throw new Error(`Custom provider requires base_url to be set for agent: ${agentId}`);
+        }
+        const baseUrl = agent.base_url;
         const apiKey = agent.api_key || 'none';
 
         let response: Response;
