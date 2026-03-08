@@ -7,10 +7,12 @@ on:
   workflow_dispatch:  # Allow manual trigger
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify-smoke:
+    permissions:
+      contents: read
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -35,6 +37,8 @@ jobs:
 
   build-and-release:
     needs: verify-smoke
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
 
     steps:

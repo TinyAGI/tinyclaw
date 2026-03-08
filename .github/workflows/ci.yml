@@ -8,11 +8,6 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-  integration:
-    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:

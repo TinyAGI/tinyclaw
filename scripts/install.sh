@@ -86,6 +86,11 @@ echo ""
 echo "Creating symlink..."
 ln -s "$WRAPPER" "$INSTALL_DIR/tinyclaw"
 
+if [ ! -x "$INSTALL_DIR/tinyclaw" ]; then
+    echo -e "${RED}Error: Installed wrapper is missing or not executable at $INSTALL_DIR/tinyclaw${NC}"
+    exit 1
+fi
+
 echo -e "${GREEN}✓ TinyClaw CLI installed successfully!${NC}"
 echo ""
 echo "You can now run 'tinyclaw' from any directory:"
@@ -96,7 +101,8 @@ echo -e "  ${GREEN}tinyclaw --help${NC}    - Show all commands"
 echo ""
 
 # Verify it works — if not in PATH, add it to the shell profile
-if command -v tinyclaw &> /dev/null; then
+FOUND_TINYCLAW="$(command -v tinyclaw 2>/dev/null || true)"
+if [ "$FOUND_TINYCLAW" = "$INSTALL_DIR/tinyclaw" ]; then
     echo -e "${GREEN}✓ 'tinyclaw' command is available${NC}"
 elif [ "$INSTALL_DIR" = "$HOME/.local/bin" ]; then
     # Determine the user's shell profile
@@ -126,11 +132,22 @@ elif [ "$INSTALL_DIR" = "$HOME/.local/bin" ]; then
 
     # Also export for the current session
     export PATH="$HOME/.local/bin:$PATH"
+    FOUND_TINYCLAW="$(command -v tinyclaw 2>/dev/null || true)"
+
+    if [ "$FOUND_TINYCLAW" = "$INSTALL_DIR/tinyclaw" ]; then
+        echo -e "${GREEN}✓ 'tinyclaw' command will resolve to the new install after reloading your shell${NC}"
+    elif [ -n "$FOUND_TINYCLAW" ]; then
+        echo -e "${YELLOW}⚠ Another 'tinyclaw' command is currently taking precedence: $FOUND_TINYCLAW${NC}"
+    fi
 
     echo -e "${YELLOW}⚠ Restart your terminal or run:  source ${SHELL_PROFILE/#$HOME/\~}${NC}"
 else
-    echo -e "${YELLOW}⚠ 'tinyclaw' command not found in PATH${NC}"
-    echo "  Add $INSTALL_DIR to your PATH."
+    if [ -n "$FOUND_TINYCLAW" ]; then
+        echo -e "${YELLOW}⚠ Another 'tinyclaw' command is currently taking precedence: $FOUND_TINYCLAW${NC}"
+    else
+        echo -e "${YELLOW}⚠ 'tinyclaw' command not found in PATH${NC}"
+    fi
+    echo "  Add $INSTALL_DIR to your PATH so '$INSTALL_DIR/tinyclaw' is the resolved command."
     if [ "$USED_INSTALL_DIR_OVERRIDE" -eq 1 ]; then
         echo "  Note: TINYCLAW_INSTALL_DIR is primarily intended for testing/custom installs and does not auto-update your shell profile."
     fi
