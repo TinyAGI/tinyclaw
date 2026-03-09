@@ -151,6 +151,11 @@ start_daemon() {
         tmux select-layout -t "$TMUX_SESSION" tiled  # rebalance after each split
     done
 
+    # Wait for pane shells to finish initializing (.zshrc, conda init, nvm, etc.)
+    # Without this delay, commands sent via send-keys run in a half-initialized
+    # shell and exit silently. See: https://github.com/TinyAGI/tinyclaw/issues/156
+    sleep 2
+
     # Assign channel panes
     local pane_idx=$pane_base
     local whatsapp_pane=-1
