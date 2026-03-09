@@ -1,0 +1,18 @@
+{
+  "name": "@tinyclaw/visualizer",
+  "version": "0.0.10",
+  "type": "module",
+  "main": "dist/team-visualizer.js",
+  "scripts": {
+    "build": "tsc",
+    "visualize": "node dist/team-visualizer.js",
+    "chatroom": "node dist/chatroom-viewer.js"
+  },
+  "dependencies": {
+    "@types/react": "^19.2.14",
+    "ink": "^6.7.0",
+    "ink-gradient": "^4.0.0",
+    "ink-spinner": "^5.0.0",
+    "react": "^19.2.4"
+  }
+}

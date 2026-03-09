@@ -1,0 +1,16 @@
+{
+  "name": "@tinyclaw/server",
+  "version": "0.0.10",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@tinyclaw/core": "*",
+    "@tinyclaw/teams": "*",
+    "@hono/node-server": "^1.19.9",
+    "hono": "^4.12.1"
+  }
+}

@@ -26,9 +26,9 @@ channel_display() {
 
 channel_script() {
     case "$1" in
-        discord)  echo "dist/channels/discord-client.js" ;;
-        whatsapp) echo "dist/channels/whatsapp-client.js" ;;
-        telegram) echo "dist/channels/telegram-client.js" ;;
+        discord)  echo "packages/channels/dist/discord.js" ;;
+        whatsapp) echo "packages/channels/dist/whatsapp.js" ;;
+        telegram) echo "packages/channels/dist/telegram.js" ;;
     esac
 }
 
