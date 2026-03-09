@@ -83,7 +83,9 @@ export async function invokeAgent(
     // Resolve custom provider if using "custom:<id>" prefix
     let provider = rawProvider;
     let customProvider: CustomProvider | undefined;
-    let envOverrides: Record<string, string> = {};
+    let envOverrides: Record<string, string> = {
+        TINYCLAW_AGENT_ID: agentId,
+    };
 
     if (rawProvider.startsWith('custom:')) {
         const customId = rawProvider.slice('custom:'.length);

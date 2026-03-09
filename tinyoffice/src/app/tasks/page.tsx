@@ -83,7 +83,7 @@ export default function TasksPage() {
         await reorderTasks(colMap);
         // Trigger agent for each newly in-progress task
         for (const task of newlyInProgress) {
-          const msg = `@${task.assignee} ${task.title}${task.description ? "\n\n" + task.description : ""}`;
+          const msg = `@${task.assignee} ${task.title}${task.description ? "\n\n" + task.description : ""}\n\n[task:${task.id}]`;
           await sendMessage({ message: msg, sender: "Web", channel: "web" }).catch(() => {});
         }
         refresh();
@@ -135,7 +135,7 @@ export default function TasksPage() {
     async (task: Task) => {
       if (!task.assignee) return;
       const prefix = task.assigneeType === "team" ? "@" : "@";
-      const msg = `${prefix}${task.assignee} ${task.title}${task.description ? "\n\n" + task.description : ""}`;
+      const msg = `${prefix}${task.assignee} ${task.title}${task.description ? "\n\n" + task.description : ""}\n\n[task:${task.id}]`;
       try {
         await sendMessage({ message: msg, sender: "Web", channel: "web" });
         await updateTask(task.id, { status: "in_progress" });
