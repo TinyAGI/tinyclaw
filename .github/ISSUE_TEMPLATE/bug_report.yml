@@ -1,0 +1,104 @@
+name: Bug Report
+description: Report a bug to help us triage and fix issues quickly
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the sections below so we can reproduce and triage the issue.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this bug?
+      options:
+        - "Critical - System crash / data loss / security issue"
+        - "High - Core feature broken, no workaround"
+        - "Medium - Feature broken but workaround exists"
+        - "Low - Minor issue / cosmetic"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of TinyClaw is affected?
+      options:
+        - "Agent execution"
+        - "Team / multi-agent coordination"
+        - "Discord channel"
+        - "WhatsApp channel"
+        - "Telegram channel"
+        - "TinyOffice (web portal)"
+        - "Chatroom"
+        - "CLI"
+        - "Configuration / YAML"
+        - "Custom provider"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the bug.
+      placeholder: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to reproduce the behavior.
+      placeholder: |
+        1. Configure agent with ...
+        2. Send message via ...
+        3. Observe error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs / Error Output
+      description: Paste any error messages or log output. This will be auto-formatted as code.
+      render: shell
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Paste relevant parts of your YAML config (redact secrets).
+      render: yaml
+
+  - type: input
+    id: version
+    attributes:
+      label: TinyClaw Version
+      description: Output of `tinyclaw --version` or the release you're using.
+      placeholder: e.g., 0.5.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - "macOS"
+        - "Linux"
+        - "Windows (WSL)"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other information that might help triage (screenshots, related issues, etc.).

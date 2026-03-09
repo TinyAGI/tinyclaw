@@ -1,0 +1,59 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please describe what you'd like and why.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of TinyClaw does this relate to?
+      options:
+        - "Agent execution"
+        - "Team / multi-agent coordination"
+        - "Discord channel"
+        - "WhatsApp channel"
+        - "Telegram channel"
+        - "TinyOffice (web portal)"
+        - "Chatroom"
+        - "CLI"
+        - "Configuration / YAML"
+        - "Custom provider"
+        - "New integration"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Motivation
+      description: What problem does this solve, or what use case does it enable?
+      placeholder: I'm trying to ... but currently ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe what you'd like to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any workarounds or alternative approaches you've thought of.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or examples.
