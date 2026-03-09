@@ -72,14 +72,26 @@ export default function TasksPage() {
       for (const [status, items] of Object.entries(newColumns)) {
         colMap[status] = items.map((t) => t.id);
       }
+
+      // Detect tasks newly moved into "in_progress" that have an assignee
+      const prevInProgress = new Set((columns.in_progress ?? []).map((t) => t.id));
+      const newlyInProgress = (newColumns.in_progress ?? []).filter(
+        (t) => !prevInProgress.has(t.id) && t.assignee
+      );
+
       try {
         await reorderTasks(colMap);
+        // Trigger agent for each newly in-progress task
+        for (const task of newlyInProgress) {
+          const msg = `@${task.assignee} ${task.title}${task.description ? "\n\n" + task.description : ""}`;
+          await sendMessage({ message: msg, sender: "Web", channel: "web" }).catch(() => {});
+        }
         refresh();
       } catch {
         // Ignore — will refresh on next poll
       }
     },
-    [refresh]
+    [refresh, columns]
   );
 
   const handleCreate = useCallback(async () => {
