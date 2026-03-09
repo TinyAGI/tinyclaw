@@ -1,6 +1,14 @@
+export interface CustomProvider {
+    name: string;
+    harness: 'claude' | 'codex';  // which CLI to invoke
+    base_url: string;
+    api_key: string;
+    model?: string;               // model name to pass to the CLI
+}
+
 export interface AgentConfig {
     name: string;
-    provider: string;       // 'anthropic', 'openai', or 'opencode'
+    provider: string;       // 'anthropic', 'openai', 'opencode', or 'custom:<provider_id>'
     model: string;           // e.g. 'sonnet', 'opus', 'gpt-5.3-codex'
     working_directory: string;
     system_prompt?: string;
@@ -46,15 +54,18 @@ export interface Settings {
         provider?: string; // 'anthropic', 'openai', or 'opencode'
         anthropic?: {
             model?: string;
+            auth_token?: string;
         };
         openai?: {
             model?: string;
+            auth_token?: string;
         };
         opencode?: {
             model?: string;
         };
     };
     agents?: Record<string, AgentConfig>;
+    custom_providers?: Record<string, CustomProvider>;
     teams?: Record<string, TeamConfig>;
     monitoring?: {
         heartbeat_interval?: number;

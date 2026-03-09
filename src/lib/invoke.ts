@@ -1,14 +1,14 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { AgentConfig, TeamConfig } from './types';
-import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel } from './config';
+import { AgentConfig, CustomProvider, TeamConfig } from './types';
+import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel, getSettings } from './config';
 import { log } from './logging';
 import { ensureAgentDirectory, updateAgentTeammates } from './agent';
 
-export async function runCommand(command: string, args: string[], cwd?: string): Promise<string> {
+export async function runCommand(command: string, args: string[], cwd?: string, envOverrides?: Record<string, string>): Promise<string> {
     return new Promise((resolve, reject) => {
-        const env = { ...process.env };
+        const env = { ...process.env, ...envOverrides };
         delete env.CLAUDECODE;
 
         const child = spawn(command, args, {
@@ -78,7 +78,50 @@ export async function invokeAgent(
             : path.join(workspacePath, agent.working_directory))
         : agentDir;
 
-    const provider = agent.provider || 'anthropic';
+    const rawProvider = agent.provider || 'anthropic';
+
+    // Resolve custom provider if using "custom:<id>" prefix
+    let provider = rawProvider;
+    let customProvider: CustomProvider | undefined;
+    let envOverrides: Record<string, string> = {};
+
+    if (rawProvider.startsWith('custom:')) {
+        const customId = rawProvider.slice('custom:'.length);
+        const settings = getSettings();
+        customProvider = settings.custom_providers?.[customId];
+        if (!customProvider) {
+            throw new Error(`Custom provider '${customId}' not found in settings.custom_providers`);
+        }
+        // Map harness back to built-in provider for CLI selection
+        provider = customProvider.harness === 'codex' ? 'openai' : 'anthropic';
+
+        // Build env overrides based on harness
+        if (customProvider.harness === 'claude') {
+            envOverrides = {
+                ANTHROPIC_BASE_URL: customProvider.base_url,
+                ANTHROPIC_AUTH_TOKEN: customProvider.api_key,
+                ANTHROPIC_API_KEY: '',
+            };
+        } else if (customProvider.harness === 'codex') {
+            envOverrides = {
+                OPENAI_API_KEY: customProvider.api_key,
+                OPENAI_BASE_URL: customProvider.base_url,
+            };
+        }
+
+        log('INFO', `Using custom provider '${customId}' (harness: ${customProvider.harness}, base_url: ${customProvider.base_url})`);
+    } else {
+        // For built-in providers, check if auth_token is configured in settings
+        const settings = getSettings();
+        if (provider === 'anthropic' && settings.models?.anthropic?.auth_token) {
+            envOverrides.ANTHROPIC_API_KEY = settings.models.anthropic.auth_token;
+        } else if (provider === 'openai' && settings.models?.openai?.auth_token) {
+            envOverrides.OPENAI_API_KEY = settings.models.openai.auth_token;
+        }
+    }
+
+    // Use model from custom provider if agent doesn't specify one
+    const effectiveModel = agent.model || customProvider?.model || '';
 
     if (provider === 'openai') {
         log('INFO', `Using Codex CLI (agent: ${agentId})`);
@@ -89,7 +132,7 @@ export async function invokeAgent(
             log('INFO', `🔄 Resetting Codex conversation for agent: ${agentId}`);
         }
 
-        const modelId = resolveCodexModel(agent.model);
+        const modelId = customProvider ? effectiveModel : resolveCodexModel(effectiveModel);
         const codexArgs = ['exec'];
         if (shouldResume) {
             codexArgs.push('resume', '--last');
@@ -99,7 +142,7 @@ export async function invokeAgent(
         }
         codexArgs.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json', message);
 
-        const codexOutput = await runCommand('codex', codexArgs, workingDir);
+        const codexOutput = await runCommand('codex', codexArgs, workingDir, envOverrides);
 
         // Parse JSONL output and extract final agent_message
         let response = '';
@@ -121,7 +164,7 @@ export async function invokeAgent(
         // Outputs JSONL with --format json; extract "text" type events for the response.
         // Model passed via --model in provider/model format (e.g. opencode/claude-sonnet-4-5).
         // Supports -c flag for conversation continuation (resumes last session).
-        const modelId = resolveOpenCodeModel(agent.model);
+        const modelId = resolveOpenCodeModel(effectiveModel);
         log('INFO', `Using OpenCode CLI (agent: ${agentId}, model: ${modelId})`);
 
         const continueConversation = !shouldReset;
@@ -139,7 +182,7 @@ export async function invokeAgent(
         }
         opencodeArgs.push(message);
 
-        const opencodeOutput = await runCommand('opencode', opencodeArgs, workingDir);
+        const opencodeOutput = await runCommand('opencode', opencodeArgs, workingDir, envOverrides);
 
         // Parse JSONL output and collect all text parts
         let response = '';
@@ -166,7 +209,7 @@ export async function invokeAgent(
             log('INFO', `🔄 Resetting conversation for agent: ${agentId}`);
         }
 
-        const modelId = resolveClaudeModel(agent.model);
+        const modelId = customProvider ? effectiveModel : resolveClaudeModel(effectiveModel);
         const claudeArgs = ['--dangerously-skip-permissions'];
         if (modelId) {
             claudeArgs.push('--model', modelId);
@@ -176,6 +219,6 @@ export async function invokeAgent(
         }
         claudeArgs.push('-p', message);
 
-        return await runCommand('claude', claudeArgs, workingDir);
+        return await runCommand('claude', claudeArgs, workingDir, envOverrides);
     }
 }

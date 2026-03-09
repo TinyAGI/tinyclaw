@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
-import { AgentConfig } from '../../lib/types';
+import { AgentConfig, CustomProvider } from '../../lib/types';
 import { SCRIPT_DIR, getSettings, getAgents } from '../../lib/config';
 import { log } from '../../lib/logging';
 import { mutateSettings } from './settings';
@@ -131,6 +131,52 @@ app.delete('/api/agents/:id', (c) => {
     }
     mutateSettings(s => { delete s.agents![agentId]; });
     log('INFO', `[API] Agent '${agentId}' deleted`);
+    return c.json({ ok: true });
+});
+
+// ── Custom Providers ─────────────────────────────────────────────────────────
+
+// GET /api/custom-providers
+app.get('/api/custom-providers', (c) => {
+    const settings = getSettings();
+    return c.json(settings.custom_providers || {});
+});
+
+// PUT /api/custom-providers/:id
+app.put('/api/custom-providers/:id', async (c) => {
+    const providerId = c.req.param('id');
+    const body = await c.req.json() as Partial<CustomProvider>;
+    if (!body.name || !body.harness || !body.base_url || !body.api_key) {
+        return c.json({ error: 'name, harness, base_url, and api_key are required' }, 400);
+    }
+    if (body.harness !== 'claude' && body.harness !== 'codex') {
+        return c.json({ error: 'harness must be "claude" or "codex"' }, 400);
+    }
+
+    const settings = mutateSettings(s => {
+        if (!s.custom_providers) s.custom_providers = {};
+        s.custom_providers[providerId] = {
+            name: body.name!,
+            harness: body.harness!,
+            base_url: body.base_url!,
+            api_key: body.api_key!,
+            ...(body.model ? { model: body.model } : {}),
+        };
+    });
+
+    log('INFO', `[API] Custom provider '${providerId}' saved`);
+    return c.json({ ok: true, provider: settings.custom_providers![providerId] });
+});
+
+// DELETE /api/custom-providers/:id
+app.delete('/api/custom-providers/:id', (c) => {
+    const providerId = c.req.param('id');
+    const settings = getSettings();
+    if (!settings.custom_providers?.[providerId]) {
+        return c.json({ error: `custom provider '${providerId}' not found` }, 404);
+    }
+    mutateSettings(s => { delete s.custom_providers![providerId]; });
+    log('INFO', `[API] Custom provider '${providerId}' deleted`);
     return c.json({ ok: true });
 });
 

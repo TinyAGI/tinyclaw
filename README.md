@@ -28,7 +28,7 @@
 - ✅ **Multi-channel** - Discord, WhatsApp, and Telegram
 - ✅ **Web portal (TinyOffice)** - Browser-based dashboard for chat, agents, teams, tasks, logs, and settings
 - ✅ **Team Observation** - You can observe agent teams conversations via `tinyclaw team visualize`
-- ✅ **Multiple AI providers** - Anthropic Claude and OpenAI Codex using existing subscriptions without breaking ToS
+- ✅ **Multiple AI providers** - Anthropic Claude, OpenAI Codex, and custom providers (any OpenAI/Anthropic-compatible endpoint)
 - ✅ **Parallel processing** - Agents process messages concurrently
 - ✅ **Live TUI dashboard** - Real-time team visualizer for monitoring agent chains
 - ✅ **Persistent sessions** - Conversation context maintained across restarts
@@ -88,7 +88,7 @@ The setup wizard will guide you through:
 2. **Bot tokens** - Enter tokens for enabled channels
 3. **Workspace setup** - Name your workspace directory
 4. **Default agent** - Configure your main AI assistant
-5. **AI provider** - Select Anthropic (Claude) or OpenAI
+5. **AI provider** - Select Anthropic (Claude), OpenAI, or a custom provider
 6. **Model selection** - Choose model (e.g., Sonnet, Opus, GPT-5.3)
 7. **Heartbeat interval** - Set proactive check-in frequency
 
@@ -213,6 +213,16 @@ Commands work with `tinyclaw` (if CLI installed) or `./tinyclaw.sh` (direct scri
 | `model [name]`                    | Show or switch AI model; propagates to matching agents   | `tinyclaw model opus`                            |
 | `reset`                           | Reset all conversations                                  | `tinyclaw reset`                                 |
 | `channels reset <channel>`        | Reset channel authentication                             | `tinyclaw channels reset whatsapp`               |
+
+### Custom Provider Commands
+
+| Command                    | Description                           | Example                            |
+| -------------------------- | ------------------------------------- | ---------------------------------- |
+| `provider list`            | List all custom providers             | `tinyclaw provider list`           |
+| `provider add`             | Add a new custom provider             | `tinyclaw provider add`            |
+| `provider remove <id>`     | Remove a custom provider              | `tinyclaw provider remove proxy`   |
+
+Custom providers let you use any OpenAI or Anthropic-compatible API endpoint with the existing CLI harnesses. See [docs/AGENTS.md](docs/AGENTS.md#custom-providers) for details.
 
 ### Pairing Commands
 

@@ -254,7 +254,7 @@ Edit `.tinyclaw/settings.json`:
 | Field               | Required | Description                                                            |
 | ------------------- | -------- | ---------------------------------------------------------------------- |
 | `name`              | Yes      | Human-readable display name                                            |
-| `provider`          | Yes      | `anthropic` or `openai`                                                |
+| `provider`          | Yes      | `anthropic`, `openai`, `opencode`, or `custom:<provider_id>`           |
 | `model`             | Yes      | Model identifier (e.g., `sonnet`, `opus`, `gpt-5.3-codex`)             |
 | `working_directory` | Yes      | Directory where agent operates (auto-set to `<workspace>/<agent_id>/`) |
 | `system_prompt`     | No       | Inline system prompt text                                              |
@@ -401,6 +401,14 @@ Use different AI providers for different tasks:
 
 ```json
 {
+  "custom_providers": {
+    "openrouter": {
+      "name": "OpenRouter",
+      "harness": "claude",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key": "sk-or-..."
+    }
+  },
   "agents": {
     "quick": {
       "provider": "anthropic",
@@ -416,6 +424,11 @@ Use different AI providers for different tasks:
       "provider": "openai",
       "model": "gpt-5.3-codex",
       "system_prompt": "Code generation specialist."
+    },
+    "proxy-agent": {
+      "provider": "custom:openrouter",
+      "model": "claude-sonnet-4-5",
+      "system_prompt": "Uses a custom API endpoint."
     }
   }
 }
@@ -591,6 +604,100 @@ interface ResponseData {
 ```
 
 State is managed by the CLI itself (claude or codex) through the `-c` flag and working directory isolation.
+
+## Custom Providers
+
+Custom providers let you use any OpenAI or Anthropic-compatible API endpoint (e.g., proxy servers, self-hosted models, OpenRouter) with the existing CLI harnesses.
+
+### Configuration
+
+Custom providers are defined in `.tinyclaw/settings.json`:
+
+```json
+{
+  "custom_providers": {
+    "my-proxy": {
+      "name": "My Proxy",
+      "harness": "claude",
+      "base_url": "https://proxy.example.com/v1",
+      "api_key": "sk-...",
+      "model": "claude-sonnet-4-5"
+    }
+  }
+}
+```
+
+| Field      | Required | Description                                          |
+| ---------- | -------- | ---------------------------------------------------- |
+| `name`     | Yes      | Human-readable display name                          |
+| `harness`  | Yes      | Which CLI to use: `claude` or `codex`                |
+| `base_url` | Yes      | API endpoint URL                                     |
+| `api_key`  | Yes      | API key for authentication                           |
+| `model`    | No       | Default model name to pass to the CLI                |
+
+### Managing Custom Providers
+
+**CLI:**
+
+```bash
+tinyclaw provider list                 # List custom providers
+tinyclaw provider add                  # Add interactively
+tinyclaw provider remove my-proxy      # Remove a custom provider
+```
+
+**API:**
+
+```bash
+# List
+curl http://localhost:3777/api/custom-providers
+
+# Create/update
+curl -X PUT http://localhost:3777/api/custom-providers/my-proxy \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"My Proxy","harness":"claude","base_url":"https://proxy.example.com/v1","api_key":"sk-...","model":"claude-sonnet-4-5"}'
+
+# Delete
+curl -X DELETE http://localhost:3777/api/custom-providers/my-proxy
+```
+
+### Assigning to Agents
+
+Use the `custom:<provider_id>` prefix as the agent's provider:
+
+```bash
+# When adding a new agent (option 4 in provider selection)
+tinyclaw agent add
+
+# Switch an existing agent
+tinyclaw agent provider coder custom:my-proxy
+tinyclaw agent provider coder custom:my-proxy --model gpt-4o
+```
+
+Or edit settings.json directly:
+
+```json
+{
+  "agents": {
+    "coder": {
+      "name": "Code Assistant",
+      "provider": "custom:my-proxy",
+      "model": "claude-sonnet-4-5",
+      "working_directory": "/Users/me/workspace/coder"
+    }
+  }
+}
+```
+
+### How It Works
+
+When an agent with `provider: "custom:<id>"` is invoked:
+
+1. The custom provider config is looked up from `settings.custom_providers`
+2. The `harness` field determines which CLI to run (`claude` or `codex`)
+3. Environment variables are set based on the harness:
+   - **claude harness**: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY=""`
+   - **codex harness**: `OPENAI_API_KEY`, `OPENAI_BASE_URL`
+4. The CLI is invoked with the model name passed through (no alias resolution)
 
 ## Teams
 

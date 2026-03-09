@@ -150,16 +150,71 @@ agent_add() {
     echo "  1) Anthropic (Claude)"
     echo "  2) OpenAI (Codex)"
     echo "  3) OpenCode"
-    read -rp "Choose [1-3, default: 1]: " AGENT_PROVIDER_CHOICE
+    echo "  4) Custom Provider"
+    read -rp "Choose [1-4, default: 1]: " AGENT_PROVIDER_CHOICE
     case "$AGENT_PROVIDER_CHOICE" in
         2) AGENT_PROVIDER="openai" ;;
         3) AGENT_PROVIDER="opencode" ;;
+        4)
+            # List available custom providers
+            local custom_ids
+            custom_ids=$(jq -r '(.custom_providers // {}) | keys[]' "$SETTINGS_FILE" 2>/dev/null)
+            if [ -z "$custom_ids" ]; then
+                echo ""
+                echo -e "${YELLOW}No custom providers configured.${NC}"
+                echo "Add one first via the API or settings.json (custom_providers section)."
+                echo ""
+                echo "Example in settings.json:"
+                echo '  "custom_providers": {'
+                echo '    "my-proxy": {'
+                echo '      "name": "My Proxy",'
+                echo '      "harness": "claude",'
+                echo '      "base_url": "https://proxy.example.com/v1",'
+                echo '      "api_key": "sk-...",'
+                echo '      "model": "claude-sonnet-4-5"'
+                echo '    }'
+                echo '  }'
+                exit 1
+            fi
+            echo ""
+            echo "Available custom providers:"
+            local idx=1
+            local provider_list=()
+            while IFS= read -r pid; do
+                local pname
+                pname=$(jq -r "(.custom_providers // {}).\"${pid}\".name // \"${pid}\"" "$SETTINGS_FILE" 2>/dev/null)
+                local pharness
+                pharness=$(jq -r "(.custom_providers // {}).\"${pid}\".harness" "$SETTINGS_FILE" 2>/dev/null)
+                echo "  ${idx}) ${pname} (${pid}) [harness: ${pharness}]"
+                provider_list+=("$pid")
+                idx=$((idx + 1))
+            done <<< "$custom_ids"
+            read -rp "Choose [1-$((idx - 1))]: " CUSTOM_CHOICE
+            CUSTOM_CHOICE=$((CUSTOM_CHOICE - 1))
+            if [ "$CUSTOM_CHOICE" -lt 0 ] || [ "$CUSTOM_CHOICE" -ge "${#provider_list[@]}" ]; then
+                echo -e "${RED}Invalid selection${NC}"
+                exit 1
+            fi
+            AGENT_PROVIDER="custom:${provider_list[$CUSTOM_CHOICE]}"
+            ;;
         *) AGENT_PROVIDER="anthropic" ;;
     esac
 
-    # Model
+    # Model — skip for custom providers (model comes from the provider config)
     echo ""
-    if [ "$AGENT_PROVIDER" = "anthropic" ]; then
+    if [[ "$AGENT_PROVIDER" == custom:* ]]; then
+        local custom_id="${AGENT_PROVIDER#custom:}"
+        AGENT_MODEL=$(jq -r "(.custom_providers // {}).\"${custom_id}\".model // \"\"" "$SETTINGS_FILE" 2>/dev/null)
+        if [ -z "$AGENT_MODEL" ]; then
+            read -rp "Enter model name for this custom provider: " AGENT_MODEL
+        else
+            echo "Model (from custom provider): $AGENT_MODEL"
+            read -rp "Override model? [enter to keep '$AGENT_MODEL']: " MODEL_OVERRIDE
+            if [ -n "$MODEL_OVERRIDE" ]; then
+                AGENT_MODEL="$MODEL_OVERRIDE"
+            fi
+        fi
+    elif [ "$AGENT_PROVIDER" = "anthropic" ]; then
         echo "Model:"
         echo "  1) Sonnet (fast)"
         echo "  2) Opus (smartest)"
@@ -517,8 +572,22 @@ agent_provider() {
                 echo "Use 'tinyclaw agent provider ${agent_id} openai --model {gpt-5.3-codex|gpt-5.2}' to also set the model."
             fi
             ;;
+        custom:*)
+            local custom_provider_value="$provider_arg"
+            if [ -n "$model_arg" ]; then
+                jq --arg id "$agent_id" --arg prov "$custom_provider_value" --arg model "$model_arg" \
+                    '.agents[$id].provider = $prov | .agents[$id].model = $model' \
+                    "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                echo -e "${GREEN}✓ Agent '${agent_id}' switched to custom provider '${custom_provider_value}' with model: ${model_arg}${NC}"
+            else
+                jq --arg id "$agent_id" --arg prov "$custom_provider_value" \
+                    '.agents[$id].provider = $prov' \
+                    "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                echo -e "${GREEN}✓ Agent '${agent_id}' switched to custom provider '${custom_provider_value}'${NC}"
+            fi
+            ;;
         *)
-            echo "Usage: tinyclaw agent provider <agent_id> {anthropic|openai} [--model MODEL_NAME]"
+            echo "Usage: tinyclaw agent provider <agent_id> {anthropic|openai|custom:<id>} [--model MODEL_NAME]"
             echo ""
             echo "Examples:"
             echo "  tinyclaw agent provider coder                                    # Show current provider/model"
@@ -526,6 +595,8 @@ agent_provider() {
             echo "  tinyclaw agent provider coder openai                              # Switch to OpenAI"
             echo "  tinyclaw agent provider coder anthropic --model opus              # Switch to Anthropic Opus"
             echo "  tinyclaw agent provider coder openai --model gpt-5.3-codex        # Switch to OpenAI GPT-5.3 Codex"
+            echo "  tinyclaw agent provider coder custom:my-proxy                     # Switch to custom provider"
+            echo "  tinyclaw agent provider coder custom:my-proxy --model gpt-4o      # Switch with model override"
             exit 1
             ;;
     esac
@@ -602,4 +673,185 @@ agent_reset_multiple() {
     if [ "$has_error" -eq 1 ]; then
         exit 1
     fi
+}
+
+# ── Custom Provider Management ────────────────────────────────────────────────
+
+# List all custom providers
+custom_provider_list() {
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}No settings file found. Run setup first.${NC}"
+        exit 1
+    fi
+
+    local count
+    count=$(jq -r '(.custom_providers // {}) | length' "$SETTINGS_FILE" 2>/dev/null)
+
+    if [ "$count" = "0" ] || [ -z "$count" ]; then
+        echo -e "${YELLOW}No custom providers configured.${NC}"
+        echo ""
+        echo "Add one with:"
+        echo -e "  ${GREEN}$0 provider add${NC}"
+        return
+    fi
+
+    echo -e "${BLUE}Custom Providers${NC}"
+    echo "================"
+    echo ""
+
+    jq -r '(.custom_providers // {}) | to_entries[] | "\(.key)|\(.value.name)|\(.value.harness)|\(.value.base_url)|\(.value.model // "default")"' "$SETTINGS_FILE" 2>/dev/null | \
+    while IFS='|' read -r id name harness base_url model; do
+        echo -e "  ${GREEN}${id}${NC} - ${name}"
+        echo "    Harness:  ${harness}"
+        echo "    Base URL: ${base_url}"
+        echo "    Model:    ${model}"
+        echo ""
+    done
+
+    echo "Usage: Set an agent to use a custom provider with:"
+    echo -e "  ${GREEN}tinyclaw agent provider <agent_id> custom:<provider_id>${NC}"
+}
+
+# Add a new custom provider interactively
+custom_provider_add() {
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}No settings file found. Run setup first.${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Add Custom Provider${NC}"
+    echo ""
+
+    # Provider ID
+    read -rp "Provider ID (lowercase, no spaces, e.g. 'my-proxy'): " PROVIDER_ID
+    PROVIDER_ID=$(echo "$PROVIDER_ID" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
+    if [ -z "$PROVIDER_ID" ]; then
+        echo -e "${RED}Invalid provider ID${NC}"
+        exit 1
+    fi
+
+    # Check if exists
+    local existing
+    existing=$(jq -r "(.custom_providers // {}).\"${PROVIDER_ID}\" // empty" "$SETTINGS_FILE" 2>/dev/null)
+    if [ -n "$existing" ]; then
+        echo -e "${RED}Custom provider '${PROVIDER_ID}' already exists. Use 'provider remove ${PROVIDER_ID}' first.${NC}"
+        exit 1
+    fi
+
+    # Display name
+    read -rp "Display name (e.g. 'My OpenRouter Proxy'): " PROVIDER_NAME
+    if [ -z "$PROVIDER_NAME" ]; then
+        PROVIDER_NAME="$PROVIDER_ID"
+    fi
+
+    # Harness
+    echo ""
+    echo "Harness (which CLI to use):"
+    echo "  1) claude (Anthropic CLI)"
+    echo "  2) codex (OpenAI CLI)"
+    read -rp "Choose [1-2, default: 1]: " HARNESS_CHOICE
+    case "$HARNESS_CHOICE" in
+        2) PROVIDER_HARNESS="codex" ;;
+        *) PROVIDER_HARNESS="claude" ;;
+    esac
+
+    # Base URL
+    echo ""
+    read -rp "Base URL (e.g. 'https://proxy.example.com/v1'): " PROVIDER_BASE_URL
+    if [ -z "$PROVIDER_BASE_URL" ]; then
+        echo -e "${RED}Base URL is required${NC}"
+        exit 1
+    fi
+
+    # API Key
+    echo ""
+    read -rp "API Key: " PROVIDER_API_KEY
+    if [ -z "$PROVIDER_API_KEY" ]; then
+        echo -e "${RED}API Key is required${NC}"
+        exit 1
+    fi
+
+    # Model
+    echo ""
+    read -rp "Default model name (e.g. 'claude-sonnet-4-5', optional): " PROVIDER_MODEL
+
+    # Write to settings
+    local tmp_file="$SETTINGS_FILE.tmp"
+    local provider_json
+    if [ -n "$PROVIDER_MODEL" ]; then
+        provider_json=$(jq -n \
+            --arg name "$PROVIDER_NAME" \
+            --arg harness "$PROVIDER_HARNESS" \
+            --arg base_url "$PROVIDER_BASE_URL" \
+            --arg api_key "$PROVIDER_API_KEY" \
+            --arg model "$PROVIDER_MODEL" \
+            '{name: $name, harness: $harness, base_url: $base_url, api_key: $api_key, model: $model}')
+    else
+        provider_json=$(jq -n \
+            --arg name "$PROVIDER_NAME" \
+            --arg harness "$PROVIDER_HARNESS" \
+            --arg base_url "$PROVIDER_BASE_URL" \
+            --arg api_key "$PROVIDER_API_KEY" \
+            '{name: $name, harness: $harness, base_url: $base_url, api_key: $api_key}')
+    fi
+
+    jq --arg id "$PROVIDER_ID" --argjson prov "$provider_json" \
+        '.custom_providers //= {} | .custom_providers[$id] = $prov' \
+        "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+
+    echo ""
+    echo -e "${GREEN}✓ Custom provider '${PROVIDER_ID}' created!${NC}"
+    echo ""
+    echo -e "${BLUE}Next steps:${NC}"
+    echo "  Assign to an agent:"
+    echo -e "    ${GREEN}tinyclaw agent provider <agent_id> custom:${PROVIDER_ID}${NC}"
+    echo "  Or select it when adding a new agent:"
+    echo -e "    ${GREEN}tinyclaw agent add${NC}"
+}
+
+# Remove a custom provider
+custom_provider_remove() {
+    local provider_id="$1"
+
+    if [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}No settings file found.${NC}"
+        exit 1
+    fi
+
+    local provider_json
+    provider_json=$(jq -r "(.custom_providers // {}).\"${provider_id}\" // empty" "$SETTINGS_FILE" 2>/dev/null)
+
+    if [ -z "$provider_json" ]; then
+        echo -e "${RED}Custom provider '${provider_id}' not found.${NC}"
+        exit 1
+    fi
+
+    local provider_name
+    provider_name=$(jq -r "(.custom_providers // {}).\"${provider_id}\".name" "$SETTINGS_FILE" 2>/dev/null)
+
+    # Check if any agents use this provider
+    local using_agents
+    using_agents=$(jq -r --arg prov "custom:${provider_id}" \
+        '(.agents // {}) | to_entries[] | select(.value.provider == $prov) | .key' \
+        "$SETTINGS_FILE" 2>/dev/null)
+
+    if [ -n "$using_agents" ]; then
+        echo -e "${YELLOW}Warning: The following agents use this custom provider:${NC}"
+        echo "$using_agents" | while read -r aid; do
+            echo "  @${aid}"
+        done
+        echo ""
+        echo "These agents will fail to invoke until their provider is changed."
+    fi
+
+    read -rp "Remove custom provider '${provider_id}' (${provider_name})? [y/N]: " CONFIRM
+    if [[ ! "$CONFIRM" =~ ^[yY] ]]; then
+        echo "Cancelled."
+        return
+    fi
+
+    local tmp_file="$SETTINGS_FILE.tmp"
+    jq --arg id "$provider_id" 'del(.custom_providers[$id])' "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+
+    echo -e "${GREEN}✓ Custom provider '${provider_id}' removed.${NC}"
 }

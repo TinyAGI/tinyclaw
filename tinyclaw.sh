@@ -119,17 +119,37 @@ case "${1:-}" in
                 exit 1
             fi
         else
-            # Parse optional --model flag
+            # Parse optional flags: --model and --auth-token
             PROVIDER_ARG="$2"
+            PROVIDER_EXTRA_ARG="${3:-}"  # e.g. provider ID for 'remove'
             MODEL_ARG=""
-            if [ "$3" = "--model" ] && [ -n "$4" ]; then
-                MODEL_ARG="$4"
-            fi
+            AUTH_TOKEN_ARG=""
+            shift 2  # consume 'provider' and the provider name
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --model) MODEL_ARG="$2"; shift 2 ;;
+                    --auth-token) AUTH_TOKEN_ARG="$2"; shift 2 ;;
+                    *) shift ;;
+                esac
+            done
 
             # Capture old provider before switching (for agent propagation)
             OLD_PROVIDER=$(jq -r '.models.provider // "anthropic"' "$SETTINGS_FILE" 2>/dev/null)
 
             case "$PROVIDER_ARG" in
+                list|ls)
+                    custom_provider_list
+                    ;;
+                add)
+                    custom_provider_add
+                    ;;
+                remove|rm)
+                    if [ -z "$PROVIDER_EXTRA_ARG" ]; then
+                        echo "Usage: $0 provider remove <provider_id>"
+                        exit 1
+                    fi
+                    custom_provider_remove "$PROVIDER_EXTRA_ARG"
+                    ;;
                 anthropic)
                     if [ ! -f "$SETTINGS_FILE" ]; then
                         echo -e "${RED}No settings file found. Run setup first.${NC}"
@@ -161,6 +181,14 @@ case "${1:-}" in
                         echo ""
                         echo "Use 'tinyclaw model {sonnet|opus}' to set the model."
                     fi
+
+                    # Store auth token if provided
+                    if [ -n "$AUTH_TOKEN_ARG" ]; then
+                        tmp_file="$SETTINGS_FILE.tmp"
+                        jq --arg token "$AUTH_TOKEN_ARG" '.models.anthropic.auth_token = $token' \
+                            "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                        echo -e "${GREEN}✓ Anthropic auth token saved${NC}"
+                    fi
                     ;;
                 openai)
                     if [ ! -f "$SETTINGS_FILE" ]; then
@@ -187,26 +215,42 @@ case "${1:-}" in
                             echo -e "${BLUE}  Updated $UPDATED_COUNT agent(s) from $OLD_PROVIDER to openai/$MODEL_ARG${NC}"
                         fi
                         echo ""
-                        echo "Note: Make sure you have the 'codex' CLI installed and authenticated."
+                        echo "Note: Make sure you have the 'codex' CLI installed."
                     else
                         # Set provider only (no agent propagation)
                         jq '.models.provider = "openai"' "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
                         echo -e "${GREEN}✓ Switched to OpenAI/Codex provider${NC}"
                         echo ""
                         echo "Use 'tinyclaw model {gpt-5.3-codex|gpt-5.2}' to set the model."
-                        echo "Note: Make sure you have the 'codex' CLI installed and authenticated."
+                        echo "Note: Make sure you have the 'codex' CLI installed."
+                    fi
+
+                    # Store auth token if provided
+                    if [ -n "$AUTH_TOKEN_ARG" ]; then
+                        tmp_file="$SETTINGS_FILE.tmp"
+                        jq --arg token "$AUTH_TOKEN_ARG" '.models.openai.auth_token = $token' \
+                            "$SETTINGS_FILE" > "$tmp_file" && mv "$tmp_file" "$SETTINGS_FILE"
+                        echo -e "${GREEN}✓ OpenAI auth token saved${NC}"
                     fi
                     ;;
                 *)
-                    echo "Usage: $0 provider {anthropic|openai} [--model MODEL_NAME]"
+                    echo "Usage: $0 provider {anthropic|openai|list|add|remove} [--model MODEL] [--auth-token TOKEN]"
                     echo ""
-                    echo "Examples:"
+                    echo "Global provider:"
                     echo "  $0 provider                                    # Show current provider and model"
                     echo "  $0 provider anthropic                          # Switch to Anthropic"
                     echo "  $0 provider openai                             # Switch to OpenAI"
                     echo "  $0 provider anthropic --model sonnet           # Switch to Anthropic with Sonnet"
                     echo "  $0 provider openai --model gpt-5.3-codex       # Switch to OpenAI with GPT-5.3 Codex"
-                    echo "  $0 provider openai --model gpt-4o              # Switch to OpenAI with custom model"
+                    echo ""
+                    echo "Auth tokens (skip CLI login):"
+                    echo "  $0 provider anthropic --auth-token sk-ant-...  # Set Anthropic API key"
+                    echo "  $0 provider openai --auth-token sk-...         # Set OpenAI API key"
+                    echo ""
+                    echo "Custom providers:"
+                    echo "  $0 provider list                               # List custom providers"
+                    echo "  $0 provider add                                # Add a custom provider"
+                    echo "  $0 provider remove <id>                        # Remove a custom provider"
                     exit 1
                     ;;
             esac
@@ -489,6 +533,7 @@ case "${1:-}" in
         echo "  reset <id> [id2 ...]     Reset specific agent conversation(s)"
         echo "  channels reset <channel> Reset channel auth ($local_names)"
         echo "  provider [name] [--model model]  Show or switch AI provider"
+        echo "  provider {list|add|remove}       Manage custom providers"
         echo "  model [name]             Show or switch AI model"
         echo "  agent {list|add|remove|show|reset|provider}  Manage agents"
         echo "  team {list|add|remove|show|add-agent|remove-agent|visualize}  Manage teams"
