@@ -4,6 +4,7 @@ package-lock.json
 
 # TypeScript build output
 dist/
+*.tsbuildinfo
 
 # TinyClaw runtime files
 .tinyclaw
