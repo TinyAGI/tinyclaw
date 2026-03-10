@@ -42,7 +42,7 @@ echo ""
 
 # Step 1: Clean build
 echo -e "${BLUE}[1/5] Cleaning workspace...${NC}"
-rm -rf dist/
+for pkg in packages/*/; do rm -rf "${pkg}dist/"; done
 rm -rf node_modules/
 rm -rf .tinyclaw/
 rm -rf .wwebjs_cache/
@@ -73,8 +73,7 @@ mkdir -p "$BUNDLE_DIR"
 # Copy necessary files
 echo "Copying files..."
 cp -r bin/ "$BUNDLE_DIR/"
-cp -r src/ "$BUNDLE_DIR/"
-cp -r dist/ "$BUNDLE_DIR/"
+cp -r packages/ "$BUNDLE_DIR/"
 cp -r node_modules/ "$BUNDLE_DIR/"
 cp -r scripts "$BUNDLE_DIR/"
 cp -r lib "$BUNDLE_DIR/"
@@ -85,7 +84,7 @@ cp tinyclaw.sh "$BUNDLE_DIR/"
 cp package.json "$BUNDLE_DIR/"
 cp package-lock.json "$BUNDLE_DIR/"
 cp tsconfig.json "$BUNDLE_DIR/"
-cp tsconfig.visualizer.json "$BUNDLE_DIR/" 2>/dev/null || true
+cp tsconfig.base.json "$BUNDLE_DIR/"
 cp README.md "$BUNDLE_DIR/"
 cp AGENTS.md "$BUNDLE_DIR/"
 cp SOUL.md "$BUNDLE_DIR/"
