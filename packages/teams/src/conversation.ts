@@ -95,6 +95,7 @@ export function postToChatRoom(
     originalData: { channel: string; sender: string; senderId?: string | null; messageId: string }
 ): void {
     const chatMsg = `[Chat room #${teamId} — @${fromAgent}]:\n${message}`;
+    // Enqueue for every teammate (except the sender)
     for (const agentId of teamAgents) {
         if (agentId === fromAgent) continue;
         const msgId = `chat_${teamId}_${fromAgent}_${agentId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -178,14 +179,18 @@ export async function completeConversation(conv: Conversation): Promise<void> {
     collectFiles(finalResponse, outboundFilesSet);
     const outboundFiles = Array.from(outboundFilesSet);
 
+    // Remove [send_file: ...] tags
     if (outboundFiles.length > 0) {
         finalResponse = finalResponse.replace(/\[send_file:\s*[^\]]+\]/g, '').trim();
     }
 
+    // Convert [@agent: ...] tags to readable format instead of stripping them
     finalResponse = convertTagsToReadable(finalResponse);
 
+    // Handle long responses — send as file attachment
     const { message: responseMessage, files: allFiles } = handleLongResponse(finalResponse, outboundFiles);
 
+    // Write to outgoing queue
     enqueueResponse({
         channel: conv.channel,
         sender: conv.sender,
@@ -198,6 +203,7 @@ export async function completeConversation(conv: Conversation): Promise<void> {
     log('INFO', `Response ready [${conv.channel}] ${conv.sender} (${finalResponse.length} chars)`);
     emitEvent('response_ready', { channel: conv.channel, sender: conv.sender, responseLength: finalResponse.length, responseText: finalResponse, messageId: conv.messageId });
 
+    // Clean up
     conversations.delete(conv.id);
 }
 
