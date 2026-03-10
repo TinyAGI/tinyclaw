@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
+    "build": "tsc --build",
     "build:core": "npm run build -w @tinyclaw/core",
     "build:teams": "npm run build -w @tinyclaw/teams",
     "build:channels": "npm run build -w @tinyclaw/channels",
