@@ -11,25 +11,30 @@ export function parseAgentRouting(
     agents: Record<string, AgentConfig>,
     teams: Record<string, TeamConfig> = {}
 ): { agentId: string; message: string; isTeam?: boolean } {
+    // Match @agent_id at the start of the message
     const match = rawMessage.match(/^@(\S+)\s+([\s\S]*)$/);
     if (match) {
         const candidateId = match[1].toLowerCase();
         const message = match[2];
 
+        // Check agent IDs
         if (agents[candidateId]) {
             return { agentId: candidateId, message };
         }
 
+        // Check team IDs — resolve to leader agent
         if (teams[candidateId]) {
             return { agentId: teams[candidateId].leader_agent, message, isTeam: true };
         }
 
+        // Match by agent name (case-insensitive)
         for (const [id, config] of Object.entries(agents)) {
             if (config.name.toLowerCase() === candidateId) {
                 return { agentId: id, message };
             }
         }
 
+        // Match by team name (case-insensitive)
         for (const [, config] of Object.entries(teams)) {
             if (config.name.toLowerCase() === candidateId) {
                 return { agentId: config.leader_agent, message, isTeam: true };

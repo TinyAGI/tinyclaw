@@ -1,8 +1,16 @@
+/**
+ * Plugin System for TinyClaw
+ *
+ * Plugins auto-discover from .tinyclaw/plugins/ folder.
+ * Each plugin exports an activate() function and/or a hooks object from index.ts.
+ */
+
 import fs from 'fs';
 import path from 'path';
 import { TINYCLAW_HOME } from './config';
 import { log, onEvent } from './logging';
 
+// Types
 export interface PluginEvent {
     type: string;
     timestamp: number;
@@ -42,9 +50,13 @@ interface LoadedPlugin {
     hooks?: Hooks;
 }
 
+// Internal state
 const loadedPlugins: LoadedPlugin[] = [];
 const eventHandlers = new Map<string, Array<(event: PluginEvent) => void>>();
 
+/**
+ * Create the plugin context passed to activate() functions.
+ */
 function createPluginContext(pluginName: string): PluginContext {
     return {
         on(eventType: string, handler: (event: PluginEvent) => void): void {
@@ -61,6 +73,12 @@ function createPluginContext(pluginName: string): PluginContext {
     };
 }
 
+/**
+ * Load all plugins from .tinyclaw/plugins/.
+ * Each plugin directory should have an index.ts/index.js that exports:
+ *   - activate(ctx: PluginContext): void  (optional)
+ *   - hooks: Hooks                        (optional)
+ */
 export async function loadPlugins(): Promise<void> {
     const pluginsDir = path.join(TINYCLAW_HOME, 'plugins');
 
@@ -77,6 +95,7 @@ export async function loadPlugins(): Promise<void> {
         const pluginName = entry.name;
         const pluginDir = path.join(pluginsDir, pluginName);
 
+        // Try to load index.js or index.ts (compiled)
         const indexJs = path.join(pluginDir, 'index.js');
         const indexTs = path.join(pluginDir, 'index.ts');
 
@@ -93,14 +112,17 @@ export async function loadPlugins(): Promise<void> {
         }
 
         try {
+            // Dynamic import
             const pluginModule = await import(indexPath);
             const plugin: LoadedPlugin = { name: pluginName };
 
+            // Call activate() if present
             if (typeof pluginModule.activate === 'function') {
                 const ctx = createPluginContext(pluginName);
                 await pluginModule.activate(ctx);
             }
 
+            // Store hooks if present
             if (pluginModule.hooks) {
                 plugin.hooks = pluginModule.hooks;
             }
@@ -115,12 +137,16 @@ export async function loadPlugins(): Promise<void> {
     if (loadedPlugins.length > 0) {
         log('INFO', `${loadedPlugins.length} plugin(s) loaded`);
 
+        // Register as an event listener so all emitEvent() calls get broadcast to plugins
         onEvent((type, data) => {
             broadcastEvent({ type, timestamp: Date.now(), ...data });
         });
     }
 }
 
+/**
+ * Run all transformOutgoing hooks on a message.
+ */
 export async function runOutgoingHooks(message: string, ctx: HookContext): Promise<HookResult> {
     let text = message;
     let metadata: HookMetadata = {};
@@ -144,6 +170,9 @@ export async function runOutgoingHooks(message: string, ctx: HookContext): Promi
     return { text, metadata };
 }
 
+/**
+ * Run all transformIncoming hooks on a message.
+ */
 export async function runIncomingHooks(message: string, ctx: HookContext): Promise<HookResult> {
     let text = message;
     let metadata: HookMetadata = {};
@@ -167,7 +196,11 @@ export async function runIncomingHooks(message: string, ctx: HookContext): Promi
     return { text, metadata };
 }
 
+/**
+ * Broadcast an event to all registered handlers.
+ */
 export function broadcastEvent(event: PluginEvent): void {
+    // Call specific event type handlers
     const typeHandlers = eventHandlers.get(event.type) || [];
     for (const handler of typeHandlers) {
         try {
@@ -177,6 +210,7 @@ export function broadcastEvent(event: PluginEvent): void {
         }
     }
 
+    // Call wildcard handlers
     const wildcardHandlers = eventHandlers.get('*') || [];
     for (const handler of wildcardHandlers) {
         try {

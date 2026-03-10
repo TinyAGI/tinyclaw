@@ -3,29 +3,40 @@ import { AgentConfig, TeamConfig, log } from '@tinyclaw/core';
 // ── Bracket-depth tag parser ────────────────────────────────────────────────
 
 export interface BracketTag {
-    id: string;
-    message: string;
-    start: number;
-    end: number;
+    id: string;       // agent id(s) or team id (raw, before splitting on commas)
+    message: string;  // content between colon and closing bracket
+    start: number;    // index of opening [
+    end: number;      // index after closing ]
 }
 
+/**
+ * Extract bracket tags with balanced bracket matching.
+ * Handles nested brackets in message bodies (e.g., `[@coder: fix arr[0]]`).
+ *
+ * @param text   The full response text to parse
+ * @param prefix '@' for teammate tags, '#' for chat room tags
+ */
 export function extractBracketTags(text: string, prefix: '@' | '#'): BracketTag[] {
     const results: BracketTag[] = [];
     let i = 0;
 
     while (i < text.length) {
+        // Look for [@ or [#
         if (text[i] === '[' && i + 1 < text.length && text[i + 1] === prefix) {
             const tagStart = i;
 
+            // Find the colon that separates id from message
             const colonIdx = text.indexOf(':', i + 2);
             if (colonIdx === -1) { i++; continue; }
 
+            // Ensure no unbalanced brackets before the colon (id portion should be simple)
             const idPortion = text.substring(i + 2, colonIdx);
             if (idPortion.includes('[') || idPortion.includes(']')) { i++; continue; }
 
             const id = idPortion.trim();
             if (!id) { i++; continue; }
 
+            // Find the matching ] by counting bracket depth
             let depth = 1;
             let j = colonIdx + 1;
             while (j < text.length && depth > 0) {
@@ -48,6 +59,10 @@ export function extractBracketTags(text: string, prefix: '@' | '#'): BracketTag[
     return results;
 }
 
+/**
+ * Strip all bracket tags of a given prefix from text, returning the remaining text.
+ * Used to compute shared context (text outside tags).
+ */
 export function stripBracketTags(text: string, prefix: '@' | '#'): string {
     const tags = extractBracketTags(text, prefix);
     if (tags.length === 0) return text;
@@ -62,6 +77,10 @@ export function stripBracketTags(text: string, prefix: '@' | '#'): string {
     return result.trim();
 }
 
+/**
+ * Convert [@agent: message] tags to readable format (-> @agent: message).
+ * Uses bracket-depth parsing to handle nested brackets correctly.
+ */
 export function convertTagsToReadable(text: string): string {
     const tags = extractBracketTags(text, '@');
     if (tags.length === 0) return text;
@@ -77,6 +96,9 @@ export function convertTagsToReadable(text: string): string {
     return result.trim();
 }
 
+/**
+ * Check if a mentioned ID is a valid teammate of the current agent in the given team.
+ */
 export function isTeammate(
     mentionedId: string,
     currentAgentId: string,
@@ -108,6 +130,10 @@ export function isTeammate(
     return true;
 }
 
+/**
+ * Extract valid @teammate mentions from a response text.
+ * Uses bracket-depth parsing to handle nested brackets in message bodies.
+ */
 export function extractTeammateMentions(
     response: string,
     currentAgentId: string,
@@ -119,6 +145,8 @@ export function extractTeammateMentions(
     const seen = new Set<string>();
 
     const tags = extractBracketTags(response, '@');
+
+    // Strip all [@teammate: ...] tags from the full response to get shared context
     const sharedContext = stripBracketTags(response, '@');
 
     for (const tag of tags) {
@@ -127,6 +155,7 @@ export function extractTeammateMentions(
             ? `${sharedContext}\n\n------\n\nDirected to you:\n${directMessage}`
             : directMessage;
 
+        // Support comma-separated agent IDs: [@coder,reviewer: message]
         const candidateIds = tag.id.toLowerCase().split(',').map(id => id.trim()).filter(Boolean);
         for (const candidateId of candidateIds) {
             if (!seen.has(candidateId) && isTeammate(candidateId, currentAgentId, teamId, teams, agents)) {
@@ -138,6 +167,10 @@ export function extractTeammateMentions(
     return results;
 }
 
+/**
+ * Extract [#team_id: message] chat room broadcast tags from a response.
+ * Uses bracket-depth parsing to handle nested brackets in message bodies.
+ */
 export function extractChatRoomMessages(
     response: string,
     currentAgentId: string,
@@ -150,6 +183,7 @@ export function extractChatRoomMessages(
         const candidateId = tag.id.toLowerCase();
         if (!tag.message) continue;
 
+        // Validate team exists and agent is a member
         const team = teams[candidateId];
         if (team && team.agents.includes(currentAgentId)) {
             results.push({ teamId: candidateId, message: tag.message });

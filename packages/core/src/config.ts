@@ -22,12 +22,14 @@ export function getSettings(): Settings {
         try {
             settings = JSON.parse(settingsData);
         } catch (parseError) {
+            // JSON is invalid — attempt auto-fix with jsonrepair
             console.error(`[WARN] settings.json contains invalid JSON: ${(parseError as Error).message}`);
 
             try {
                 const repaired = jsonrepair(settingsData);
                 settings = JSON.parse(repaired);
 
+                // Write the fixed JSON back and create a backup
                 const backupPath = SETTINGS_FILE + '.bak';
                 fs.copyFileSync(SETTINGS_FILE, backupPath);
                 fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2) + '\n');
@@ -38,6 +40,7 @@ export function getSettings(): Settings {
             }
         }
 
+        // Auto-detect provider if not specified
         if (!settings?.models?.provider) {
             if (settings?.models?.openai) {
                 if (!settings.models) settings.models = {};
@@ -57,6 +60,10 @@ export function getSettings(): Settings {
     }
 }
 
+/**
+ * Build the default agent config from the legacy models section.
+ * Used when no agents are configured, for backwards compatibility.
+ */
 export function getDefaultAgentFromModels(settings: Settings): AgentConfig {
     const provider = settings?.models?.provider || 'anthropic';
     let model = '';
@@ -68,6 +75,7 @@ export function getDefaultAgentFromModels(settings: Settings): AgentConfig {
         model = settings?.models?.anthropic?.model || 'sonnet';
     }
 
+    // Get workspace path from settings or use default
     const workspacePath = settings?.workspace?.path || path.join(require('os').homedir(), 'tinyclaw-workspace');
     const defaultAgentDir = path.join(workspacePath, 'default');
 
@@ -79,25 +87,43 @@ export function getDefaultAgentFromModels(settings: Settings): AgentConfig {
     };
 }
 
+/**
+ * Get all configured agents. Falls back to a single "default" agent
+ * derived from the legacy models section if no agents are configured.
+ */
 export function getAgents(settings: Settings): Record<string, AgentConfig> {
     if (settings.agents && Object.keys(settings.agents).length > 0) {
         return settings.agents;
     }
+    // Fall back to default agent from models section
     return { default: getDefaultAgentFromModels(settings) };
 }
 
+/**
+ * Get all configured teams.
+ */
 export function getTeams(settings: Settings): Record<string, TeamConfig> {
     return settings.teams || {};
 }
 
+/**
+ * Resolve the model ID for Claude (Anthropic).
+ */
 export function resolveClaudeModel(model: string): string {
     return CLAUDE_MODEL_IDS[model] || model || '';
 }
 
+/**
+ * Resolve the model ID for Codex (OpenAI).
+ */
 export function resolveCodexModel(model: string): string {
     return CODEX_MODEL_IDS[model] || model || '';
 }
 
+/**
+ * Resolve the model ID for OpenCode (passed via --model flag).
+ * Falls back to the raw model string from settings if no mapping is found.
+ */
 export function resolveOpenCodeModel(model: string): string {
     return OPENCODE_MODEL_IDS[model] || model || '';
 }

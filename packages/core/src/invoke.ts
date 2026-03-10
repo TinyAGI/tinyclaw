@@ -47,6 +47,10 @@ export async function runCommand(command: string, args: string[], cwd?: string, 
     });
 }
 
+/**
+ * Invoke a single agent with a message. Contains all Claude/Codex invocation logic.
+ * Returns the raw response text.
+ */
 export async function invokeAgent(
     agent: AgentConfig,
     agentId: string,
@@ -56,6 +60,7 @@ export async function invokeAgent(
     agents: Record<string, AgentConfig> = {},
     teams: Record<string, TeamConfig> = {}
 ): Promise<string> {
+    // Ensure agent directory exists with config files
     const agentDir = path.join(workspacePath, agentId);
     const isNewAgent = !fs.existsSync(agentDir);
     ensureAgentDirectory(agentDir);
@@ -63,8 +68,10 @@ export async function invokeAgent(
         log('INFO', `Initialized agent directory with config files: ${agentDir}`);
     }
 
+    // Update AGENTS.md with current teammate info
     updateAgentTeammates(agentDir, agentId, agents, teams);
 
+    // Resolve working directory
     const workingDir = agent.working_directory
         ? (path.isAbsolute(agent.working_directory)
             ? agent.working_directory
@@ -73,6 +80,7 @@ export async function invokeAgent(
 
     const rawProvider = agent.provider || 'anthropic';
 
+    // Resolve custom provider if using "custom:<id>" prefix
     let provider = rawProvider;
     let customProvider: CustomProvider | undefined;
     let envOverrides: Record<string, string> = {};
@@ -84,8 +92,10 @@ export async function invokeAgent(
         if (!customProvider) {
             throw new Error(`Custom provider '${customId}' not found in settings.custom_providers`);
         }
+        // Map harness back to built-in provider for CLI selection
         provider = customProvider.harness === 'codex' ? 'openai' : 'anthropic';
 
+        // Build env overrides based on harness
         if (customProvider.harness === 'claude') {
             envOverrides = {
                 ANTHROPIC_BASE_URL: customProvider.base_url,
@@ -101,6 +111,7 @@ export async function invokeAgent(
 
         log('INFO', `Using custom provider '${customId}' (harness: ${customProvider.harness}, base_url: ${customProvider.base_url})`);
     } else {
+        // For built-in providers, check if auth_token is configured in settings
         const settings = getSettings();
         if (provider === 'anthropic' && settings.models?.anthropic?.auth_token) {
             envOverrides.ANTHROPIC_API_KEY = settings.models.anthropic.auth_token;
@@ -109,6 +120,7 @@ export async function invokeAgent(
         }
     }
 
+    // Use model from custom provider if agent doesn't specify one
     const effectiveModel = agent.model || customProvider?.model || '';
 
     if (provider === 'openai') {
@@ -132,6 +144,7 @@ export async function invokeAgent(
 
         const codexOutput = await runCommand('codex', codexArgs, workingDir, envOverrides);
 
+        // Parse JSONL output and extract final agent_message
         let response = '';
         const lines = codexOutput.trim().split('\n');
         for (const line of lines) {
@@ -147,6 +160,10 @@ export async function invokeAgent(
 
         return response || 'Sorry, I could not generate a response from Codex.';
     } else if (provider === 'opencode') {
+        // OpenCode CLI — non-interactive mode via `opencode run`.
+        // Outputs JSONL with --format json; extract "text" type events for the response.
+        // Model passed via --model in provider/model format (e.g. opencode/claude-sonnet-4-5).
+        // Supports -c flag for conversation continuation (resumes last session).
         const modelId = resolveOpenCodeModel(effectiveModel);
         log('INFO', `Using OpenCode CLI (agent: ${agentId}, model: ${modelId})`);
 
@@ -167,6 +184,7 @@ export async function invokeAgent(
 
         const opencodeOutput = await runCommand('opencode', opencodeArgs, workingDir, envOverrides);
 
+        // Parse JSONL output and collect all text parts
         let response = '';
         const lines = opencodeOutput.trim().split('\n');
         for (const line of lines) {
@@ -182,6 +200,7 @@ export async function invokeAgent(
 
         return response || 'Sorry, I could not generate a response from OpenCode.';
     } else {
+        // Default to Claude (Anthropic)
         log('INFO', `Using Claude provider (agent: ${agentId})`);
 
         const continueConversation = !shouldReset;
