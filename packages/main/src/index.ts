@@ -9,10 +9,10 @@
 import fs from 'fs';
 import path from 'path';
 import {
-    Conversation, TeamConfig, MessageJobData,
+    MessageJobData,
     getSettings, getAgents, getTeams, LOG_FILE, CHATS_DIR, FILES_DIR,
     log, emitEvent,
-    parseAgentRouting, findTeamForAgent, getAgentResetFlag,
+    parseAgentRouting, getAgentResetFlag,
     invokeAgent,
     loadPlugins, runIncomingHooks, runOutgoingHooks,
     handleLongResponse, collectFiles,
@@ -22,12 +22,7 @@ import {
     closeQueueDb, queueEvents,
 } from '@tinyclaw/core';
 import { startApiServer } from '@tinyclaw/server';
-import {
-    conversations, MAX_CONVERSATION_MESSAGES,
-    withConversationLock, incrementPending, decrementPending,
-    enqueueInternalMessage, postToChatRoom, completeConversation,
-    extractTeammateMentions, extractChatRoomMessages,
-} from '@tinyclaw/teams';
+import { conversations, handleTeamResponse } from '@tinyclaw/teams';
 
 // Ensure directories exist
 [FILES_DIR, path.dirname(LOG_FILE), CHATS_DIR].forEach(dir => {
@@ -114,32 +109,10 @@ async function processMessage(dbMsg: any): Promise<void> {
     }
     emitEvent('chain_step_done', { agentId, agentName: agent.name, responseLength: response.length, responseText: response });
 
-    // Extract and post [#team_id: message] chat room broadcasts
-    const chatRoomMsgs = extractChatRoomMessages(response, agentId, teams);
-    for (const crMsg of chatRoomMsgs) {
-        postToChatRoom(crMsg.teamId, agentId, crMsg.message, teams[crMsg.teamId].agents, {
-            channel, sender, senderId: data.senderId, messageId,
-        });
-    }
-
     // ── Response routing ────────────────────────────────────────────────────
-    //
-    // Three paths based on how the message arrived:
-    //
-    //   1. Direct     — user addressed a specific agent ("@coder hi").
-    //                   Response goes straight back to the user.
-    //
-    //   2. Team-routed — user addressed a team ("@dev fix the bug").
-    //                   Starts a team conversation. The leader may delegate
-    //                   to teammates via [@agent: message] mentions.
-    //
-    //   3. Internal   — agent-to-agent within a team conversation.
-    //                   Response is added to the conversation. If more
-    //                   teammates are mentioned, they get enqueued. When all
-    //                   branches resolve, the aggregated response goes to user.
 
     if (!isTeamRouted && !isInternal) {
-        // ── Path 1: Direct response to user ─────────────────────────────────
+        // Direct response to user
         await sendDirectResponse(response, {
             channel, sender, senderId: data.senderId,
             messageId, originalMessage: rawMessage, agentId,
@@ -147,105 +120,20 @@ async function processMessage(dbMsg: any): Promise<void> {
         return;
     }
 
-    // ── Path 2 & 3: Team conversation ───────────────────────────────────────
-    const teamContext = resolveTeamContext(agentId, isTeamRouted, data, teams);
-    if (!teamContext) {
-        // Team routing resolved but no team found — fall back to direct
-        await sendDirectResponse(response, {
-            channel, sender, senderId: data.senderId,
-            messageId, originalMessage: rawMessage, agentId,
-        });
-        return;
-    }
-
-    // Get or create conversation
-    let conv: Conversation;
-    if (isInternal && data.conversationId && conversations.has(data.conversationId)) {
-        conv = conversations.get(data.conversationId)!;
-    } else {
-        const convId = `${messageId}_${Date.now()}`;
-        conv = {
-            id: convId,
-            channel,
-            sender,
-            originalMessage: rawMessage,
-            messageId,
-            pending: 1,
-            responses: [],
-            files: new Set(),
-            totalMessages: 0,
-            maxMessages: MAX_CONVERSATION_MESSAGES,
-            teamContext,
-            startTime: Date.now(),
-            outgoingMentions: new Map(),
-            pendingAgents: new Set([agentId]),
-        };
-        conversations.set(convId, conv);
-        log('INFO', `Conversation started: ${convId} (team: ${teamContext.team.name})`);
-        emitEvent('team_chain_start', { teamId: teamContext.teamId, teamName: teamContext.team.name, agents: teamContext.team.agents, leader: teamContext.team.leader_agent });
-    }
-
-    // Record this agent's response
-    conv.responses.push({ agentId, response });
-    conv.totalMessages++;
-    conv.pendingAgents.delete(agentId);
-    collectFiles(response, conv.files);
-
-    // Check for teammate mentions — forward to teammates if under message limit
-    const teammateMentions = extractTeammateMentions(response, agentId, conv.teamContext.teamId, teams, agents);
-
-    if (teammateMentions.length > 0 && conv.totalMessages < conv.maxMessages) {
-        incrementPending(conv, teammateMentions.length);
-        conv.outgoingMentions.set(agentId, teammateMentions.length);
-
-        for (const mention of teammateMentions) {
-            conv.pendingAgents.add(mention.teammateId);
-            log('INFO', `@${agentId} → @${mention.teammateId}`);
-            emitEvent('chain_handoff', { teamId: conv.teamContext.teamId, fromAgent: agentId, toAgent: mention.teammateId });
-
-            const internalMsg = `[Message from teammate @${agentId}]:\n${mention.message}`;
-            enqueueInternalMessage(conv.id, agentId, mention.teammateId, internalMsg, {
-                channel, sender, senderId: data.senderId, messageId,
-            });
-        }
-    } else if (teammateMentions.length > 0) {
-        log('WARN', `Conversation ${conv.id} hit max messages (${conv.maxMessages}) — not enqueuing further mentions`);
-    }
-
-    // Decrement pending — if all branches resolved, complete the conversation
-    await withConversationLock(conv.id, async () => {
-        const shouldComplete = decrementPending(conv);
-        if (shouldComplete) {
-            completeConversation(conv);
-        } else {
-            log('INFO', `Conversation ${conv.id}: ${conv.pending} branch(es) still pending`);
-        }
+    // Team conversation — delegate to @tinyclaw/teams
+    const handled = await handleTeamResponse({
+        agentId, response, isTeamRouted, data, agents, teams,
     });
+    if (!handled) {
+        // No team context found — fall back to direct
+        await sendDirectResponse(response, {
+            channel, sender, senderId: data.senderId,
+            messageId, originalMessage: rawMessage, agentId,
+        });
+    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function resolveTeamContext(
-    agentId: string,
-    isTeamRouted: boolean,
-    data: MessageJobData,
-    teams: Record<string, TeamConfig>
-): { teamId: string; team: TeamConfig } | null {
-    // Internal messages inherit team context from their conversation
-    if (data.conversationId) {
-        const conv = conversations.get(data.conversationId);
-        if (conv) return conv.teamContext;
-    }
-    // Team-routed: prefer the team where this agent is leader
-    if (isTeamRouted) {
-        for (const [tid, t] of Object.entries(teams)) {
-            if (t.leader_agent === agentId && t.agents.includes(agentId)) {
-                return { teamId: tid, team: t };
-            }
-        }
-    }
-    return findTeamForAgent(agentId, teams);
-}
 
 async function sendDirectResponse(
     response: string,

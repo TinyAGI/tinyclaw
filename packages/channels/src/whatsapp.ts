@@ -17,13 +17,10 @@ const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
 
 const SCRIPT_DIR = path.resolve(__dirname, '..', '..');
-const _localTinyclaw = path.join(SCRIPT_DIR, '.tinyclaw');
 const TINYCLAW_HOME = process.env.TINYCLAW_HOME
-    || (fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
-        ? _localTinyclaw
-        : path.join(require('os').homedir(), '.tinyclaw'));
+    || path.join(require('os').homedir(), '.tinyclaw');
 const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/whatsapp.log');
-const SESSION_DIR = path.join(SCRIPT_DIR, '.tinyclaw/whatsapp-session');
+const SESSION_DIR = path.join(TINYCLAW_HOME, 'whatsapp-session');
 const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
 const PAIRING_FILE = path.join(TINYCLAW_HOME, 'pairing.json');

@@ -549,29 +549,34 @@ Take action if needed.
 
 ```text
 tinyclaw/
-├── .tinyclaw/            # TinyClaw data
-│   ├── settings.json     # Configuration
-│   ├── queue/            # Message queue
-│   ├── logs/             # All logs
-│   ├── channels/         # Channel state
-│   ├── files/            # Uploaded files
-│   ├── pairing.json      # Sender allowlist state
-│   ├── chats/            # Team chat room history
-│   │   └── {team_id}/    # Per-team chat logs
-│   ├── events/           # Real-time event files
-│   ├── .claude/          # Template for agents
-│   ├── heartbeat.md      # Template for agents
-│   └── AGENTS.md         # Template for agents
-├── ~/tinyclaw-workspace/ # Agent workspaces
+├── packages/                # Monorepo packages
+│   ├── core/                #   Shared types, config, queue, agent invocation
+│   ├── main/                #   Queue processor entry point
+│   ├── teams/               #   Team conversation orchestration
+│   ├── server/              #   API server (REST + SSE)
+│   ├── channels/            #   Channel clients (Discord, Telegram, WhatsApp)
+│   ├── cli/                 #   CLI commands (tinyclaw.sh helpers)
+│   └── visualizer/          #   TUI dashboard and chatroom viewer
+├── tinyoffice/              # TinyOffice web portal (Next.js)
+├── .tinyclaw/               # TinyClaw data (created at runtime)
+│   ├── settings.json        #   Configuration
+│   ├── tinyclaw.db          #   SQLite queue database
+│   ├── logs/                #   All logs
+│   ├── channels/            #   Channel state
+│   ├── files/               #   Uploaded files
+│   ├── pairing.json         #   Sender allowlist state
+│   ├── chats/               #   Team conversation history
+│   │   └── {team_id}/       #     Per-team chat logs
+│   ├── .claude/             #   Template for agents
+│   ├── heartbeat.md         #   Template for agents
+│   └── AGENTS.md            #   Template for agents
+├── ~/tinyclaw-workspace/    # Agent workspaces
 │   ├── coder/
 │   ├── writer/
 │   └── assistant/
-├── src/                  # TypeScript sources
-├── dist/                 # Compiled output
-├── lib/                  # Runtime scripts
-├── scripts/              # Installation scripts
-├── tinyoffice/           # TinyOffice web portal (Next.js)
-└── tinyclaw.sh           # Main script
+├── lib/                     # Runtime scripts
+├── scripts/                 # Installation scripts
+└── tinyclaw.sh              # Main script
 ```
 
 </details>

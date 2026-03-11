@@ -307,5 +307,6 @@ tinyclaw logs queue
 - [AGENTS.md](AGENTS.md) - Agent configuration and management
 - [TEAMS.md](TEAMS.md) - Team collaboration and message passing
 - [README.md](../README.md) - Main project documentation
-- [src/lib/queue-db.ts](../src/lib/queue-db.ts) - Queue implementation
-- [src/queue-processor.ts](../src/queue-processor.ts) - Processing logic
+- [packages/core/src/queues.ts](../packages/core/src/queues.ts) - Queue implementation
+- [packages/main/src/index.ts](../packages/main/src/index.ts) - Queue processor entry point
+- [packages/teams/src/conversation.ts](../packages/teams/src/conversation.ts) - Team conversation orchestration

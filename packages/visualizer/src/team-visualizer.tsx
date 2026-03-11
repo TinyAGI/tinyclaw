@@ -21,10 +21,8 @@ import { fileURLToPath } from 'url';
 // ─── Paths ──────────────────────────────────────────────────────────────────
 const __filename_ = fileURLToPath(import.meta.url);
 const __dirname_ = path.dirname(__filename_);
-const _localTinyclaw = path.join(__dirname_, '..', '..', '.tinyclaw');
-const TINYCLAW_HOME = fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
-    ? _localTinyclaw
-    : path.join(os.homedir(), '.tinyclaw');
+const TINYCLAW_HOME = process.env.TINYCLAW_HOME
+    || path.join(os.homedir(), '.tinyclaw');
 const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 
 // ─── API helper ─────────────────────────────────────────────────────────────

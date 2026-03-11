@@ -4,11 +4,8 @@ import { jsonrepair } from 'jsonrepair';
 import { Settings, AgentConfig, TeamConfig, CLAUDE_MODEL_IDS, CODEX_MODEL_IDS, OPENCODE_MODEL_IDS } from './types';
 
 export const SCRIPT_DIR = path.resolve(__dirname, '../../..');
-const _localTinyclaw = path.join(SCRIPT_DIR, '.tinyclaw');
 export const TINYCLAW_HOME = process.env.TINYCLAW_HOME
-    || (fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
-        ? _localTinyclaw
-        : path.join(require('os').homedir(), '.tinyclaw'));
+    || path.join(require('os').homedir(), '.tinyclaw');
 export const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/queue.log');
 export const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 export const CHATS_DIR = path.join(TINYCLAW_HOME, 'chats');
