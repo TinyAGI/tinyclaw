@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
-import { AgentConfig, CustomProvider } from '@tinyclaw/core';
-import { SCRIPT_DIR, getSettings, getAgents } from '@tinyclaw/core';
-import { log } from '@tinyclaw/core';
+import { AgentConfig, CustomProvider } from '@tinyagi/core';
+import { SCRIPT_DIR, getSettings, getAgents } from '@tinyagi/core';
+import { log } from '@tinyagi/core';
 import { mutateSettings } from './settings';
 
 const app = new Hono();
@@ -63,9 +63,9 @@ function provisionAgentWorkspace(agentDir: string, _agentId: string): string[] {
         steps.push('Copied skills to .claude/skills/');
     }
 
-    fs.mkdirSync(path.join(agentDir, '.tinyclaw'), { recursive: true });
-    if (copyIfExists(path.join(SCRIPT_DIR, 'SOUL.md'), path.join(agentDir, '.tinyclaw', 'SOUL.md'))) {
-        steps.push('Copied SOUL.md to .tinyclaw/');
+    fs.mkdirSync(path.join(agentDir, '.tinyagi'), { recursive: true });
+    if (copyIfExists(path.join(SCRIPT_DIR, 'SOUL.md'), path.join(agentDir, '.tinyagi', 'SOUL.md'))) {
+        steps.push('Copied SOUL.md to .tinyagi/');
     }
 
     return steps;
@@ -88,7 +88,7 @@ app.put('/api/agents/:id', async (c) => {
     const isNew = !currentSettings.agents?.[agentId];
 
     const workspacePath = currentSettings.workspace?.path
-        || path.join(require('os').homedir(), 'tinyclaw-workspace');
+        || path.join(require('os').homedir(), 'tinyagi-workspace');
     const workingDir = body.working_directory || path.join(workspacePath, agentId);
 
     const settings = mutateSettings(s => {

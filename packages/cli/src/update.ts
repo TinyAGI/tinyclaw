@@ -3,11 +3,11 @@ import * as p from '@clack/prompts';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { SCRIPT_DIR } from '@tinyclaw/core';
+import { SCRIPT_DIR } from '@tinyagi/core';
 import { unwrap } from './shared';
 
-const GITHUB_REPO = 'TinyAGI/tinyclaw';
-const UPDATE_CHECK_CACHE = path.join(process.env.HOME || '~', '.tinyclaw', '.update_check');
+const GITHUB_REPO = 'TinyAGI/tinyagi';
+const UPDATE_CHECK_CACHE = path.join(process.env.HOME || '~', '.tinyagi', '.update_check');
 
 function getCurrentVersion(): string {
     try {
@@ -45,7 +45,7 @@ function versionLt(v1: string, v2: string): boolean {
 
 function sessionExists(): boolean {
     try {
-        execSync('tmux has-session -t tinyclaw 2>/dev/null', { stdio: 'ignore' });
+        execSync('tmux has-session -t tinyagi 2>/dev/null', { stdio: 'ignore' });
         return true;
     } catch {
         return false;
@@ -53,11 +53,11 @@ function sessionExists(): boolean {
 }
 
 async function doUpdate() {
-    p.intro('TinyClaw Update');
+    p.intro('TinyAGI Update');
 
     // Check if running
     if (sessionExists()) {
-        p.log.warn('TinyClaw is currently running.');
+        p.log.warn('TinyAGI is currently running.');
         const stopFirst = unwrap(await p.confirm({
             message: 'Stop and update?',
             initialValue: false,
@@ -66,7 +66,7 @@ async function doUpdate() {
             p.log.message('Update cancelled.');
             return;
         }
-        execSync(`"${path.join(SCRIPT_DIR, 'tinyclaw.sh')}" stop`, { stdio: 'inherit' });
+        execSync(`"${path.join(SCRIPT_DIR, 'tinyagi.sh')}" stop`, { stdio: 'inherit' });
     }
 
     const currentVersion = getCurrentVersion();
@@ -105,9 +105,9 @@ async function doUpdate() {
     // Download
     spinner.start('[1/4] Downloading...');
     const tempDir = execSync('mktemp -d', { encoding: 'utf8' }).trim();
-    const bundleUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${latestVersion}/tinyclaw-bundle.tar.gz`;
+    const bundleUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${latestVersion}/tinyagi-bundle.tar.gz`;
     try {
-        execSync(`curl -fSL -o "${tempDir}/tinyclaw-bundle.tar.gz" "${bundleUrl}"`, { stdio: 'ignore' });
+        execSync(`curl -fSL -o "${tempDir}/tinyagi-bundle.tar.gz" "${bundleUrl}"`, { stdio: 'ignore' });
     } catch {
         spinner.stop('Download failed.');
         p.log.error('Download failed.');
@@ -119,11 +119,11 @@ async function doUpdate() {
     // Backup
     spinner.start('[2/4] Backing up...');
     const backupDir = path.join(
-        process.env.HOME || '~', '.tinyclaw', 'backups',
+        process.env.HOME || '~', '.tinyagi', 'backups',
         `v${currentVersion}-${new Date().toISOString().replace(/[:.]/g, '').slice(0, 15)}`,
     );
     fs.mkdirSync(backupDir, { recursive: true });
-    for (const item of ['bin', 'src', 'dist', 'lib', 'tinyclaw.sh', 'package.json']) {
+    for (const item of ['bin', 'src', 'dist', 'lib', 'tinyagi.sh', 'package.json']) {
         const src = path.join(SCRIPT_DIR, item);
         if (fs.existsSync(src)) {
             execSync(`cp -r "${src}" "${backupDir}/"`, { stdio: 'ignore' });
@@ -133,9 +133,9 @@ async function doUpdate() {
 
     // Install
     spinner.start('[3/4] Installing...');
-    execSync(`cd "${tempDir}" && tar -xzf tinyclaw-bundle.tar.gz && cp -a tinyclaw/. "${SCRIPT_DIR}/"`, { stdio: 'ignore' });
-    execSync(`find "${SCRIPT_DIR}/bin" "${SCRIPT_DIR}/lib" "${SCRIPT_DIR}/scripts" -type f \\( -name "*.sh" -o -name "tinyclaw" \\) -exec chmod +x {} +`, { stdio: 'ignore' });
-    execSync(`chmod +x "${SCRIPT_DIR}/tinyclaw.sh"`, { stdio: 'ignore' });
+    execSync(`cd "${tempDir}" && tar -xzf tinyagi-bundle.tar.gz && cp -a tinyagi/. "${SCRIPT_DIR}/"`, { stdio: 'ignore' });
+    execSync(`find "${SCRIPT_DIR}/bin" "${SCRIPT_DIR}/lib" "${SCRIPT_DIR}/scripts" -type f \\( -name "*.sh" -o -name "tinyagi" \\) -exec chmod +x {} +`, { stdio: 'ignore' });
+    execSync(`chmod +x "${SCRIPT_DIR}/tinyagi.sh"`, { stdio: 'ignore' });
     fs.rmSync(tempDir, { recursive: true, force: true });
 
     // Rebuild native modules
@@ -147,7 +147,7 @@ async function doUpdate() {
 
     p.log.success(`[4/4] Updated to v${latestVersion}!`);
     p.log.info(`Backup location: ${backupDir}`);
-    p.outro('Run `tinyclaw start` to begin.');
+    p.outro('Run `tinyagi start` to begin.');
 }
 
 doUpdate().catch(err => {

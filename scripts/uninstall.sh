@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# TinyClaw CLI Uninstallation Script
+# TinyAGI CLI Uninstallation Script
 
 set -e
 
@@ -9,7 +9,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}TinyClaw CLI Uninstaller${NC}"
+echo -e "${BLUE}TinyAGI CLI Uninstaller${NC}"
 echo "========================"
 echo ""
 
@@ -17,11 +17,11 @@ echo ""
 FOUND=false
 
 for INSTALL_DIR in "/usr/local/bin" "$HOME/.local/bin"; do
-    if [ -L "$INSTALL_DIR/tinyclaw" ]; then
+    if [ -L "$INSTALL_DIR/tinyagi" ]; then
         FOUND=true
-        TARGET="$(readlink "$INSTALL_DIR/tinyclaw")"
+        TARGET="$(readlink "$INSTALL_DIR/tinyagi")"
 
-        echo -e "Found TinyClaw at: ${YELLOW}$INSTALL_DIR/tinyclaw${NC}"
+        echo -e "Found TinyAGI at: ${YELLOW}$INSTALL_DIR/tinyagi${NC}"
         echo -e "Points to: ${YELLOW}$TARGET${NC}"
         echo ""
 
@@ -29,8 +29,8 @@ for INSTALL_DIR in "/usr/local/bin" "$HOME/.local/bin"; do
         echo ""
 
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            rm "$INSTALL_DIR/tinyclaw"
-            echo -e "${GREEN}✓ Removed $INSTALL_DIR/tinyclaw${NC}"
+            rm "$INSTALL_DIR/tinyagi"
+            echo -e "${GREEN}✓ Removed $INSTALL_DIR/tinyagi${NC}"
         else
             echo "Skipped."
         fi
@@ -39,15 +39,15 @@ for INSTALL_DIR in "/usr/local/bin" "$HOME/.local/bin"; do
 done
 
 if [ "$FOUND" = false ]; then
-    echo -e "${YELLOW}No TinyClaw installation found${NC}"
+    echo -e "${YELLOW}No TinyAGI installation found${NC}"
     echo ""
     echo "Checked locations:"
-    echo "  - /usr/local/bin/tinyclaw"
-    echo "  - ~/.local/bin/tinyclaw"
+    echo "  - /usr/local/bin/tinyagi"
+    echo "  - ~/.local/bin/tinyagi"
 fi
 
 echo -e "${GREEN}Uninstallation complete${NC}"
 echo ""
 echo "Note: This only removes the CLI symlink."
-echo "The TinyClaw installation directory is preserved."
+echo "The TinyAGI installation directory is preserved."
 echo ""

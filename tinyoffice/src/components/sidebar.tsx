@@ -27,7 +27,7 @@ export function Sidebar() {
         <div className="flex h-7 w-7 items-center justify-center bg-primary text-primary-foreground">
           <Zap className="h-3.5 w-3.5" />
         </div>
-        <span className="text-sm font-bold tracking-tight">TinyClaw</span>
+        <span className="text-sm font-bold tracking-tight">TinyAGI</span>
       </div>
 
       {/* New Chat + Dashboard + Logs */}

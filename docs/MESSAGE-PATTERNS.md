@@ -1,6 +1,6 @@
 # Message Patterns
 
-Team communication in TinyClaw uses an actor model: each agent has its own mailbox (per-agent promise chain), communicates only by sending messages (queue entries), and processes one message at a time. There is no central orchestrator.
+Team communication in TinyAGI uses an actor model: each agent has its own mailbox (per-agent promise chain), communicates only by sending messages (queue entries), and processes one message at a time. There is no central orchestrator.
 
 ## How it works
 
@@ -187,7 +187,7 @@ A conversation completes when `pending === 0` — all branches have resolved and
 
 On completion:
 1. All responses are aggregated (single response: as-is, multiple: joined with `@agent: response` format)
-2. Chat history is saved to `~/.tinyclaw/chats/{team_id}/{timestamp}.md`
+2. Chat history is saved to `~/.tinyagi/chats/{team_id}/{timestamp}.md`
 3. The aggregated response is enqueued in the responses table for the user's channel
 4. The conversation is cleaned up from memory
 

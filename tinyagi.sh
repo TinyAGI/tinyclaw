@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1091
-# TinyClaw - Main daemon using tmux + claude -c -p + messaging channels
+# TinyAGI - Main daemon using tmux + claude -c -p + messaging channels
 #
 # To add a new channel:
 #   1. Create src/channels/<channel>-client.ts
@@ -11,13 +11,13 @@
 # SCRIPT_DIR = repo root (where bash scripts live)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# TINYCLAW_HOME = data directory (settings, queue, logs, etc.)
-# Always defaults to ~/.tinyclaw; override via TINYCLAW_HOME env var.
-TINYCLAW_HOME="${TINYCLAW_HOME:-$HOME/.tinyclaw}"
+# TINYAGI_HOME = data directory (settings, queue, logs, etc.)
+# Always defaults to ~/.tinyagi; override via TINYAGI_HOME env var.
+TINYAGI_HOME="${TINYAGI_HOME:-$HOME/.tinyagi}"
 
-TMUX_SESSION="tinyclaw"
-LOG_DIR="$TINYCLAW_HOME/logs"
-SETTINGS_FILE="$TINYCLAW_HOME/settings.json"
+TMUX_SESSION="tinyagi"
+LOG_DIR="$TINYAGI_HOME/logs"
+SETTINGS_FILE="$TINYAGI_HOME/settings.json"
 
 mkdir -p "$LOG_DIR"
 
@@ -206,7 +206,7 @@ case "${1:-}" in
                 if [ ! -f "$SCRIPT_DIR/packages/visualizer/dist/team-visualizer.js" ] || \
                    [ "$SCRIPT_DIR/packages/visualizer/src/team-visualizer.tsx" -nt "$SCRIPT_DIR/packages/visualizer/dist/team-visualizer.js" ]; then
                     echo -e "${BLUE}Building team visualizer...${NC}"
-                    if ! (cd "$SCRIPT_DIR" && npm run build -w @tinyclaw/visualizer 2>/dev/null); then
+                    if ! (cd "$SCRIPT_DIR" && npm run build -w @tinyagi/visualizer 2>/dev/null); then
                         echo -e "${RED}Failed to build visualizer.${NC}"
                         exit 1
                     fi
@@ -244,7 +244,7 @@ case "${1:-}" in
         if [ ! -f "$SCRIPT_DIR/packages/visualizer/dist/chatroom-viewer.js" ] || \
            [ "$SCRIPT_DIR/packages/visualizer/src/chatroom-viewer.tsx" -nt "$SCRIPT_DIR/packages/visualizer/dist/chatroom-viewer.js" ]; then
             echo -e "${BLUE}Building chatroom viewer...${NC}"
-            if ! (cd "$SCRIPT_DIR" && npm run build -w @tinyclaw/visualizer 2>/dev/null); then
+            if ! (cd "$SCRIPT_DIR" && npm run build -w @tinyagi/visualizer 2>/dev/null); then
                 echo -e "${RED}Failed to build chatroom viewer.${NC}"
                 exit 1
             fi
@@ -280,18 +280,18 @@ case "${1:-}" in
         node "$CLI/update.js"
         ;;
     version|--version|-v|-V)
-        echo "tinyclaw v$(get_current_version)"
+        echo "tinyagi v$(get_current_version)"
         ;;
     *)
         local_names=$(IFS='|'; echo "${ALL_CHANNELS[*]}")
-        echo -e "${BLUE}TinyClaw - Claude Code + Messaging Channels${NC}"
+        echo -e "${BLUE}TinyAGI - Claude Code + Messaging Channels${NC}"
         echo ""
         echo "Usage: $0 {start|stop|restart|status|setup|send|logs|reset <agent_id>|channels|provider|model|agent|team|chatroom|office|pairing|update|version|attach}"
         echo ""
         echo "Commands:"
-        echo "  start                    Start TinyClaw"
+        echo "  start                    Start TinyAGI"
         echo "  stop                     Stop all processes"
-        echo "  restart                  Restart TinyClaw"
+        echo "  restart                  Restart TinyAGI"
         echo "  status                   Show current status"
         echo "  setup                    Run setup wizard (change channels/provider/model/heartbeat)"
         echo "  send <msg>               Send message to AI manually"
@@ -306,7 +306,7 @@ case "${1:-}" in
         echo "  chatroom <team_id>       Live chat room viewer for a team"
         echo "  office                   Start TinyOffice web portal (http://localhost:3000)"
         echo "  pairing {pending|approved|list|approve <code>|unpair <channel> <sender_id>}  Manage sender approvals"
-        echo "  update                   Update TinyClaw to latest version"
+        echo "  update                   Update TinyAGI to latest version"
         echo "  version                  Show current version"
         echo "  attach                   Attach to tmux session"
         echo ""

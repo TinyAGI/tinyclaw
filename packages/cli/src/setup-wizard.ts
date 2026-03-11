@@ -2,10 +2,10 @@
 import * as p from '@clack/prompts';
 import fs from 'fs';
 import path from 'path';
-import { Settings, AgentConfig, ensureAgentDirectory, copyDirSync } from '@tinyclaw/core';
+import { Settings, AgentConfig, ensureAgentDirectory, copyDirSync } from '@tinyagi/core';
 import {
     unwrap, cleanId, validateId, required,
-    writeSettings, SETTINGS_FILE, TINYCLAW_HOME, SCRIPT_DIR,
+    writeSettings, SETTINGS_FILE, TINYAGI_HOME, SCRIPT_DIR,
     providerOptions, promptModel,
 } from './shared';
 
@@ -28,7 +28,7 @@ const CHANNEL_TOKEN_HELP: Record<string, string> = {
 };
 
 async function main() {
-    p.intro('TinyClaw - Setup Wizard');
+    p.intro('TinyAGI - Setup Wizard');
 
     // --- Channel selection ---
     const enabledChannels = unwrap(await p.multiselect({
@@ -74,11 +74,11 @@ async function main() {
     // --- Workspace ---
     const workspaceInput = unwrap(await p.text({
         message: 'Workspace name (where agent directories will be stored)',
-        placeholder: 'tinyclaw-workspace',
-        defaultValue: 'tinyclaw-workspace',
+        placeholder: 'tinyagi-workspace',
+        defaultValue: 'tinyagi-workspace',
     }));
 
-    const workspaceName = (workspaceInput || 'tinyclaw-workspace').replace(/ /g, '-').replace(/[^a-zA-Z0-9_/~.-]/g, '');
+    const workspaceName = (workspaceInput || 'tinyagi-workspace').replace(/ /g, '-').replace(/[^a-zA-Z0-9_/~.-]/g, '');
     let workspacePath: string;
     if (workspaceName.startsWith('/') || workspaceName.startsWith('~')) {
         workspacePath = workspaceName.replace(/^~/, process.env.HOME || '~');
@@ -182,14 +182,14 @@ async function main() {
     fs.mkdirSync(workspacePath, { recursive: true });
     p.log.success(`Created workspace: ${workspacePath}`);
 
-    // Create ~/.tinyclaw with templates
-    fs.mkdirSync(path.join(TINYCLAW_HOME, 'logs'), { recursive: true });
-    fs.mkdirSync(path.join(TINYCLAW_HOME, 'files'), { recursive: true });
+    // Create ~/.tinyagi with templates
+    fs.mkdirSync(path.join(TINYAGI_HOME, 'logs'), { recursive: true });
+    fs.mkdirSync(path.join(TINYAGI_HOME, 'files'), { recursive: true });
 
     const templateItems = ['.claude', 'heartbeat.md', 'AGENTS.md'];
     for (const item of templateItems) {
         const srcPath = path.join(SCRIPT_DIR, item);
-        const destPath = path.join(TINYCLAW_HOME, item);
+        const destPath = path.join(TINYAGI_HOME, item);
         if (fs.existsSync(srcPath)) {
             if (fs.statSync(srcPath).isDirectory()) {
                 copyDirSync(srcPath, destPath);
@@ -198,7 +198,7 @@ async function main() {
             }
         }
     }
-    p.log.success('Created ~/.tinyclaw with templates');
+    p.log.success('Created ~/.tinyagi with templates');
 
     // Create agent directories
     for (const agentId of Object.keys(agents)) {
@@ -206,7 +206,7 @@ async function main() {
         p.log.success(`Created agent directory: ${agents[agentId].working_directory}`);
     }
 
-    p.outro('Setup complete! Run `tinyclaw start` to begin.');
+    p.outro('Setup complete! Run `tinyagi start` to begin.');
 }
 
 main().catch(err => {

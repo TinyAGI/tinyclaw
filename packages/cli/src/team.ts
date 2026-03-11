@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import * as p from '@clack/prompts';
 import fs from 'fs';
-import { Settings, updateAgentTeammates } from '@tinyclaw/core';
+import { Settings, updateAgentTeammates } from '@tinyagi/core';
 import {
     unwrap, cleanId, validateId,
     writeSettings, requireSettings,
@@ -25,7 +25,7 @@ async function teamAdd() {
     const agentIds = Object.keys(agents);
 
     if (agentIds.length < 2) {
-        p.log.error('You need at least 2 agents to create a team. Add agents with: tinyclaw agent add');
+        p.log.error('You need at least 2 agents to create a team. Add agents with: tinyagi agent add');
         process.exit(1);
     }
 
@@ -175,7 +175,7 @@ function teamList() {
 
     if (ids.length === 0) {
         p.log.warn('No teams configured.');
-        p.log.message('Add a team with: tinyclaw team add');
+        p.log.message('Add a team with: tinyagi team add');
         return;
     }
 

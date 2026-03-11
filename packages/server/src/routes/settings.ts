@@ -1,8 +1,8 @@
 import fs from 'fs';
 import { Hono } from 'hono';
-import { Settings } from '@tinyclaw/core';
-import { SETTINGS_FILE, getSettings } from '@tinyclaw/core';
-import { log } from '@tinyclaw/core';
+import { Settings } from '@tinyagi/core';
+import { SETTINGS_FILE, getSettings } from '@tinyagi/core';
+import { log } from '@tinyagi/core';
 
 /** Read, mutate, and persist settings.json atomically. */
 export function mutateSettings(fn: (settings: Settings) => void): Settings {

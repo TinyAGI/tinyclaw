@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# TinyClaw Remote Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
+# TinyAGI Remote Installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyagi/main/scripts/remote-install.sh | bash
 
 set -e
 
@@ -12,13 +12,13 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-GITHUB_REPO="TinyAGI/tinyclaw"
+GITHUB_REPO="TinyAGI/tinyagi"
 DEFAULT_BRANCH="main"
 INSTALL_DIR=""
 
 echo ""
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     TinyClaw Remote Installer         ║${NC}"
+echo -e "${BLUE}║     TinyAGI Remote Installer         ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -73,14 +73,14 @@ echo ""
 # Determine installation directory
 echo -e "${BLUE}[2/6] Choosing installation directory...${NC}"
 
-INSTALL_DIR="$HOME/.tinyclaw"
+INSTALL_DIR="$HOME/.tinyagi"
 INSTALL_TYPE="user"
 echo -e "Installing to: ${GREEN}$INSTALL_DIR${NC}"
 echo ""
 
 # Check if already installed
 if [ -d "$INSTALL_DIR" ]; then
-    echo -e "${YELLOW}TinyClaw is already installed at $INSTALL_DIR${NC}"
+    echo -e "${YELLOW}TinyAGI is already installed at $INSTALL_DIR${NC}"
     echo "Settings and user data will be preserved."
     echo ""
     # When piped from curl, stdin is not a terminal — auto-accept
@@ -103,7 +103,7 @@ echo -e "${BLUE}[3/6] Selecting installation method...${NC}"
 LATEST_RELEASE=$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
 
 if [ -n "$LATEST_RELEASE" ]; then
-    BUNDLE_URL="https://github.com/$GITHUB_REPO/releases/download/$LATEST_RELEASE/tinyclaw-bundle.tar.gz"
+    BUNDLE_URL="https://github.com/$GITHUB_REPO/releases/download/$LATEST_RELEASE/tinyagi-bundle.tar.gz"
 
     # Check if bundle exists
     if curl -fsSL -I "$BUNDLE_URL" >/dev/null 2>&1; then
@@ -120,7 +120,7 @@ fi
 echo ""
 
 # Download or clone
-echo -e "${BLUE}[4/6] Downloading TinyClaw...${NC}"
+echo -e "${BLUE}[4/6] Downloading TinyAGI...${NC}"
 
 if [ "$USE_BUNDLE" = true ]; then
     # Download and extract bundle
@@ -176,8 +176,8 @@ echo -e "${BLUE}[6/6] Installing CLI command...${NC}"
 cd "$INSTALL_DIR"
 
 # Make scripts executable
-chmod +x bin/tinyclaw
-chmod +x tinyclaw.sh
+chmod +x bin/tinyagi
+chmod +x tinyagi.sh
 chmod +x scripts/install.sh
 chmod +x scripts/uninstall.sh
 chmod +x lib/setup-wizard.sh
@@ -189,17 +189,17 @@ chmod +x lib/update.sh
 
 echo -e "${GREEN}✓ CLI command installed${NC}"
 
-# Ensure the tinyclaw symlink directory is in PATH
+# Ensure the tinyagi symlink directory is in PATH
 NEED_RESTART=false
 
-if ! command -v tinyclaw &> /dev/null; then
+if ! command -v tinyagi &> /dev/null; then
     # Find where the symlink was installed
     SYMLINK_DIR=""
-    if [ -L "$HOME/.local/bin/tinyclaw" ]; then
+    if [ -L "$HOME/.local/bin/tinyagi" ]; then
         SYMLINK_DIR="$HOME/.local/bin"
         PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
         GREP_PATTERN='.local/bin'
-    elif [ -L "/usr/local/bin/tinyclaw" ]; then
+    elif [ -L "/usr/local/bin/tinyagi" ]; then
         # /usr/local/bin should already be in PATH; nothing to do
         SYMLINK_DIR=""
     fi
@@ -222,7 +222,7 @@ if ! command -v tinyclaw &> /dev/null; then
         # Add to profile if not already present
         if [ -n "$SHELL_PROFILE" ] && ! grep -qF "$GREP_PATTERN" "$SHELL_PROFILE" 2>/dev/null; then
             echo "" >> "$SHELL_PROFILE"
-            echo "# Added by TinyClaw installer" >> "$SHELL_PROFILE"
+            echo "# Added by TinyAGI installer" >> "$SHELL_PROFILE"
             echo "$PATH_LINE" >> "$SHELL_PROFILE"
             echo -e "${GREEN}✓ Added $SYMLINK_DIR to PATH in ${SHELL_PROFILE/#$HOME/\~}${NC}"
         fi
@@ -233,27 +233,27 @@ fi
 
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║   TinyClaw Installed Successfully!    ║${NC}"
+echo -e "${GREEN}║   TinyAGI Installed Successfully!    ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "Installation directory: ${BLUE}$INSTALL_DIR${NC}"
 echo ""
 
 if [ "$NEED_RESTART" = true ]; then
-    echo -e "${YELLOW}Important: Restart your terminal (or run 'source ${SHELL_PROFILE/#$HOME/\~}') to use the 'tinyclaw' command.${NC}"
+    echo -e "${YELLOW}Important: Restart your terminal (or run 'source ${SHELL_PROFILE/#$HOME/\~}') to use the 'tinyagi' command.${NC}"
     echo ""
 fi
 
 echo "Next steps:"
 echo ""
-echo -e "  ${GREEN}1.${NC} Start TinyClaw:"
-echo -e "     ${BLUE}tinyclaw start${NC}"
+echo -e "  ${GREEN}1.${NC} Start TinyAGI:"
+echo -e "     ${BLUE}tinyagi start${NC}"
 echo ""
 echo -e "  ${GREEN}2.${NC} Check status:"
-echo -e "     ${BLUE}tinyclaw status${NC}"
+echo -e "     ${BLUE}tinyagi status${NC}"
 echo ""
 echo -e "  ${GREEN}3.${NC} View all commands:"
-echo -e "     ${BLUE}tinyclaw --help${NC}"
+echo -e "     ${BLUE}tinyagi --help${NC}"
 echo ""
 echo "Documentation: https://github.com/$GITHUB_REPO"
 echo ""

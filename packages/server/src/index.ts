@@ -1,7 +1,7 @@
 /**
  * API Server — HTTP endpoints for Mission Control and external integrations.
  *
- * Runs on a configurable port (env TINYCLAW_API_PORT, default 3777) and
+ * Runs on a configurable port (env TINYAGI_API_PORT, default 3777) and
  * provides REST + SSE access to agents, teams, settings, queue status,
  * events, logs, and chat histories.
  */
@@ -11,8 +11,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
 import { RESPONSE_ALREADY_SENT } from '@hono/node-server/utils/response';
-import { Conversation } from '@tinyclaw/core';
-import { log } from '@tinyclaw/core';
+import { Conversation } from '@tinyagi/core';
+import { log } from '@tinyagi/core';
 import { addSSEClient, removeSSEClient } from './sse';
 
 import messagesRoutes from './routes/messages';
@@ -25,7 +25,7 @@ import logsRoutes from './routes/logs';
 import chatsRoutes from './routes/chats';
 import chatroomRoutes from './routes/chatroom';
 
-const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
+const API_PORT = parseInt(process.env.TINYAGI_API_PORT || '3777', 10);
 
 /**
  * Create and start the API server.

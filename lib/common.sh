@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Common utilities and configuration for TinyClaw
-# Sourced by main tinyclaw.sh script
+# Common utilities and configuration for TinyAGI
+# Sourced by main tinyagi.sh script
 # Compatible with bash 3.2+ (no associative arrays)
 
 # Colors
@@ -114,7 +114,7 @@ load_settings() {
     WORKSPACE_PATH=$(jq -r '.workspace.path // empty' "$SETTINGS_FILE" 2>/dev/null)
     if [ -z "$WORKSPACE_PATH" ]; then
         # Fallback for old configs without workspace
-        WORKSPACE_PATH="$HOME/tinyclaw-workspace"
+        WORKSPACE_PATH="$HOME/tinyagi-workspace"
     fi
 
     # Read enabled channels array

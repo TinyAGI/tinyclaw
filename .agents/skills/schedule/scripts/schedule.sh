@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # schedule.sh — Create, list, and delete scheduled cron jobs that send messages
-#               to the tinyclaw incoming queue with task context and target agent.
+#               to the tinyagi incoming queue with task context and target agent.
 #
 # Usage:
 #   schedule.sh create  --cron "EXPR" --agent AGENT_ID --message "MSG" [--channel CH] [--sender S] [--label LABEL]
@@ -8,7 +8,7 @@
 #   schedule.sh delete  --label LABEL
 #   schedule.sh delete  --all
 #
-# Each cron entry is tagged with a comment: # tinyclaw-schedule:<label>
+# Each cron entry is tagged with a comment: # tinyagi-schedule:<label>
 # so we can list/delete them reliably.
 
 set -euo pipefail
@@ -23,21 +23,21 @@ case "$(uname -s)" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${TINYCLAW_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+PROJECT_ROOT="${TINYAGI_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 
-# Resolve TINYCLAW_HOME (same logic as the TypeScript config)
-if [ -z "$TINYCLAW_HOME" ]; then
-    if [ -f "$PROJECT_ROOT/.tinyclaw/settings.json" ]; then
-        TINYCLAW_HOME="$PROJECT_ROOT/.tinyclaw"
+# Resolve TINYAGI_HOME (same logic as the TypeScript config)
+if [ -z "$TINYAGI_HOME" ]; then
+    if [ -f "$PROJECT_ROOT/.tinyagi/settings.json" ]; then
+        TINYAGI_HOME="$PROJECT_ROOT/.tinyagi"
     else
-        TINYCLAW_HOME="$HOME/.tinyclaw"
+        TINYAGI_HOME="$HOME/.tinyagi"
     fi
 fi
 
-API_PORT="${TINYCLAW_API_PORT:-3777}"
+API_PORT="${TINYAGI_API_PORT:-3777}"
 API_BASE="http://localhost:${API_PORT}"
 
-TAG_PREFIX="tinyclaw-schedule"
+TAG_PREFIX="tinyagi-schedule"
 
 # ────────────────────────────────────────────
 # Helpers
@@ -45,7 +45,7 @@ TAG_PREFIX="tinyclaw-schedule"
 
 usage() {
     cat <<'USAGE'
-schedule.sh — manage tinyclaw scheduled tasks (cron jobs)
+schedule.sh — manage tinyagi scheduled tasks (cron jobs)
 
 Commands:
   create   Create a new schedule
@@ -65,7 +65,7 @@ List flags:
 
 Delete flags:
   --label LABEL       Delete the schedule with this label
-  --all               Delete ALL tinyclaw schedules
+  --all               Delete ALL tinyagi schedules
 
 Examples:
   schedule.sh create --cron "0 9 * * *" --agent coder --message "Run daily tests"
@@ -94,7 +94,7 @@ build_cron_command() {
 
     # Write a per-schedule helper script that cron will call.
     # This avoids all crontab % escaping issues by keeping logic in a file.
-    local helper_dir="$TINYCLAW_HOME/schedule-jobs"
+    local helper_dir="$TINYAGI_HOME/schedule-jobs"
     mkdir -p "$helper_dir"
     local helper="$helper_dir/${label}.sh"
 
@@ -183,7 +183,7 @@ cmd_list() {
     entries=$(crontab -l 2>/dev/null | grep "# ${TAG_PREFIX}:" || true)
 
     if [[ -z "$entries" ]]; then
-        echo "No tinyclaw schedules found."
+        echo "No tinyagi schedules found."
         return
     fi
 
@@ -196,7 +196,7 @@ cmd_list() {
         fi
     fi
 
-    echo "Tinyclaw schedules:"
+    echo "Tinyagi schedules:"
     echo "---"
 
     echo "$entries" | while IFS= read -r line; do
@@ -230,7 +230,7 @@ cmd_delete() {
         esac
     done
 
-    local helper_dir="$TINYCLAW_HOME/schedule-jobs"
+    local helper_dir="$TINYAGI_HOME/schedule-jobs"
 
     if $delete_all; then
         local entries
@@ -239,7 +239,7 @@ cmd_delete() {
         [[ -n "$entries" ]] && count=$(echo "$entries" | wc -l | tr -d ' ')
 
         if [[ "$count" -eq 0 ]]; then
-            echo "No tinyclaw schedules to delete."
+            echo "No tinyagi schedules to delete."
             return
         fi
 
@@ -255,7 +255,7 @@ cmd_delete() {
         (crontab -l 2>/dev/null | grep -v "# ${TAG_PREFIX}:" || true) > "$tmpfile"
         crontab "$tmpfile"
         rm -f "$tmpfile"
-        echo "Deleted $count tinyclaw schedule(s)."
+        echo "Deleted $count tinyagi schedule(s)."
         return
     fi
 

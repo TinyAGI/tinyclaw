@@ -3,8 +3,8 @@ import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
 
 export const metadata: Metadata = {
-  title: "TinyClaw Mission Control",
-  description: "Multi-agent orchestration dashboard for TinyClaw",
+  title: "TinyAGI Mission Control",
+  description: "Multi-agent orchestration dashboard for TinyAGI",
 };
 
 export default function RootLayout({

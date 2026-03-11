@@ -37,7 +37,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Real-time overview of your TinyClaw system
+          Real-time overview of your TinyAGI system
         </p>
       </div>
 

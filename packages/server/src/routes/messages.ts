@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { log, emitEvent, enqueueMessage } from '@tinyclaw/core';
+import { log, emitEvent, enqueueMessage } from '@tinyagi/core';
 
 const app = new Hono();
 

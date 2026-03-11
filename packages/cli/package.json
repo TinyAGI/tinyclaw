@@ -1,5 +1,5 @@
 {
-  "name": "@tinyclaw/cli",
+  "name": "@tinyagi/cli",
   "version": "0.0.10",
   "main": "dist/shared.js",
   "scripts": {
@@ -7,6 +7,6 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.1.0",
-    "@tinyclaw/core": "*"
+    "@tinyagi/core": "*"
   }
 }

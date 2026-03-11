@@ -66,7 +66,7 @@ export default function SettingsPage() {
             Settings
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            View and edit TinyClaw configuration
+            View and edit TinyAGI configuration
           </p>
         </div>
         <div className="flex items-center gap-3">

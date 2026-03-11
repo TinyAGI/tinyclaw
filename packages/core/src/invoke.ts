@@ -84,7 +84,7 @@ export async function invokeAgent(
     let provider = rawProvider;
     let customProvider: CustomProvider | undefined;
     let envOverrides: Record<string, string> = {
-        TINYCLAW_AGENT_ID: agentId,
+        TINYAGI_AGENT_ID: agentId,
     };
 
     if (rawProvider.startsWith('custom:')) {

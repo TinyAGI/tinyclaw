@@ -6,7 +6,7 @@ import {
     log, emitEvent,
     collectFiles, findTeamForAgent,
     enqueueMessage, streamResponse,
-} from '@tinyclaw/core';
+} from '@tinyagi/core';
 import { convertTagsToReadable, extractTeammateMentions, extractChatRoomMessages } from './routing';
 
 // Active conversations — tracks in-flight team message passing

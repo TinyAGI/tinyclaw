@@ -23,7 +23,7 @@ export function copyDirSync(src: string, dest: string): void {
 }
 
 /**
- * Ensure agent directory exists with template files copied from TINYCLAW_HOME.
+ * Ensure agent directory exists with template files copied from TINYAGI_HOME.
  * Creates directory if it doesn't exist and copies .claude/, heartbeat.md, and AGENTS.md.
  */
 export function ensureAgentDirectory(agentDir: string): void {
@@ -73,12 +73,12 @@ export function ensureAgentDirectory(agentDir: string): void {
         copyDirSync(targetAgentsSkills, targetClaudeSkills);
     }
 
-    // Create .tinyclaw directory and copy SOUL.md
-    const targetTinyclaw = path.join(agentDir, '.tinyclaw');
-    fs.mkdirSync(targetTinyclaw, { recursive: true });
+    // Create .tinyagi directory and copy SOUL.md
+    const targetTinyagi = path.join(agentDir, '.tinyagi');
+    fs.mkdirSync(targetTinyagi, { recursive: true });
     const sourceSoul = path.join(SCRIPT_DIR, 'SOUL.md');
     if (fs.existsSync(sourceSoul)) {
-        fs.copyFileSync(sourceSoul, path.join(targetTinyclaw, 'SOUL.md'));
+        fs.copyFileSync(sourceSoul, path.join(targetTinyagi, 'SOUL.md'));
     }
 }
 

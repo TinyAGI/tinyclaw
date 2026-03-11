@@ -1,11 +1,11 @@
-# Tinyclaw Queue Message Format
+# Tinyagi Queue Message Format
 
-Scheduled tasks deliver messages by POSTing to the TinyClaw API server (`POST /api/message`).
+Scheduled tasks deliver messages by POSTing to the TinyAGI API server (`POST /api/message`).
 
 ## API endpoint
 
 ```
-POST http://localhost:{TINYCLAW_API_PORT}/api/message
+POST http://localhost:{TINYAGI_API_PORT}/api/message
 Content-Type: application/json
 ```
 
@@ -15,7 +15,7 @@ Content-Type: application/json
 {
   "channel": "schedule",
   "sender": "Scheduler",
-  "senderId": "tinyclaw-schedule:<label>",
+  "senderId": "tinyagi-schedule:<label>",
   "message": "@<agent_id> <task context>",
   "messageId": "<label>_<unix_ts>_<pid>"
 }
@@ -27,7 +27,7 @@ Content-Type: application/json
 |-------------|--------|-------------|
 | `channel`   | string | Origin channel. Scheduled tasks use `"schedule"` by default. |
 | `sender`    | string | Display name. Default `"Scheduler"`. |
-| `senderId`  | string | Unique sender ID. Format: `tinyclaw-schedule:<label>`. |
+| `senderId`  | string | Unique sender ID. Format: `tinyagi-schedule:<label>`. |
 | `message`   | string | Must start with `@agent_id` for routing, followed by the task context. |
 | `messageId` | string | Unique message ID for deduplication and response matching. |
 

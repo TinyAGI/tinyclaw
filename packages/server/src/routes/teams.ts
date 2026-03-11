@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { TeamConfig } from '@tinyclaw/core';
-import { getSettings, getTeams } from '@tinyclaw/core';
-import { log } from '@tinyclaw/core';
+import { TeamConfig } from '@tinyagi/core';
+import { getSettings, getTeams } from '@tinyagi/core';
+import { log } from '@tinyagi/core';
 import { mutateSettings } from './settings';
 
 const app = new Hono();

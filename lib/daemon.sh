@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Daemon runtime for TinyClaw
+# Daemon runtime for TinyAGI
 # Lifecycle (start/stop/restart/status), update checks, agent skills sync, log viewing
 
 # Start daemon
@@ -9,7 +9,7 @@ start_daemon() {
         return 1
     fi
 
-    log "Starting TinyClaw daemon..."
+    log "Starting TinyAGI daemon..."
 
     # Check if Node.js dependencies are installed
     if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
@@ -61,7 +61,7 @@ start_daemon() {
         if [ $load_rc -ne 0 ]; then
             echo -e "${RED}Could not repair settings.json${NC}"
             echo "  Fix manually: $SETTINGS_FILE"
-            echo "  Or reconfigure: tinyclaw setup"
+            echo "  Or reconfigure: tinyagi setup"
             return 1
         fi
     elif [ $load_rc -ne 0 ]; then
@@ -76,7 +76,7 @@ start_daemon() {
     fi
 
     if [ ${#ACTIVE_CHANNELS[@]} -eq 0 ]; then
-        echo -e "${RED}No channels configured. Run 'tinyclaw setup' to reconfigure${NC}"
+        echo -e "${RED}No channels configured. Run 'tinyagi setup' to reconfigure${NC}"
         return 1
     fi
 
@@ -89,7 +89,7 @@ start_daemon() {
         token_key="$(channel_token_key "$ch")"
         if [ -n "$token_key" ] && [ -z "$(get_channel_token "$ch")" ]; then
             echo -e "${RED}$(channel_display "$ch") is configured but bot token is missing${NC}"
-            echo "Run 'tinyclaw setup' to reconfigure"
+            echo "Run 'tinyagi setup' to reconfigure"
             return 1
         fi
     done
@@ -126,7 +126,7 @@ start_daemon() {
     # Total panes = N channels + 2 (queue, heartbeat)
     local total_panes=$(( ${#ACTIVE_CHANNELS[@]} + 2 ))
 
-    tmux new-session -d -s "$TMUX_SESSION" -n "tinyclaw" -c "$SCRIPT_DIR"
+    tmux new-session -d -s "$TMUX_SESSION" -n "tinyagi" -c "$SCRIPT_DIR"
 
     # Detect tmux base indices (user may have base-index or pane-base-index set)
     local win_base
@@ -142,7 +142,7 @@ start_daemon() {
 
     # Wait for pane shells to finish initializing (.zshrc, conda init, nvm, etc.)
     # Without this delay, commands sent via send-keys run in a half-initialized
-    # shell and exit silently. See: https://github.com/TinyAGI/tinyclaw/issues/156
+    # shell and exit silently. See: https://github.com/TinyAGI/tinyagi/issues/156
     sleep 2
 
     # Assign channel panes
@@ -165,7 +165,7 @@ start_daemon() {
     tmux select-pane -t "$TMUX_SESSION:${win_base}.$pane_idx" -T "Heartbeat"
 
     echo ""
-    echo -e "${GREEN}✓ TinyClaw started${NC}"
+    echo -e "${GREEN}✓ TinyAGI started${NC}"
     echo ""
 
     # WhatsApp QR code flow — only when WhatsApp is being started
@@ -173,8 +173,8 @@ start_daemon() {
         echo -e "${YELLOW}Starting WhatsApp client...${NC}"
         echo ""
 
-        QR_FILE="$TINYCLAW_HOME/channels/whatsapp_qr.txt"
-        READY_FILE="$TINYCLAW_HOME/channels/whatsapp_ready"
+        QR_FILE="$TINYAGI_HOME/channels/whatsapp_qr.txt"
+        READY_FILE="$TINYAGI_HOME/channels/whatsapp_ready"
         QR_DISPLAYED=false
 
         for i in {1..60}; do
@@ -220,14 +220,14 @@ start_daemon() {
             echo ""
             echo -e "${RED}WhatsApp didn't connect within 60 seconds${NC}"
             echo ""
-            echo -e "${YELLOW}Try restarting TinyClaw:${NC}"
-            echo -e "  ${GREEN}tinyclaw restart${NC}"
+            echo -e "${YELLOW}Try restarting TinyAGI:${NC}"
+            echo -e "  ${GREEN}tinyagi restart${NC}"
             echo ""
             echo "Or check WhatsApp client status:"
             echo -e "  ${GREEN}tmux attach -t $TMUX_SESSION${NC}"
             echo ""
             echo "Or check logs:"
-            echo -e "  ${GREEN}tinyclaw logs whatsapp${NC}"
+            echo -e "  ${GREEN}tinyagi logs whatsapp${NC}"
             echo ""
         fi
     fi
@@ -238,8 +238,8 @@ start_daemon() {
 
     echo ""
     echo -e "${GREEN}Commands:${NC}"
-    echo "  Status:  tinyclaw status"
-    echo "  Logs:    tinyclaw logs [$channel_names|queue]"
+    echo "  Status:  tinyagi status"
+    echo "  Logs:    tinyagi logs [$channel_names|queue]"
     echo "  Attach:  tmux attach -t $TMUX_SESSION"
     echo ""
 
@@ -250,7 +250,7 @@ start_daemon() {
 
 # Stop daemon
 stop_daemon() {
-    log "Stopping TinyClaw..."
+    log "Stopping TinyAGI..."
 
     if session_exists; then
         tmux kill-session -t "$TMUX_SESSION"
@@ -263,11 +263,11 @@ stop_daemon() {
     pkill -f "packages/main/dist/index.js" || true
     pkill -f "heartbeat-cron.sh" || true
 
-    echo -e "${GREEN}✓ TinyClaw stopped${NC}"
+    echo -e "${GREEN}✓ TinyAGI stopped${NC}"
     log "Daemon stopped"
 }
 
-# Restart daemon safely even when called from inside TinyClaw's tmux session
+# Restart daemon safely even when called from inside TinyAGI's tmux session
 restart_daemon() {
     if session_exists && [ -n "${TMUX:-}" ]; then
         local current_session
@@ -276,7 +276,7 @@ restart_daemon() {
             local bash_bin
             bash_bin=$(command -v bash)
             log "Restart requested from inside tmux session; scheduling detached restart..."
-            nohup "$bash_bin" "$SCRIPT_DIR/tinyclaw.sh" __delayed_start >/dev/null 2>&1 &
+            nohup "$bash_bin" "$SCRIPT_DIR/tinyagi.sh" __delayed_start >/dev/null 2>&1 &
             stop_daemon
             return
         fi
@@ -289,7 +289,7 @@ restart_daemon() {
 
 # Status
 status_daemon() {
-    echo -e "${BLUE}TinyClaw Status${NC}"
+    echo -e "${BLUE}TinyAGI Status${NC}"
     echo "==============="
     echo ""
 
@@ -298,13 +298,13 @@ status_daemon() {
         echo "  Attach: tmux attach -t $TMUX_SESSION"
     else
         echo -e "Tmux Session: ${RED}Not Running${NC}"
-        echo "  Start: tinyclaw start"
+        echo "  Start: tinyagi start"
     fi
 
     echo ""
 
     # Channel process status
-    local ready_file="$TINYCLAW_HOME/channels/whatsapp_ready"
+    local ready_file="$TINYAGI_HOME/channels/whatsapp_ready"
 
     for ch in "${ALL_CHANNELS[@]}"; do
         local display

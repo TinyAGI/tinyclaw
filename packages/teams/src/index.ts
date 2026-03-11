@@ -1,5 +1,5 @@
 /**
- * @tinyclaw/teams — Team conversation orchestration.
+ * @tinyagi/teams — Team conversation orchestration.
  *
  * Handles agent-to-agent communication, teammate mentions,
  * chat rooms, and conversation completion.
