@@ -4,8 +4,8 @@ import {
     Conversation, MessageJobData, AgentConfig, TeamConfig,
     CHATS_DIR, getSettings, getAgents,
     log, emitEvent,
-    handleLongResponse, collectFiles, findTeamForAgent,
-    enqueueResponse, enqueueMessage,
+    collectFiles, findTeamForAgent,
+    enqueueMessage, streamResponse,
 } from '@tinyclaw/core';
 import { convertTagsToReadable, extractTeammateMentions, extractChatRoomMessages } from './routing';
 
@@ -126,16 +126,6 @@ export async function completeConversation(conv: Conversation): Promise<void> {
         agents: conv.responses.map(s => s.agentId),
     });
 
-    // Aggregate responses
-    let finalResponse: string;
-    if (conv.responses.length === 1) {
-        finalResponse = conv.responses[0].response;
-    } else {
-        finalResponse = conv.responses
-            .map(step => `@${step.agentId}: ${step.response}`)
-            .join('\n\n------\n\n');
-    }
-
     // Save chat history
     try {
         const teamChatsDir = path.join(CHATS_DIR, conv.teamContext.teamId);
@@ -172,36 +162,6 @@ export async function completeConversation(conv: Conversation): Promise<void> {
     } catch (e) {
         log('ERROR', `Failed to save chat history: ${(e as Error).message}`);
     }
-
-    // Detect file references
-    finalResponse = finalResponse.trim();
-    const outboundFilesSet = new Set<string>(conv.files);
-    collectFiles(finalResponse, outboundFilesSet);
-    const outboundFiles = Array.from(outboundFilesSet);
-
-    // Remove [send_file: ...] tags
-    if (outboundFiles.length > 0) {
-        finalResponse = finalResponse.replace(/\[send_file:\s*[^\]]+\]/g, '').trim();
-    }
-
-    // Convert [@agent: ...] tags to readable format instead of stripping them
-    finalResponse = convertTagsToReadable(finalResponse);
-
-    // Handle long responses — send as file attachment
-    const { message: responseMessage, files: allFiles } = handleLongResponse(finalResponse, outboundFiles);
-
-    // Write to outgoing queue
-    enqueueResponse({
-        channel: conv.channel,
-        sender: conv.sender,
-        message: responseMessage,
-        originalMessage: conv.originalMessage,
-        messageId: conv.messageId,
-        files: allFiles.length > 0 ? allFiles : undefined,
-    });
-
-    log('INFO', `Response ready [${conv.channel}] ${conv.sender} (${finalResponse.length} chars)`);
-    emitEvent('response_ready', { channel: conv.channel, sender: conv.sender, agentId: conv.teamContext.team.leader_agent, responseLength: finalResponse.length, responseText: finalResponse, messageId: conv.messageId });
 
     // Clean up
     conversations.delete(conv.id);
@@ -299,6 +259,13 @@ export async function handleTeamResponse(params: {
     conv.totalMessages++;
     conv.pendingAgents.delete(agentId);
     collectFiles(response, conv.files);
+
+    // Stream this agent's response to the user immediately
+    await streamResponse(response, {
+        channel, sender, senderId: data.senderId ?? undefined,
+        messageId, originalMessage: data.message, agentId,
+        transform: convertTagsToReadable,
+    });
 
     // Check for teammate mentions — forward to teammates if under message limit
     const teammateMentions = extractTeammateMentions(response, agentId, conv.teamContext.teamId, teams, agents);

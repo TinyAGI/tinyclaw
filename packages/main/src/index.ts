@@ -14,10 +14,10 @@ import {
     log, emitEvent,
     parseAgentRouting, getAgentResetFlag,
     invokeAgent,
-    loadPlugins, runIncomingHooks, runOutgoingHooks,
-    handleLongResponse, collectFiles,
+    loadPlugins, runIncomingHooks,
+    streamResponse,
     initQueueDb, getPendingAgents, claimAllPendingMessages,
-    completeMessage, failMessage, enqueueResponse,
+    completeMessage, failMessage,
     recoverStaleMessages, pruneAckedResponses, pruneCompletedMessages,
     closeQueueDb, queueEvents,
 } from '@tinyclaw/core';
@@ -130,34 +130,14 @@ async function sendDirectResponse(
     response: string,
     ctx: { channel: string; sender: string; senderId?: string | null; messageId: string; originalMessage: string; agentId: string }
 ): Promise<void> {
-    let finalResponse = response.trim();
-
-    const outboundFilesSet = new Set<string>();
-    collectFiles(finalResponse, outboundFilesSet);
-    const outboundFiles = Array.from(outboundFilesSet);
-    if (outboundFiles.length > 0) {
-        finalResponse = finalResponse.replace(/\[send_file:\s*[^\]]+\]/g, '').trim();
-    }
-
-    const { text: hookedResponse, metadata } = await runOutgoingHooks(finalResponse, {
-        channel: ctx.channel, sender: ctx.sender, messageId: ctx.messageId, originalMessage: ctx.originalMessage,
-    });
-    const { message: responseMessage, files: allFiles } = handleLongResponse(hookedResponse, outboundFiles);
-
-    enqueueResponse({
+    await streamResponse(response, {
         channel: ctx.channel,
         sender: ctx.sender,
         senderId: ctx.senderId ?? undefined,
-        message: responseMessage,
-        originalMessage: ctx.originalMessage,
         messageId: ctx.messageId,
-        agent: ctx.agentId,
-        files: allFiles.length > 0 ? allFiles : undefined,
-        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+        originalMessage: ctx.originalMessage,
+        agentId: ctx.agentId,
     });
-
-    log('INFO', `Response ready [${ctx.channel}] ${ctx.sender} via agent:${ctx.agentId} (${finalResponse.length} chars)`);
-    emitEvent('response_ready', { channel: ctx.channel, sender: ctx.sender, agentId: ctx.agentId, responseLength: finalResponse.length, responseText: finalResponse, messageId: ctx.messageId });
 }
 
 // ── Queue Processing ────────────────────────────────────────────────────────
