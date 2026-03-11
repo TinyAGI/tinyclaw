@@ -110,22 +110,13 @@ async function processMessage(dbMsg: any): Promise<void> {
     emitEvent('chain_step_done', { agentId, agentName: agent.name, responseLength: response.length, responseText: response });
 
     // ── Response routing ────────────────────────────────────────────────────
+    // Always try team orchestration first — handles team-routed, internal,
+    // AND direct messages to agents that belong to a team.
 
-    if (!isTeamRouted && !isInternal) {
-        // Direct response to user
-        await sendDirectResponse(response, {
-            channel, sender, senderId: data.senderId,
-            messageId, originalMessage: rawMessage, agentId,
-        });
-        return;
-    }
-
-    // Team conversation — delegate to @tinyclaw/teams
     const handled = await handleTeamResponse({
         agentId, response, isTeamRouted, data, agents, teams,
     });
     if (!handled) {
-        // No team context found — fall back to direct
         await sendDirectResponse(response, {
             channel, sender, senderId: data.senderId,
             messageId, originalMessage: rawMessage, agentId,

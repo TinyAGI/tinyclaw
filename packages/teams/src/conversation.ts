@@ -251,6 +251,9 @@ export async function handleTeamResponse(params: {
 
     // Extract and post [#team_id: message] chat room broadcasts
     const chatRoomMsgs = extractChatRoomMessages(response, agentId, teams);
+    if (chatRoomMsgs.length > 0) {
+        log('INFO', `Chat room broadcasts from @${agentId}: ${chatRoomMsgs.map(m => `#${m.teamId}`).join(', ')}`);
+    }
     for (const crMsg of chatRoomMsgs) {
         postToChatRoom(crMsg.teamId, agentId, crMsg.message, teams[crMsg.teamId].agents, {
             channel, sender, senderId: data.senderId, messageId,
@@ -259,8 +262,10 @@ export async function handleTeamResponse(params: {
 
     const teamContext = resolveTeamContext(agentId, isTeamRouted, data, teams);
     if (!teamContext) {
+        log('DEBUG', `No team context for agent ${agentId} — falling back to direct response`);
         return false;
     }
+    log('INFO', `Team context resolved: ${teamContext.teamId} (${teamContext.team.name}) for agent ${agentId} [isTeamRouted=${isTeamRouted}, isInternal=${isInternal}]`);
 
     // Get or create conversation
     let conv: Conversation;
@@ -297,6 +302,10 @@ export async function handleTeamResponse(params: {
 
     // Check for teammate mentions — forward to teammates if under message limit
     const teammateMentions = extractTeammateMentions(response, agentId, conv.teamContext.teamId, teams, agents);
+    log('INFO', `Conversation ${conv.id}: agent=${agentId}, mentions=${teammateMentions.length}, totalMessages=${conv.totalMessages}, pending=${conv.pending}`);
+    if (teammateMentions.length > 0) {
+        log('INFO', `Teammate mentions from @${agentId}: ${teammateMentions.map(m => `@${m.teammateId}`).join(', ')}`);
+    }
 
     if (teammateMentions.length > 0 && conv.totalMessages < conv.maxMessages) {
         incrementPending(conv, teammateMentions.length);
