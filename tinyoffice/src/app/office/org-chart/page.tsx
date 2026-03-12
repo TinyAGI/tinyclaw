@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useEffect } from "react";
 import {
   ReactFlow,
   Background,
@@ -142,7 +142,13 @@ function buildOrgChart(
     headerType: string;
     headerLabel: string;
     agentCount: number;
-    members: { id: string; agentId: string; isLeader: boolean; label: string; model: string }[];
+    members: {
+      id: string;
+      agentId: string;
+      isLeader: boolean;
+      label: string;
+      model: string;
+    }[];
     teamId?: string;
   }[] = [];
 
@@ -150,7 +156,7 @@ function buildOrgChart(
     const members = team.agents
       .filter((aid) => agents[aid])
       .map((aid) => ({
-        id: `agent-${aid}`,
+        id: `team-${teamId}-agent-${aid}`,
         agentId: aid,
         isLeader: aid === team.leader_agent,
         label: agents[aid].name,
@@ -176,7 +182,7 @@ function buildOrgChart(
       headerLabel: "Unassigned",
       agentCount: unassignedAgentIds.length,
       members: unassignedAgentIds.map((aid) => ({
-        id: `agent-${aid}`,
+        id: `unassigned-agent-${aid}`,
         agentId: aid,
         isLeader: false,
         label: agents[aid].name,
@@ -266,6 +272,14 @@ function OrgChartInner() {
     // Let ReactFlow handle internal changes
   }, []);
 
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    const frame = requestAnimationFrame(() => {
+      fitView({ padding: 0.3, duration: 300 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [nodes, edges, fitView]);
+
   if (!agents) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
@@ -290,8 +304,6 @@ function OrgChartInner() {
       nodeTypes={nodeTypes}
       onNodeClick={onNodeClick}
       onNodesChange={onNodesChange}
-      fitView
-      fitViewOptions={{ padding: 0.3 }}
       minZoom={0.3}
       maxZoom={1.5}
       proOptions={{ hideAttribution: true }}
