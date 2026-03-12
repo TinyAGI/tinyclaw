@@ -283,10 +283,9 @@ export default function OfficePage() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-6 py-3">
+      {/* Status bar */}
+      <div className="flex items-center justify-between px-6 py-2 border-b">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold">Office</span>
           <Badge variant="outline" className="text-xs">
             {agentEntries.length} agent{agentEntries.length !== 1 ? "s" : ""}
           </Badge>
