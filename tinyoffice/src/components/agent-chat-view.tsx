@@ -67,13 +67,15 @@ export function AgentChatView({
     if (!polledMessages) return;
     const normalized = polledMessages.map((row) => normalizeMessage(row, agentId));
     setMessages((prev) => {
-      const pending = prev.filter(
-        (msg) => msg.id.startsWith("local-") && !msg.message_id
+      const presentIds = new Set(
+        normalized.map((msg) => msg.message_id).filter(Boolean)
       );
       const seen = new Set(normalized.map((msg) => `${msg.role}:${msg.content}`));
       const combined = [...normalized];
-      for (const msg of pending) {
-        if (seen.has(`${msg.role}:${msg.content}`)) continue;
+      for (const msg of prev) {
+        const key = `${msg.role}:${msg.content}`;
+        const hasId = msg.message_id && presentIds.has(msg.message_id);
+        if (hasId || seen.has(key)) continue;
         combined.push(msg);
       }
       combined.sort((a, b) => {
