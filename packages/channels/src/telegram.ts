@@ -259,11 +259,13 @@ function pairingMessage(code: string): string {
 }
 
 // Initialize Telegram bot (polling mode)
-// Use a 30s client-side request timeout so stale long-poll connections
-// (e.g. after laptop sleep/wake) don't hang indefinitely.
+// Set explicit server-side long-poll timeout so Telegram returns within 25s.
+// This keeps the polling loop bounded; the watchdog handles stale connections.
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, {
-    polling: true,
-    request: { timeout: 30000 } as any,
+    polling: {
+        autoStart: true,
+        params: { timeout: 25 },
+    },
 });
 
 // Bot ready
@@ -657,12 +659,11 @@ bot.on('polling_error', (error: Error) => {
 bot.on('message', () => { lastPollingActivity = Date.now(); });
 
 // Watchdog: if no polling activity for 5 minutes, verify connectivity before restarting.
-// After 30 minutes of silence, force-restart polling even if getMe() works — a stale
+// After 10 minutes of silence, force-restart polling even if getMe() works — a stale
 // long-poll connection (e.g. after laptop sleep/wake) won't be detected by getMe()
-// since it uses a fresh connection. The request.timeout (30s) is the primary defense;
-// this is a backup safety net for edge cases it might miss.
+// since it uses a fresh connection that can't see the broken polling socket.
 const WATCHDOG_CHECK_MS = 5 * 60 * 1000;
-const WATCHDOG_FORCE_RESTART_MS = 30 * 60 * 1000;
+const WATCHDOG_FORCE_RESTART_MS = 10 * 60 * 1000;
 setInterval(async () => {
     const silentMs = Date.now() - lastPollingActivity;
     if (silentMs > WATCHDOG_CHECK_MS) {
