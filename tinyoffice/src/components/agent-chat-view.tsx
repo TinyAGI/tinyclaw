@@ -71,6 +71,16 @@ export function AgentChatView({
       const next = [...prev];
       for (const item of items) {
         const fp = fingerprint(item);
+        if (item.message_id) {
+          const idx = next.findIndex(
+            (m) => m.role === item.role && m.message_id === item.message_id
+          );
+          if (idx !== -1) {
+            next[idx] = { ...next[idx], ...item, id: next[idx].id };
+            seenRef.current.add(fp);
+            continue;
+          }
+        }
         if (seenRef.current.has(fp)) continue;
         seenRef.current.add(fp);
         next.push(item);
