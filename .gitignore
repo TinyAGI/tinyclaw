@@ -8,6 +8,7 @@ dist/
 
 # TinyClaw runtime files
 .tinyclaw
+.next
 
 .wwebjs_cache
 *.log
