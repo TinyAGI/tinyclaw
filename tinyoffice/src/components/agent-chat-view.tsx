@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { timeAgo } from "@/lib/hooks";
+import { useState, useEffect, useCallback } from "react";
+import { usePolling, timeAgo } from "@/lib/hooks";
 import {
   getAgentMessages,
   sendMessage,
-  subscribeToEvents,
   type AgentMessage,
-  type EventData,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,10 +44,6 @@ function normalizeMessage(message: AgentMessage, agentId: string): AgentChatItem
   };
 }
 
-function fingerprint(item: AgentChatItem): string {
-  return `${item.role}:${item.message_id ?? ""}:${item.content}`;
-}
-
 export function AgentChatView({
   agentId,
   agentName,
@@ -60,85 +54,35 @@ export function AgentChatView({
   const [messages, setMessages] = useState<AgentChatItem[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [connected, setConnected] = useState(false);
   const feedEndRef = useRef<HTMLDivElement>(null);
-  const seenRef = useRef(new Set<string>());
-  const lastIdRef = useRef(0);
 
-  const addItems = useCallback((items: AgentChatItem[]) => {
-    if (items.length === 0) return;
+  const fetchMessages = useCallback(async () => {
+    return getAgentMessages(agentId, 200, 0);
+  }, [agentId]);
+
+  const { data: polledMessages, error: pollError } =
+    usePolling<AgentMessage[]>(fetchMessages, 2000, [agentId]);
+
+  useEffect(() => {
+    if (!polledMessages) return;
+    const normalized = polledMessages.map((row) => normalizeMessage(row, agentId));
     setMessages((prev) => {
-      const next = [...prev];
-      for (const item of items) {
-        const fp = fingerprint(item);
-        if (item.message_id) {
-          const idx = next.findIndex(
-            (m) => m.role === item.role && m.message_id === item.message_id
-          );
-          if (idx !== -1) {
-            next[idx] = { ...next[idx], ...item, id: next[idx].id };
-            seenRef.current.add(fp);
-            continue;
-          }
-        }
-        if (seenRef.current.has(fp)) continue;
-        seenRef.current.add(fp);
-        next.push(item);
+      const pending = prev.filter(
+        (msg) => msg.id.startsWith("local-") && !msg.message_id
+      );
+      const seen = new Set(normalized.map((msg) => `${msg.role}:${msg.content}`));
+      const combined = [...normalized];
+      for (const msg of pending) {
+        if (seen.has(`${msg.role}:${msg.content}`)) continue;
+        combined.push(msg);
       }
-      next.sort((a, b) => {
+      combined.sort((a, b) => {
         if (a.created_at !== b.created_at) return a.created_at - b.created_at;
         return a.id.localeCompare(b.id);
       });
-      return next.length > 300 ? next.slice(-300) : next;
+      return combined.length > 300 ? combined.slice(-300) : combined;
     });
-  }, []);
-
-  const fetchHistory = useCallback(async (sinceId: number) => {
-    const rows = await getAgentMessages(agentId, 200, sinceId);
-    if (!rows.length) return;
-    const maxId = rows.reduce((max, m) => Math.max(max, m.id), lastIdRef.current);
-    lastIdRef.current = maxId;
-    const normalized = rows.map((row) => normalizeMessage(row, agentId));
-    addItems(normalized);
-  }, [agentId, addItems]);
-
-  useEffect(() => {
-    let active = true;
-    fetchHistory(0).catch(() => null);
-    const id = setInterval(() => {
-      if (!active) return;
-      fetchHistory(lastIdRef.current).catch(() => null);
-    }, 3000);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
-  }, [fetchHistory]);
-
-  useEffect(() => {
-    const unsub = subscribeToEvents(
-      (event: EventData) => {
-        setConnected(true);
-        if (event.type !== "agent_message") return;
-        if (String((event as Record<string, unknown>).agentId || "") !== agentId) return;
-
-        const content = String((event as Record<string, unknown>).content ?? "");
-        const messageId = String((event as Record<string, unknown>).messageId ?? "");
-        const item: AgentChatItem = {
-          id: `evt-${messageId || Date.now()}`,
-          role: "assistant",
-          content,
-          created_at: event.timestamp || Date.now(),
-          sender: String((event as Record<string, unknown>).sender ?? ""),
-          message_id: messageId || undefined,
-        };
-        addItems([item]);
-      },
-      () => setConnected(false),
-      ["agent_message"]
-    );
-    return unsub;
-  }, [agentId, addItems]);
+  }, [polledMessages, agentId]);
 
   useEffect(() => {
     feedEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -150,7 +94,8 @@ export function AgentChatView({
     const outbound = input.trim();
     const pendingId = `local-${Date.now()}`;
     const createdAt = Date.now();
-    addItems([
+    setMessages((prev) => [
+      ...prev,
       {
         id: pendingId,
         role: "user",
@@ -166,8 +111,6 @@ export function AgentChatView({
         channel: "web",
       });
 
-      const fp = `user:${result.messageId}:${outbound}`;
-      seenRef.current.add(fp);
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === pendingId
@@ -200,9 +143,9 @@ export function AgentChatView({
           <Badge variant="outline" className="text-xs font-mono">@{agentId}</Badge>
         </div>
         <div className="flex items-center gap-2">
-          <div className={cn("h-1.5 w-1.5", connected ? "bg-primary animate-pulse-dot" : "bg-destructive")} />
+          <div className={cn("h-1.5 w-1.5", pollError ? "bg-destructive" : "bg-primary animate-pulse-dot")} />
           <span className="text-[10px] text-muted-foreground">
-            {connected ? "Live" : "Disconnected"}
+            {pollError ? "Disconnected" : "Polling"}
           </span>
         </div>
       </div>
