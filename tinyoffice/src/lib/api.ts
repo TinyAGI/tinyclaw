@@ -203,7 +203,7 @@ export async function postChatMessage(
   });
 }
 
-// ── Projects (localStorage) ─────────────────────────────────────────────
+// ── Projects ───────────────────────────────────────────────────────────
 
 export interface Project {
   id: string;
@@ -214,58 +214,28 @@ export interface Project {
   updatedAt: number;
 }
 
-const PROJECTS_KEY = "tinyclaw_projects";
-
-function readProjects(): Project[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function writeProjects(projects: Project[]): void {
-  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
-}
-
 export async function getProjects(): Promise<Project[]> {
-  return readProjects();
+  return apiFetch("/api/projects");
 }
 
 export async function createProject(
   data: Pick<Project, "name" | "description">
 ): Promise<{ ok: boolean; project: Project }> {
-  const projects = readProjects();
-  const project: Project = {
-    id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    name: data.name,
-    description: data.description,
-    status: "active",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-  projects.push(project);
-  writeProjects(projects);
-  return { ok: true, project };
+  return apiFetch("/api/projects", { method: "POST", body: JSON.stringify(data) });
 }
 
 export async function updateProject(
   id: string,
   data: Partial<Omit<Project, "id" | "createdAt">>
 ): Promise<{ ok: boolean; project: Project }> {
-  const projects = readProjects();
-  const idx = projects.findIndex((p) => p.id === id);
-  if (idx === -1) throw new Error("Project not found");
-  projects[idx] = { ...projects[idx], ...data, updatedAt: Date.now() };
-  writeProjects(projects);
-  return { ok: true, project: projects[idx] };
+  return apiFetch(`/api/projects/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function deleteProject(id: string): Promise<{ ok: boolean }> {
-  const projects = readProjects();
-  writeProjects(projects.filter((p) => p.id !== id));
-  return { ok: true };
+  return apiFetch(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 // ── SSE ───────────────────────────────────────────────────────────────────

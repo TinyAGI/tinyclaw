@@ -122,47 +122,56 @@ export default function ProjectsPage() {
         </Button>
       </div>
 
-      {/* Create / Edit form */}
+      {/* Create / Edit modal */}
       {(creating || editing) && (
-        <Card className="border-primary/50">
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              {creating ? <Plus className="h-4 w-4 text-primary" /> : <Pencil className="h-4 w-4 text-primary" />}
-              {creating ? "New Project" : "Edit Project"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Name</label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="e.g. Auth System Redesign"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Description</label>
-              <Textarea
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="What is this project about?"
-                rows={3}
-                className="text-sm resize-none"
-              />
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <div className="flex items-center gap-2">
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                {creating ? "Create" : "Save"}
-              </Button>
-              <Button variant="ghost" onClick={cancel} disabled={saving}>
-                <X className="h-4 w-4" />
-                Cancel
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <Card className="w-full max-w-lg border-border">
+            <CardContent className="p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">
+                    {creating ? "New Project" : "Edit Project"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {creating ? "Set up a new project" : "Update project details"}
+                  </p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={cancel}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Name</label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Auth System Redesign"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Description</label>
+                <Textarea
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="What is this project about?"
+                  rows={3}
+                  className="text-sm resize-none"
+                />
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <div className="flex items-center gap-2">
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  {creating ? "Create" : "Save"}
+                </Button>
+                <Button variant="ghost" onClick={cancel} disabled={saving}>
+                  <X className="h-4 w-4" />
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Active Projects */}
