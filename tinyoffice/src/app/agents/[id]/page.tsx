@@ -63,9 +63,6 @@ export default function AgentConfigPage({
   const { data: settings } = usePolling<Settings>(getSettings, 10000);
 
   const [activeTab, setActiveTab] = useState<TabId>("skills");
-  const [equippedSkills, setEquippedSkills] = useState<Set<string>>(
-    () => new Set(["tasks", "send-message", "agent-browser"])
-  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -118,21 +115,21 @@ export default function AgentConfigPage({
       .catch(() => setHeartbeatLoaded(true));
   }, [agent, agentId]);
 
+  // Sync heartbeat interval from settings unless the user has edited it
+  useEffect(() => {
+    if (!settings?.monitoring) return;
+    const interval = settings.monitoring.heartbeat_interval;
+    if (typeof interval === "number") {
+      setHeartbeatInterval(String(interval));
+    }
+  }, [settings]);
+
   // Convert workspace skills to SkillEntry format for constellation
   const constellationSkills: SkillEntry[] = workspaceSkills.map((s) => ({
     id: s.id,
     name: s.name,
     description: s.description,
   }));
-
-  const toggleSkill = useCallback((skillId: string) => {
-    setEquippedSkills((prev) => {
-      const next = new Set(prev);
-      if (next.has(skillId)) next.delete(skillId);
-      else next.add(skillId);
-      return next;
-    });
-  }, []);
 
   const handleSave = useCallback(async () => {
     if (!agent) return;
@@ -282,11 +279,6 @@ export default function AgentConfigPage({
             >
               <Icon className="h-3.5 w-3.5" />
               {tab.label}
-              {tab.id === "skills" && equippedSkills.size > 0 && (
-                <Badge className="bg-primary/20 text-primary text-[9px] px-1.5 py-0 ml-1">
-                  {equippedSkills.size}
-                </Badge>
-              )}
               {tab.id === "skills" && workspaceSkills.length > 0 && (
                 <span className="text-[9px] text-muted-foreground ml-1">
                   ({workspaceSkills.length})
@@ -302,8 +294,6 @@ export default function AgentConfigPage({
         {activeTab === "skills" && (
           <SkillsTab
             skills={constellationSkills}
-            equipped={equippedSkills}
-            onToggle={toggleSkill}
             agentName={agent.name}
             agentInitials={agent.name.slice(0, 2).toUpperCase()}
             onRefresh={refreshWorkspaceData}
@@ -347,15 +337,11 @@ export default function AgentConfigPage({
 
 function SkillsTab({
   skills,
-  equipped,
-  onToggle,
   agentName,
   agentInitials,
   onRefresh,
 }: {
   skills: SkillEntry[];
-  equipped: Set<string>;
-  onToggle: (id: string) => void;
   agentName: string;
   agentInitials: string;
   onRefresh: () => void;
@@ -393,21 +379,18 @@ function SkillsTab({
           <span className="text-[10px] text-muted-foreground">
             {filtered.length} skills
           </span>
-          <span className="text-[10px] text-muted-foreground">
-            {equipped.size} equipped
-          </span>
         </div>
       </div>
 
       {/* Constellation */}
       {filtered.length > 0 ? (
-        <SkillsConstellation
-          skills={filtered}
-          equipped={equipped}
-          onToggle={onToggle}
-          agentName={agentName}
-          agentInitials={agentInitials}
-        />
+        <div className="flex-1">
+          <SkillsConstellation
+            skills={filtered}
+            agentName={agentName}
+            agentInitials={agentInitials}
+          />
+        </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted-foreground">
@@ -420,31 +403,6 @@ function SkillsTab({
         </div>
       )}
 
-      {/* Equipped skills list */}
-      {equipped.size > 0 && (
-        <div className="px-6 py-3 border-t bg-card/50">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mr-1">
-              Equipped:
-            </span>
-            {Array.from(equipped).map((id) => {
-              const skill = skills.find((s) => s.id === id);
-              if (!skill) return null;
-              return (
-                <button
-                  key={id}
-                  onClick={() => onToggle(id)}
-                  className="flex items-center gap-1.5 px-2 py-0.5 bg-primary/10 border border-primary/30 text-primary text-xs hover:bg-primary/20 transition-colors"
-                >
-                  <span className="h-1.5 w-1.5 bg-primary" />
-                  {skill.name}
-                  <span className="text-primary/50 ml-0.5">&times;</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -463,7 +421,7 @@ function SystemPromptTab({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="p-6 space-y-6 max-w-3xl">
+    <div className="p-6 space-y-6 max-w-5xl">
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
@@ -504,7 +462,7 @@ function SystemPromptTab({
                 value={content}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder="# Agent Instructions&#10;&#10;Define this agent's behavior and instructions..."
-                rows={20}
+                rows={28}
                 className="text-sm font-mono"
               />
               <div className="flex items-center justify-between">
@@ -539,7 +497,7 @@ function MemoryTab({
   onRefresh: () => void;
 }) {
   return (
-    <div className="p-6 space-y-6 max-w-3xl">
+    <div className="p-6 space-y-6 max-w-5xl">
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
@@ -573,7 +531,7 @@ function MemoryTab({
               <label className="text-xs font-medium text-muted-foreground">
                 Memory Index
               </label>
-              <div className="p-4 bg-card border font-mono text-xs whitespace-pre-wrap leading-relaxed text-muted-foreground">
+              <div className="p-5 bg-card border font-mono text-xs whitespace-pre-wrap leading-relaxed text-muted-foreground">
                 {memoryIndex}
               </div>
             </div>
@@ -659,7 +617,7 @@ function HeartbeatTab({
   const intervalSec = parseInt(interval) || 300;
 
   return (
-    <div className="p-6 space-y-6 max-w-3xl">
+    <div className="p-6 space-y-6 max-w-5xl">
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
@@ -742,7 +700,7 @@ function HeartbeatTab({
                   <Textarea
                     value={content}
                     onChange={(e) => onChange(e.target.value)}
-                    rows={6}
+                    rows={10}
                     className="text-sm font-mono"
                     placeholder="Check your tasks, process pending work..."
                   />

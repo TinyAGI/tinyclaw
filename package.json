@@ -7,12 +7,13 @@
   ],
   "scripts": {
     "build": "tsc --build",
+    "dev": "concurrently -k -n core,teams,server,main \"npm run dev -w @tinyclaw/core\" \"npm run dev -w @tinyclaw/teams\" \"npm run dev -w @tinyclaw/server\" \"npm run dev -w @tinyclaw/main\"",
     "build:core": "npm run build -w @tinyclaw/core",
     "build:teams": "npm run build -w @tinyclaw/teams",
     "build:channels": "npm run build -w @tinyclaw/channels",
     "build:server": "npm run build -w @tinyclaw/server",
     "build:visualizer": "npm run build -w @tinyclaw/visualizer",
-    "start": "npm run start -w @tinyclaw/core",
+    "start": "npm run start -w @tinyclaw/main",
     "discord": "npm run discord -w @tinyclaw/channels",
     "telegram": "npm run telegram -w @tinyclaw/channels",
     "whatsapp": "npm run whatsapp -w @tinyclaw/channels",
@@ -22,6 +23,8 @@
   },
   "devDependencies": {
     "@types/node": "^25.2.2",
+    "concurrently": "^9.2.1",
+    "nodemon": "^3.1.9",
     "typescript": "^5.9.3"
   }
 }

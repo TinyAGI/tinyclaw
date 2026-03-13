@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { usePolling } from "@/lib/hooks";
 import {
@@ -15,6 +15,7 @@ import {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 5000);
   const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 5000);
 
@@ -115,14 +116,18 @@ export function Sidebar() {
                         {agent.provider}/{agent.model}
                       </p>
                     </div>
-                    <Link
-                      href={`/agents/${id}`}
+                    <button
+                      type="button"
                       className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-all p-0.5"
                       title="Configure skills"
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/agents/${id}`);
+                      }}
+                      aria-label="Configure skills"
                     >
                       <Swords className="h-3 w-3" />
-                    </Link>
+                    </button>
                   </Link>
                 );
               })
