@@ -1,69 +1,11 @@
-import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
 import { AgentConfig, CustomProvider } from '@tinyclaw/core';
-import { SCRIPT_DIR, getSettings, getAgents } from '@tinyclaw/core';
+import { getSettings, getAgents, ensureAgentDirectory } from '@tinyclaw/core';
 import { log } from '@tinyclaw/core';
 import { mutateSettings } from './settings';
 
 const app = new Hono();
-
-// ── Agent workspace provisioning ─────────────────────────────────────────────
-
-function copyIfExists(src: string, dest: string): boolean {
-    if (!fs.existsSync(src)) return false;
-    if (fs.statSync(src).isDirectory()) {
-        fs.cpSync(src, dest, { recursive: true });
-    } else {
-        fs.copyFileSync(src, dest);
-    }
-    return true;
-}
-
-function provisionAgentWorkspace(agentDir: string, _agentId: string): string[] {
-    const steps: string[] = [];
-    fs.mkdirSync(agentDir, { recursive: true });
-    steps.push(`Created directory ${agentDir}`);
-
-    const claudeSrc = path.join(SCRIPT_DIR, '.claude');
-    if (fs.existsSync(claudeSrc)) {
-        copyIfExists(claudeSrc, path.join(agentDir, '.claude'));
-        steps.push('Copied .claude/');
-    } else {
-        fs.mkdirSync(path.join(agentDir, '.claude'), { recursive: true });
-        steps.push('Created .claude/');
-    }
-
-    if (copyIfExists(path.join(SCRIPT_DIR, 'heartbeat.md'), path.join(agentDir, 'heartbeat.md'))) {
-        steps.push('Copied heartbeat.md');
-    }
-
-    // Create empty AGENTS.md for user customization (built-in instructions are passed via system prompt)
-    fs.writeFileSync(path.join(agentDir, 'AGENTS.md'), '');
-    steps.push('Created empty AGENTS.md');
-
-    // Copy default skills from SCRIPT_DIR
-    const skillsSrc = path.join(SCRIPT_DIR, '.agents', 'skills');
-    if (fs.existsSync(skillsSrc)) {
-        const targetAgentsSkills = path.join(agentDir, '.agents', 'skills');
-        fs.mkdirSync(targetAgentsSkills, { recursive: true });
-        fs.cpSync(skillsSrc, targetAgentsSkills, { recursive: true });
-        steps.push('Copied skills to .agents/skills/');
-
-        // Mirror into .claude/skills for Claude Code
-        const targetClaudeSkills = path.join(agentDir, '.claude', 'skills');
-        fs.mkdirSync(targetClaudeSkills, { recursive: true });
-        fs.cpSync(targetAgentsSkills, targetClaudeSkills, { recursive: true });
-        steps.push('Copied skills to .claude/skills/');
-    }
-
-    fs.mkdirSync(path.join(agentDir, '.tinyclaw'), { recursive: true });
-    if (copyIfExists(path.join(SCRIPT_DIR, 'SOUL.md'), path.join(agentDir, '.tinyclaw', 'SOUL.md'))) {
-        steps.push('Copied SOUL.md to .tinyclaw/');
-    }
-
-    return steps;
-}
 
 // GET /api/agents
 app.get('/api/agents', (c) => {
@@ -97,11 +39,10 @@ app.put('/api/agents/:id', async (c) => {
         };
     });
 
-    let provisionSteps: string[] = [];
     if (isNew) {
         try {
-            provisionSteps = provisionAgentWorkspace(workingDir, agentId);
-            log('INFO', `[API] Agent '${agentId}' provisioned: ${provisionSteps.join(', ')}`);
+            ensureAgentDirectory(workingDir);
+            log('INFO', `[API] Agent '${agentId}' provisioned at ${workingDir}`);
         } catch (err) {
             log('ERROR', `[API] Agent '${agentId}' provisioning failed: ${(err as Error).message}`);
         }
@@ -112,7 +53,6 @@ app.put('/api/agents/:id', async (c) => {
         ok: true,
         agent: settings.agents![agentId],
         provisioned: isNew,
-        provisionSteps,
     });
 });
 
