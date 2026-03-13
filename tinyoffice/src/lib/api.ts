@@ -21,6 +21,10 @@ export interface AgentConfig {
   working_directory: string;
   system_prompt?: string;
   prompt_file?: string;
+  heartbeat?: {
+    enabled?: boolean;
+    interval?: number;
+  };
 }
 
 export interface TeamConfig {
@@ -97,6 +101,24 @@ export async function getSettings(): Promise<Settings> {
   return apiFetch("/api/settings");
 }
 
+export async function searchRegistrySkills(
+  agentId: string,
+  query: string
+): Promise<{ results: { ref: string; installs?: string; url?: string }[]; raw?: string }> {
+  const q = encodeURIComponent(query);
+  return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/skills/registry?query=${q}`);
+}
+
+export async function installRegistrySkill(
+  agentId: string,
+  ref: string
+): Promise<{ ok: boolean; output: string }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/skills/install`, {
+    method: "POST",
+    body: JSON.stringify({ ref }),
+  });
+}
+
 export async function updateSettings(settings: Partial<Settings>): Promise<{ ok: boolean; settings: Settings }> {
   return apiFetch("/api/settings", { method: "PUT", body: JSON.stringify(settings) });
 }
@@ -164,6 +186,44 @@ export async function getAgentMessages(
     since_id: String(sinceId),
   });
   return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/messages?${params.toString()}`);
+}
+
+// ── Agent Workspace Data ──────────────────────────────────────────────────
+
+export interface WorkspaceSkill {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export async function getAgentSkills(agentId: string): Promise<WorkspaceSkill[]> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/skills`);
+}
+
+export async function getAgentSystemPrompt(agentId: string): Promise<{ content: string; path: string }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/system-prompt`);
+}
+
+export async function saveAgentSystemPrompt(agentId: string, content: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/system-prompt`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function getAgentMemory(agentId: string): Promise<{ index: string; files: { name: string; path: string }[]; memoryDir: string }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/memory`);
+}
+
+export async function getAgentHeartbeat(agentId: string): Promise<{ content: string; path: string }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/heartbeat`);
+}
+
+export async function saveAgentHeartbeat(agentId: string, content: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/heartbeat`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
+  });
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────────

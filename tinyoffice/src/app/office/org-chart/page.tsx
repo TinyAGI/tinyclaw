@@ -246,8 +246,8 @@ function buildOrgChart(
 // ── Main Component ────────────────────────────────────────────────────────
 
 function OrgChartInner() {
-  const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 5000);
-  const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 5000);
+  const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 0);
+  const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 0);
   const { fitView } = useReactFlow();
   const router = useRouter();
 

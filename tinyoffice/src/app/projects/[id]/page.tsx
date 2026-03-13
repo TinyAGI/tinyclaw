@@ -46,8 +46,8 @@ export default function ProjectDetailPage({
 }) {
   const { id: projectId } = use(params);
   const { data: allTasks, refresh: refreshTasks } = usePolling<Task[]>(getTasks, 3000);
-  const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 5000);
-  const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 5000);
+  const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 0);
+  const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 0);
   const { data: projects } = usePolling<Project[]>(getProjects, 5000);
 
   const project = projects?.find((p) => p.id === projectId);

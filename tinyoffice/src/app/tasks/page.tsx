@@ -41,8 +41,8 @@ const emptyForm: TaskForm = { title: "", description: "", assignee: "", assignee
 
 export default function TasksPage() {
   const { data: tasks, refresh } = usePolling<Task[]>(getTasks, 3000);
-  const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 5000);
-  const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 5000);
+  const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 0);
+  const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 0);
   const { data: projects } = usePolling<Project[]>(getProjects, 5000);
 
   const [creating, setCreating] = useState(false);

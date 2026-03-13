@@ -119,26 +119,19 @@ jobs:
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
 
-          # Debug: show what git sees for this tag
-          echo "=== Tag ref debug ==="
-          git rev-parse "refs/tags/$VERSION" 2>/dev/null || echo "rev-parse failed"
-          git cat-file -t "refs/tags/$VERSION" 2>/dev/null || echo "cat-file -t failed"
-          git for-each-ref --format='%(objecttype)' "refs/tags/$VERSION" || echo "for-each-ref failed"
+          if [ -f "releases/${VERSION}.md" ]; then
+            cp "releases/${VERSION}.md" release_notes.md
+            echo "Using release notes from releases/${VERSION}.md"
+          fi
 
-          # Try to get the annotated tag message via cat-file
+          # actions/checkout dereferences annotated tags to commits,
+          # so re-fetch the tag to get the actual tag object
+          git fetch origin "refs/tags/$VERSION:refs/tags/$VERSION" --force 2>/dev/null || true
+
           TAG_TYPE=$(git cat-file -t "refs/tags/$VERSION" 2>/dev/null)
-          echo "Tag type: $TAG_TYPE"
-
-          if [ "$TAG_TYPE" = "tag" ]; then
+          if [ "$TAG_TYPE" = "tag" ] && [ ! -s release_notes.md ]; then
+            # Extract full tag message (everything after the header block)
             git cat-file -p "refs/tags/$VERSION" | sed '1,/^$/d' > release_notes.md
-          elif [ "$TAG_TYPE" = "commit" ]; then
-            # Lightweight tag or dereferenced — try fetching the actual tag object
-            git fetch origin "refs/tags/$VERSION:refs/tags/$VERSION" --force 2>/dev/null
-            TAG_TYPE2=$(git cat-file -t "refs/tags/$VERSION" 2>/dev/null)
-            echo "Tag type after re-fetch: $TAG_TYPE2"
-            if [ "$TAG_TYPE2" = "tag" ]; then
-              git cat-file -p "refs/tags/$VERSION" | sed '1,/^$/d' > release_notes.md
-            fi
           fi
 
           if [ ! -s release_notes.md ]; then

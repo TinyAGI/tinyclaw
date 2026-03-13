@@ -31,7 +31,7 @@ export function ChatRoomView({
   teamId: string;
   teamName: string;
 }) {
-  const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 5000);
+  const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
