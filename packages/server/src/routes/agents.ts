@@ -128,6 +128,130 @@ app.delete('/api/agents/:id', (c) => {
     return c.json({ ok: true });
 });
 
+// ── Agent workspace data endpoints ───────────────────────────────────────────
+
+// GET /api/agents/:id/skills — list skills from .agents/skills/ in workspace
+app.get('/api/agents/:id/skills', (c) => {
+    const agentId = c.req.param('id');
+    const settings = getSettings();
+    const agent = settings.agents?.[agentId];
+    if (!agent) return c.json({ error: `agent '${agentId}' not found` }, 404);
+
+    const skillsDir = path.join(agent.working_directory, '.agents', 'skills');
+    const skills: { id: string; name: string; description: string }[] = [];
+
+    if (fs.existsSync(skillsDir)) {
+        for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+            if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+            const skillMd = path.join(skillsDir, entry.name, 'SKILL.md');
+            let name = entry.name;
+            let description = '';
+            if (fs.existsSync(skillMd)) {
+                try {
+                    const content = fs.readFileSync(skillMd, 'utf8');
+                    const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+                    if (fmMatch) {
+                        const fm = fmMatch[1];
+                        const nameMatch = fm.match(/^name:\s*["']?(.+?)["']?\s*$/m);
+                        if (nameMatch) name = nameMatch[1];
+                        const descMatch = fm.match(/^description:\s*["']?(.+?)["']?\s*$/m);
+                        if (descMatch) description = descMatch[1];
+                    }
+                } catch { /* skip */ }
+            }
+            skills.push({ id: entry.name, name, description });
+        }
+    }
+
+    return c.json(skills);
+});
+
+// GET /api/agents/:id/system-prompt — read AGENTS.md from workspace
+app.get('/api/agents/:id/system-prompt', (c) => {
+    const agentId = c.req.param('id');
+    const settings = getSettings();
+    const agent = settings.agents?.[agentId];
+    if (!agent) return c.json({ error: `agent '${agentId}' not found` }, 404);
+
+    const agentsMd = path.join(agent.working_directory, 'AGENTS.md');
+    let content = '';
+    if (fs.existsSync(agentsMd)) {
+        try { content = fs.readFileSync(agentsMd, 'utf8'); } catch { /* skip */ }
+    }
+    return c.json({ content, path: agentsMd });
+});
+
+// PUT /api/agents/:id/system-prompt — write AGENTS.md to workspace
+app.put('/api/agents/:id/system-prompt', async (c) => {
+    const agentId = c.req.param('id');
+    const settings = getSettings();
+    const agent = settings.agents?.[agentId];
+    if (!agent) return c.json({ error: `agent '${agentId}' not found` }, 404);
+
+    const body = await c.req.json() as { content: string };
+    const agentsMd = path.join(agent.working_directory, 'AGENTS.md');
+    fs.writeFileSync(agentsMd, body.content || '', 'utf8');
+    return c.json({ ok: true });
+});
+
+// GET /api/agents/:id/memory — load memory index from workspace memory/ folder
+app.get('/api/agents/:id/memory', (c) => {
+    const agentId = c.req.param('id');
+    const settings = getSettings();
+    const agent = settings.agents?.[agentId];
+    if (!agent) return c.json({ error: `agent '${agentId}' not found` }, 404);
+
+    const { loadMemoryIndex } = require('@tinyclaw/core');
+    const index = loadMemoryIndex(agent.working_directory);
+    const memoryDir = path.join(agent.working_directory, 'memory');
+    const files: { name: string; path: string }[] = [];
+
+    if (fs.existsSync(memoryDir)) {
+        const scan = (dir: string, rel: string) => {
+            for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+                if (item.name.startsWith('.')) continue;
+                const itemRel = rel ? `${rel}/${item.name}` : item.name;
+                if (item.isDirectory()) {
+                    scan(path.join(dir, item.name), itemRel);
+                } else if (item.name.endsWith('.md')) {
+                    files.push({ name: item.name, path: itemRel });
+                }
+            }
+        };
+        scan(memoryDir, '');
+    }
+
+    return c.json({ index, files, memoryDir });
+});
+
+// GET /api/agents/:id/heartbeat — read heartbeat.md from workspace
+app.get('/api/agents/:id/heartbeat', (c) => {
+    const agentId = c.req.param('id');
+    const settings = getSettings();
+    const agent = settings.agents?.[agentId];
+    if (!agent) return c.json({ error: `agent '${agentId}' not found` }, 404);
+
+    const heartbeatMd = path.join(agent.working_directory, 'heartbeat.md');
+    let content = '';
+    if (fs.existsSync(heartbeatMd)) {
+        try { content = fs.readFileSync(heartbeatMd, 'utf8'); } catch { /* skip */ }
+    }
+    return c.json({ content, path: heartbeatMd });
+});
+
+// PUT /api/agents/:id/heartbeat — write heartbeat.md to workspace
+app.put('/api/agents/:id/heartbeat', async (c) => {
+    const agentId = c.req.param('id');
+    const settings = getSettings();
+    const agent = settings.agents?.[agentId];
+    if (!agent) return c.json({ error: `agent '${agentId}' not found` }, 404);
+
+    const body = await c.req.json() as { content: string };
+    const heartbeatMd = path.join(agent.working_directory, 'heartbeat.md');
+    fs.writeFileSync(heartbeatMd, body.content || '', 'utf8');
+    return c.json({ ok: true });
+});
+
 // ── Custom Providers ─────────────────────────────────────────────────────────
 
 // GET /api/custom-providers

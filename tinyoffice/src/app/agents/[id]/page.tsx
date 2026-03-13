@@ -1,14 +1,21 @@
 "use client";
 
-import { useState, useCallback, use } from "react";
+import { useState, useCallback, useEffect, use } from "react";
 import { usePolling } from "@/lib/hooks";
 import {
   getAgents,
   getSettings,
   saveAgent,
   updateSettings,
+  getAgentSkills,
+  getAgentSystemPrompt,
+  saveAgentSystemPrompt,
+  getAgentMemory,
+  getAgentHeartbeat,
+  saveAgentHeartbeat,
   type AgentConfig,
   type Settings,
+  type WorkspaceSkill,
 } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +24,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   SkillsConstellation,
-  SKILL_REGISTRY,
   type SkillEntry,
 } from "@/components/skills-constellation";
 import {
@@ -30,6 +36,8 @@ import {
   Check,
   Loader2,
   Save,
+  FolderOpen,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -61,28 +69,61 @@ export default function AgentConfigPage({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // System prompt state
-  const agent = agents?.[agentId];
-  const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
-  const [promptFile, setPromptFile] = useState<string | null>(null);
+  // Workspace data
+  const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([]);
+  const [systemPromptContent, setSystemPromptContent] = useState<string>("");
+  const [systemPromptPath, setSystemPromptPath] = useState<string>("");
+  const [systemPromptLoaded, setSystemPromptLoaded] = useState(false);
+  const [memoryIndex, setMemoryIndex] = useState<string>("");
+  const [memoryFiles, setMemoryFiles] = useState<{ name: string; path: string }[]>([]);
+  const [memoryDir, setMemoryDir] = useState<string>("");
+  const [heartbeatContent, setHeartbeatContent] = useState<string>("");
+  const [heartbeatPath, setHeartbeatPath] = useState<string>("");
+  const [heartbeatLoaded, setHeartbeatLoaded] = useState(false);
 
-  // Memory state
-  const [memoryNotes, setMemoryNotes] = useState(
-    "# Agent Memory\n\nPersistent notes and context for this agent.\nThese are carried across conversations.\n"
-  );
-
-  // Heartbeat state
+  // Heartbeat UI state
   const [heartbeatInterval, setHeartbeatInterval] = useState("300");
   const [heartbeatEnabled, setHeartbeatEnabled] = useState(true);
-  const [heartbeatPrompt, setHeartbeatPrompt] = useState(
-    "Check your tasks, process any pending work, and report status."
-  );
 
-  // Initialize form from agent data
-  const currentPrompt =
-    systemPrompt !== null ? systemPrompt : agent?.system_prompt || "";
-  const currentPromptFile =
-    promptFile !== null ? promptFile : agent?.prompt_file || "";
+  const agent = agents?.[agentId];
+
+  // Load workspace data when agent is available
+  useEffect(() => {
+    if (!agent) return;
+
+    getAgentSkills(agentId).then(setWorkspaceSkills).catch(() => {});
+
+    getAgentSystemPrompt(agentId)
+      .then((data) => {
+        setSystemPromptContent(data.content);
+        setSystemPromptPath(data.path);
+        setSystemPromptLoaded(true);
+      })
+      .catch(() => setSystemPromptLoaded(true));
+
+    getAgentMemory(agentId)
+      .then((data) => {
+        setMemoryIndex(data.index);
+        setMemoryFiles(data.files);
+        setMemoryDir(data.memoryDir);
+      })
+      .catch(() => {});
+
+    getAgentHeartbeat(agentId)
+      .then((data) => {
+        setHeartbeatContent(data.content);
+        setHeartbeatPath(data.path);
+        setHeartbeatLoaded(true);
+      })
+      .catch(() => setHeartbeatLoaded(true));
+  }, [agent, agentId]);
+
+  // Convert workspace skills to SkillEntry format for constellation
+  const constellationSkills: SkillEntry[] = workspaceSkills.map((s) => ({
+    id: s.id,
+    name: s.name,
+    description: s.description,
+  }));
 
   const toggleSkill = useCallback((skillId: string) => {
     setEquippedSkills((prev) => {
@@ -97,11 +138,14 @@ export default function AgentConfigPage({
     if (!agent) return;
     setSaving(true);
     try {
-      await saveAgent(agentId, {
-        ...agent,
-        system_prompt: currentPrompt || undefined,
-        prompt_file: currentPromptFile || undefined,
-      });
+      await saveAgent(agentId, agent);
+
+      // Save system prompt to AGENTS.md
+      await saveAgentSystemPrompt(agentId, systemPromptContent);
+
+      // Save heartbeat.md
+      await saveAgentHeartbeat(agentId, heartbeatContent);
+
       if (settings?.monitoring) {
         await updateSettings({
           monitoring: {
@@ -114,19 +158,30 @@ export default function AgentConfigPage({
       setTimeout(() => setSaved(false), 2000);
       refresh();
     } catch {
-      // Error handling - could show toast
+      // Error handling
     } finally {
       setSaving(false);
     }
   }, [
     agent,
     agentId,
-    currentPrompt,
-    currentPromptFile,
+    systemPromptContent,
+    heartbeatContent,
     heartbeatInterval,
     settings,
     refresh,
   ]);
+
+  const refreshWorkspaceData = useCallback(() => {
+    getAgentSkills(agentId).then(setWorkspaceSkills).catch(() => {});
+    getAgentMemory(agentId)
+      .then((data) => {
+        setMemoryIndex(data.index);
+        setMemoryFiles(data.files);
+        setMemoryDir(data.memoryDir);
+      })
+      .catch(() => {});
+  }, [agentId]);
 
   if (!agents) {
     return (
@@ -232,6 +287,11 @@ export default function AgentConfigPage({
                   {equippedSkills.size}
                 </Badge>
               )}
+              {tab.id === "skills" && workspaceSkills.length > 0 && (
+                <span className="text-[9px] text-muted-foreground ml-1">
+                  ({workspaceSkills.length})
+                </span>
+              )}
             </button>
           );
         })}
@@ -241,36 +301,41 @@ export default function AgentConfigPage({
       <div className="flex-1 overflow-auto">
         {activeTab === "skills" && (
           <SkillsTab
-            skills={SKILL_REGISTRY}
+            skills={constellationSkills}
             equipped={equippedSkills}
             onToggle={toggleSkill}
             agentName={agent.name}
             agentInitials={agent.name.slice(0, 2).toUpperCase()}
+            onRefresh={refreshWorkspaceData}
           />
         )}
         {activeTab === "system-prompt" && (
           <SystemPromptTab
-            systemPrompt={currentPrompt}
-            promptFile={currentPromptFile}
-            onPromptChange={setSystemPrompt}
-            onPromptFileChange={setPromptFile}
+            content={systemPromptContent}
+            filePath={systemPromptPath}
+            loaded={systemPromptLoaded}
+            onChange={setSystemPromptContent}
           />
         )}
         {activeTab === "memory" && (
           <MemoryTab
-            memoryNotes={memoryNotes}
-            onNotesChange={setMemoryNotes}
+            memoryIndex={memoryIndex}
+            memoryFiles={memoryFiles}
+            memoryDir={memoryDir}
             agentId={agentId}
+            onRefresh={refreshWorkspaceData}
           />
         )}
         {activeTab === "heartbeat" && (
           <HeartbeatTab
+            content={heartbeatContent}
+            filePath={heartbeatPath}
+            loaded={heartbeatLoaded}
+            onChange={setHeartbeatContent}
             enabled={heartbeatEnabled}
             onToggle={() => setHeartbeatEnabled(!heartbeatEnabled)}
             interval={heartbeatInterval}
             onIntervalChange={setHeartbeatInterval}
-            prompt={heartbeatPrompt}
-            onPromptChange={setHeartbeatPrompt}
           />
         )}
       </div>
@@ -286,19 +351,24 @@ function SkillsTab({
   onToggle,
   agentName,
   agentInitials,
+  onRefresh,
 }: {
   skills: SkillEntry[];
   equipped: Set<string>;
   onToggle: (id: string) => void;
   agentName: string;
   agentInitials: string;
+  onRefresh: () => void;
 }) {
-  const [filter, setFilter] = useState<"all" | "skills.sh" | "clawhub">("all");
   const [search, setSearch] = useState("");
 
   const filtered = skills.filter((s) => {
-    if (filter !== "all" && s.registry !== filter) return false;
-    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !s.description.toLowerCase().includes(search.toLowerCase())) return false;
+    if (
+      search &&
+      !s.name.toLowerCase().includes(search.toLowerCase()) &&
+      !s.description.toLowerCase().includes(search.toLowerCase())
+    )
+      return false;
     return true;
   });
 
@@ -312,24 +382,13 @@ function SkillsTab({
           placeholder="Search skills..."
           className="max-w-xs h-8 text-xs"
         />
-        <div className="flex items-center gap-1">
-          {(["all", "skills.sh", "clawhub"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`
-                px-2.5 py-1 text-[11px] font-medium transition-colors border
-                ${
-                  filter === f
-                    ? "bg-primary/15 border-primary/50 text-primary"
-                    : "bg-transparent border-border text-muted-foreground hover:text-foreground"
-                }
-              `}
-            >
-              {f === "all" ? "All" : f}
-            </button>
-          ))}
-        </div>
+        <button
+          onClick={onRefresh}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors border border-border"
+        >
+          <RefreshCw className="h-3 w-3" />
+          Refresh
+        </button>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-[10px] text-muted-foreground">
             {filtered.length} skills
@@ -341,13 +400,25 @@ function SkillsTab({
       </div>
 
       {/* Constellation */}
-      <SkillsConstellation
-        skills={filtered}
-        equipped={equipped}
-        onToggle={onToggle}
-        agentName={agentName}
-        agentInitials={agentInitials}
-      />
+      {filtered.length > 0 ? (
+        <SkillsConstellation
+          skills={filtered}
+          equipped={equipped}
+          onToggle={onToggle}
+          agentName={agentName}
+          agentInitials={agentInitials}
+        />
+      ) : (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center text-muted-foreground">
+            <Swords className="h-8 w-8 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">No skills found in workspace</p>
+            <p className="text-xs mt-1">
+              Skills are loaded from <code className="bg-muted px-1 py-0.5 text-[10px] font-mono">.agents/skills/</code> in the agent workspace
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Equipped skills list */}
       {equipped.size > 0 && (
@@ -381,15 +452,15 @@ function SkillsTab({
 // ── System Prompt Tab ───────────────────────────────────────────────────────
 
 function SystemPromptTab({
-  systemPrompt,
-  promptFile,
-  onPromptChange,
-  onPromptFileChange,
+  content,
+  filePath,
+  loaded,
+  onChange,
 }: {
-  systemPrompt: string;
-  promptFile: string;
-  onPromptChange: (v: string) => void;
-  onPromptFileChange: (v: string) => void;
+  content: string;
+  filePath: string;
+  loaded: boolean;
+  onChange: (v: string) => void;
 }) {
   return (
     <div className="p-6 space-y-6 max-w-3xl">
@@ -398,48 +469,54 @@ function SystemPromptTab({
           <CardTitle className="text-sm flex items-center gap-2">
             <FileText className="h-4 w-4 text-primary" />
             System Prompt
+            <span className="text-[10px] text-muted-foreground font-normal">
+              AGENTS.md
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              Instructions
-            </label>
-            <p className="text-[11px] text-muted-foreground/70 mb-2">
-              Define this agent&apos;s personality, behavior, and constraints.
-              This prompt is injected at the start of every conversation.
+          <div className="flex items-center gap-2 p-3 bg-secondary/50 border">
+            <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              Loaded from{" "}
+              <code className="bg-muted px-1 py-0.5 font-mono text-[10px]">
+                {filePath || "AGENTS.md"}
+              </code>
+              {" "}in the agent workspace. Changes are saved back to this file.
             </p>
-            <Textarea
-              value={systemPrompt}
-              onChange={(e) => onPromptChange(e.target.value)}
-              placeholder="You are a helpful coding assistant specialized in..."
-              rows={14}
-              className="text-sm font-mono"
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-muted-foreground">
-                {systemPrompt.length} characters
-              </span>
-            </div>
           </div>
 
-          <div className="border-t pt-4">
+          {!loaded ? (
+            <div className="flex items-center gap-2 py-8 justify-center text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">Loading...</span>
+            </div>
+          ) : (
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Prompt File (optional)
+                Agent Instructions
               </label>
               <p className="text-[11px] text-muted-foreground/70 mb-2">
-                Path to a markdown file with additional instructions. Loaded
-                alongside the system prompt.
+                This is the agent&apos;s AGENTS.md file — it defines behavior,
+                team communication, memory index, and other persistent instructions.
               </p>
-              <Input
-                value={promptFile}
-                onChange={(e) => onPromptFileChange(e.target.value)}
-                placeholder="e.g. ./prompts/coder.md"
-                className="font-mono"
+              <Textarea
+                value={content}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder="# Agent Instructions&#10;&#10;Define this agent's behavior and instructions..."
+                rows={20}
+                className="text-sm font-mono"
               />
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-muted-foreground">
+                  {content.length} characters &middot; {content.split("\n").length} lines
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  Markdown
+                </span>
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -449,13 +526,17 @@ function SystemPromptTab({
 // ── Memory Tab ──────────────────────────────────────────────────────────────
 
 function MemoryTab({
-  memoryNotes,
-  onNotesChange,
+  memoryIndex,
+  memoryFiles,
+  memoryDir,
   agentId,
+  onRefresh,
 }: {
-  memoryNotes: string;
-  onNotesChange: (v: string) => void;
+  memoryIndex: string;
+  memoryFiles: { name: string; path: string }[];
+  memoryDir: string;
   agentId: string;
+  onRefresh: () => void;
 }) {
   return (
     <div className="p-6 space-y-6 max-w-3xl">
@@ -464,41 +545,69 @@ function MemoryTab({
           <CardTitle className="text-sm flex items-center gap-2">
             <Brain className="h-4 w-4 text-primary" />
             Agent Memory
+            <button
+              onClick={onRefresh}
+              className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Refresh
+            </button>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-2 p-3 bg-secondary/50 border">
-            <Brain className="h-4 w-4 text-muted-foreground shrink-0" />
+            <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
             <p className="text-xs text-muted-foreground">
-              Memory persists across conversations. The agent can read and
-              update these notes between sessions. Stored in the agent&apos;s
-              workspace at{" "}
+              Memory files loaded from{" "}
               <code className="bg-muted px-1 py-0.5 font-mono text-[10px]">
-                .agents/{agentId}/memory.md
+                {memoryDir || `memory/`}
               </code>
+              {" "}in the agent workspace. The agent manages its own memory using
+              the memory skill.
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              Persistent Notes
-            </label>
-            <Textarea
-              value={memoryNotes}
-              onChange={(e) => onNotesChange(e.target.value)}
-              rows={16}
-              className="text-sm font-mono"
-              placeholder="# Agent Memory&#10;&#10;Notes, context, and learned preferences..."
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-muted-foreground">
-                {memoryNotes.split("\n").length} lines
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                Markdown supported
-              </span>
+          {/* Memory index */}
+          {memoryIndex ? (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Memory Index
+              </label>
+              <div className="p-4 bg-card border font-mono text-xs whitespace-pre-wrap leading-relaxed text-muted-foreground">
+                {memoryIndex}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-6 text-center text-muted-foreground">
+              <Brain className="h-6 w-6 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No memories yet</p>
+              <p className="text-xs mt-1">
+                The agent will build memories as it works using the memory skill.
+              </p>
+            </div>
+          )}
+
+          {/* File listing */}
+          {memoryFiles.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Memory Files ({memoryFiles.length})
+              </label>
+              <div className="border divide-y">
+                {memoryFiles.map((file) => (
+                  <div
+                    key={file.path}
+                    className="flex items-center gap-2 px-3 py-2 text-xs"
+                  >
+                    <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <span className="font-mono text-muted-foreground">
+                      {file.path}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -529,19 +638,23 @@ function MemoryTab({
 // ── Heartbeat Tab ───────────────────────────────────────────────────────────
 
 function HeartbeatTab({
+  content,
+  filePath,
+  loaded,
+  onChange,
   enabled,
   onToggle,
   interval,
   onIntervalChange,
-  prompt,
-  onPromptChange,
 }: {
+  content: string;
+  filePath: string;
+  loaded: boolean;
+  onChange: (v: string) => void;
   enabled: boolean;
   onToggle: () => void;
   interval: string;
   onIntervalChange: (v: string) => void;
-  prompt: string;
-  onPromptChange: (v: string) => void;
 }) {
   const intervalSec = parseInt(interval) || 300;
 
@@ -603,21 +716,37 @@ function HeartbeatTab({
                 </p>
               </div>
 
-              {/* Heartbeat Prompt */}
+              {/* Heartbeat prompt from file */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Heartbeat Prompt
-                </label>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Heartbeat Prompt
+                  </label>
+                  <span className="text-[10px] text-muted-foreground">
+                    from{" "}
+                    <code className="bg-muted px-1 py-0.5 font-mono text-[10px]">
+                      {filePath || "heartbeat.md"}
+                    </code>
+                  </span>
+                </div>
                 <p className="text-[11px] text-muted-foreground/70 mb-2">
-                  What should the agent do each heartbeat cycle?
+                  What should the agent do each heartbeat cycle? Loaded from
+                  heartbeat.md in the workspace.
                 </p>
-                <Textarea
-                  value={prompt}
-                  onChange={(e) => onPromptChange(e.target.value)}
-                  rows={4}
-                  className="text-sm"
-                  placeholder="Check your tasks, process pending work..."
-                />
+                {!loaded ? (
+                  <div className="flex items-center gap-2 py-4 justify-center text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Loading...</span>
+                  </div>
+                ) : (
+                  <Textarea
+                    value={content}
+                    onChange={(e) => onChange(e.target.value)}
+                    rows={6}
+                    className="text-sm font-mono"
+                    placeholder="Check your tasks, process pending work..."
+                  />
+                )}
               </div>
 
               {/* Status visualization */}
