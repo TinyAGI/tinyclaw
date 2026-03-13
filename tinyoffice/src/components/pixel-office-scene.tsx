@@ -168,18 +168,20 @@ export function getLoungeMemberSpot(memberIndex: number, memberTotal: number) {
 
 export function getTaskStationRect(index: number, total: number) {
   const columns = Math.min(4, Math.max(1, total));
-  const rows = Math.ceil(total / Math.max(1, columns));
-  const gapX = 26;
+  const rows = Math.min(2, Math.ceil(total / Math.max(1, columns)));
+  const width = columns >= 4 ? 122 : columns === 3 ? 132 : 148;
+  const gapX = columns >= 4 ? 16 : columns === 3 ? 20 : 26;
   const gapY = 34;
-  const width = 148;
   const height = 96;
   const totalRowWidth = columns * width + (columns - 1) * gapX;
   const startX = PIXEL_SCENE_LAYOUT.stationAreaX + (PIXEL_SCENE_LAYOUT.stationAreaWidth - totalRowWidth) / 2;
   const row = Math.floor(index / Math.max(1, columns));
   const column = index % Math.max(1, columns);
+  const totalHeight = rows * height + (rows - 1) * gapY;
+  const startY = PIXEL_SCENE_LAYOUT.stationAreaY + (PIXEL_SCENE_LAYOUT.stationAreaHeight - totalHeight);
   return {
     x: startX + column * (width + gapX),
-    y: PIXEL_SCENE_LAYOUT.stationAreaY + row * (height + gapY),
+    y: startY + row * (height + gapY),
     width,
     height,
   };
@@ -192,41 +194,38 @@ export function getTaskStationMemberSpot(
   memberTotal: number,
 ) {
   const station = getTaskStationRect(stationIndex, totalStations);
-  const deskCenterX = station.x + station.width / 2;
-  const deskFrontY = station.y + 86;
-  if (memberTotal <= 1) return { x: deskCenterX, y: deskFrontY };
+  const deskLeftX = station.x + 18;
+  const deskFrontY = station.y + 84;
+  if (memberTotal <= 1) return { x: deskLeftX, y: deskFrontY };
   if (memberTotal === 2) {
     return {
-      x: deskCenterX + (memberIndex === 0 ? -16 : 16),
+      x: deskLeftX + (memberIndex === 0 ? -10 : 14),
       y: deskFrontY + (memberIndex === 0 ? 2 : 0),
     };
   }
-  const offsets = [-20, 0, 20];
+  const offsets = [-14, 8, 24];
   return {
-    x: deskCenterX + offsets[Math.min(memberIndex, 2)],
+    x: deskLeftX + offsets[Math.min(memberIndex, 2)],
     y: deskFrontY + (memberIndex === 1 ? -4 : 4),
   };
 }
 
 function Floor() {
   const lines = [];
-  for (let y = 302; y < PIXEL_SCENE_LAYOUT.height; y += 40) {
+  for (let y = 0; y < PIXEL_SCENE_LAYOUT.height; y += 40) {
     lines.push(
       <line key={`h-${y}`} x1={0} y1={y} x2={PIXEL_SCENE_LAYOUT.width} y2={y} stroke={COLORS.floorLine} strokeWidth={1} opacity={0.46} />,
     );
   }
   for (let x = 0; x <= PIXEL_SCENE_LAYOUT.width; x += 60) {
     lines.push(
-      <line key={`v-${x}`} x1={x} y1={300} x2={x} y2={PIXEL_SCENE_LAYOUT.height} stroke={COLORS.floorLine} strokeWidth={1} opacity={0.24} />,
+      <line key={`v-${x}`} x1={x} y1={0} x2={x} y2={PIXEL_SCENE_LAYOUT.height} stroke={COLORS.floorLine} strokeWidth={1} opacity={0.24} />,
     );
   }
   return (
     <g>
-      <rect x={0} y={0} width={PIXEL_SCENE_LAYOUT.width} height={300} fill={COLORS.wall} />
-      <rect x={0} y={296} width={PIXEL_SCENE_LAYOUT.width} height={6} fill={COLORS.wallTop} />
-      <rect x={0} y={300} width={PIXEL_SCENE_LAYOUT.width} height={PIXEL_SCENE_LAYOUT.height - 300} fill={COLORS.floor} />
+      <rect x={0} y={0} width={PIXEL_SCENE_LAYOUT.width} height={PIXEL_SCENE_LAYOUT.height} fill={COLORS.floor} />
       {lines}
-      <rect x={0} y={298} width={PIXEL_SCENE_LAYOUT.width} height={4} fill="#a89572" opacity={0.72} />
     </g>
   );
 }
@@ -744,20 +743,23 @@ function Lounge({
 function TaskStation({
   frame,
   station,
+  working,
   index,
   total,
 }: {
   frame: number;
   station: SceneTaskStation;
+  working: boolean;
   index: number;
   total: number;
 }) {
   const rect = getTaskStationRect(index, total);
   const deskX = rect.x + rect.width / 2 - 38;
   const deskY = rect.y + 16;
-  const colors = deskPalette(station.status);
-  const glow = station.status === "running" ? 0.18 + (Math.sin(frame / 5 + index) + 1) * 0.09 : station.status === "done" ? 0.2 : 0.07;
-  const glowColor = toneColor(station.status);
+  const effectiveStatus = working ? "running" : station.status === "running" ? "pending" : station.status;
+  const colors = deskPalette(effectiveStatus);
+  const glow = working ? 0.18 + (Math.sin(frame / 5 + index) + 1) * 0.09 : effectiveStatus === "done" ? 0.2 : 0.07;
+  const glowColor = toneColor(effectiveStatus);
   return (
     <g>
       <ellipse cx={deskX + 38} cy={deskY + 56} rx={42} ry={10} fill={glowColor} opacity={glow * 0.65} />
@@ -771,7 +773,7 @@ function TaskStation({
       <rect x={deskX + 30} y={deskY + 39} width={16} height={3} fill="#1a1d27" rx={1} />
       <rect x={deskX + 25} y={deskY + 45} width={24} height={6} fill="#1c1917" rx={2} stroke="#3a332d" strokeWidth={0.8} />
       <rect x={deskX + 28} y={deskY + 58} width={18} height={10} fill="#2c2622" rx={4} />
-      {station.status === "running" && (
+      {working && (
         <>
           {Array.from({ length: 4 }).map((_, row) => (
             <rect
@@ -787,23 +789,23 @@ function TaskStation({
           ))}
         </>
       )}
-      {station.status === "pending" && (
+      {effectiveStatus === "pending" && (
         <text x={deskX + 38} y={deskY + 28} textAnchor="middle" fontSize={10} fill={COLORS.textAmber} fontFamily="monospace">
           ...
         </text>
       )}
-      {station.status === "done" && (
+      {effectiveStatus === "done" && (
         <text x={deskX + 38} y={deskY + 28} textAnchor="middle" fontSize={14} fill={COLORS.textGreen} fontFamily="monospace">
           ✓
         </text>
       )}
-      {station.status === "error" && (
+      {effectiveStatus === "error" && (
         <text x={deskX + 38} y={deskY + 28} textAnchor="middle" fontSize={14} fill={COLORS.textRed} fontFamily="monospace">
           ✗
         </text>
       )}
       {Array.from({ length: 6 }).map((_, key) => (
-        <rect key={key} x={deskX + 27 + key * 3} y={deskY + 47} width={2} height={2} fill={station.status === "running" && (frame + key) % 6 === 0 ? COLORS.textBlue : "#3a332d"} rx={1} />
+        <rect key={key} x={deskX + 27 + key * 3} y={deskY + 47} width={2} height={2} fill={working && (frame + key) % 6 === 0 ? COLORS.textBlue : "#3a332d"} rx={1} />
       ))}
     </g>
   );
@@ -914,9 +916,20 @@ export function PixelOfficeScene({
 
         <Lounge lounge={lounge} />
 
-        {taskStations.map((station, index) => (
-          <TaskStation key={station.id} frame={frame} station={station} index={index} total={Math.max(1, taskStations.length)} />
-        ))}
+        {taskStations.map((station, index) => {
+          const linkedAgentId = station.id.startsWith("desk-") ? station.id.slice(5) : "";
+          const working = agents.some((agent) => agent.id === linkedAgentId && agent.anim === "type");
+          return (
+            <TaskStation
+              key={station.id}
+              frame={frame}
+              station={station}
+              working={working}
+              index={index}
+              total={Math.max(1, taskStations.length)}
+            />
+          );
+        })}
 
         {agents.map((agent) => (
           <g key={agent.id}>

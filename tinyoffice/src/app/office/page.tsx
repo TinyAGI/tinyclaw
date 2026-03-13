@@ -94,6 +94,7 @@ type AgentWorkSession = {
 };
 
 const AGENT_COLORS = ["#a3e635", "#84cc16", "#f59e0b", "#14b8a6", "#eab308", "#22c55e"];
+const AGENT_SESSION_RELEASE_MS = 6200;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -229,6 +230,21 @@ export default function OfficePage() {
     }, 120);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    setAgentWorkSessions((current) => {
+      let changed = false;
+      const next: Record<string, AgentWorkSession> = {};
+      Object.entries(current).forEach(([agentId, session]) => {
+        if (session.completedAt && Date.now() - session.completedAt > AGENT_SESSION_RELEASE_MS) {
+          changed = true;
+          return;
+        }
+        next[agentId] = session;
+      });
+      return changed ? next : current;
+    });
+  }, [clock.now]);
 
   useEffect(() => {
     const latestOpenRootId = () => {
@@ -555,6 +571,7 @@ export default function OfficePage() {
 
       const session = agentWorkSessions[agentId];
       if (!session) return;
+      if (session.completedAt && clock.now - session.completedAt > AGENT_SESSION_RELEASE_MS) return;
       const relevantBubble = latestRelevantBubbleByAgent.get(agentId);
 
       assignments.set(agentId, {
@@ -602,10 +619,7 @@ export default function OfficePage() {
           } else {
             const replyAge = clock.now - assignment.responseAt;
             const holdDuration = 5000;
-            if ((queueStatus?.processing ?? 0) > 0) {
-              target = stationSpot;
-              anim = "idle";
-            } else if (replyAge < holdDuration) {
+            if (replyAge < holdDuration) {
               target = stationSpot;
               anim = "idle";
             } else {
@@ -619,10 +633,7 @@ export default function OfficePage() {
           if (assignment.responseAt) {
             const replyAge = clock.now - assignment.responseAt;
             const holdDuration = 5000;
-            if ((queueStatus?.processing ?? 0) > 0) {
-              target = stationSpot;
-              anim = "idle";
-            } else if (replyAge < holdDuration) {
+            if (replyAge < holdDuration) {
               target = stationSpot;
               anim = "idle";
             } else {
@@ -650,7 +661,7 @@ export default function OfficePage() {
         flip: target.x < home.x,
       };
     });
-  }, [agentEntries, clock.now, homePositions, latestAgentBubbleById, queueStatus?.processing, stationAssignments, taskStations.length]);
+  }, [agentEntries, clock.now, homePositions, latestAgentBubbleById, stationAssignments, taskStations.length]);
 
   const taskSummaries = useMemo<SceneTaskSummary[]>(() => {
     const allTasks = tasks ?? [];
@@ -743,7 +754,7 @@ export default function OfficePage() {
       items.push({
         id: latestUserBubble.id,
         x: PIXEL_SCENE_LAYOUT.bossRoomX + 108,
-        y: PIXEL_SCENE_LAYOUT.bossRoomY + 152,
+        y: PIXEL_SCENE_LAYOUT.bossRoomY + 140,
         color: "#84cc16",
         heading: "boss command",
         message: trimText(latestUserBubble.message, 220),
@@ -875,7 +886,7 @@ export default function OfficePage() {
           />
 
           <div
-            className="absolute grid grid-cols-2 gap-2.5"
+            className="absolute grid grid-cols-2 gap-[0.45vw] min-[1280px]:gap-2.5"
             style={{
               left: `${((PIXEL_SCENE_LAYOUT.archiveRoomX + 41) / PIXEL_SCENE_LAYOUT.width) * 100}%`,
               top: `${((PIXEL_SCENE_LAYOUT.archiveRoomY + 166) / PIXEL_SCENE_LAYOUT.height) * 100}%`,
@@ -893,10 +904,9 @@ export default function OfficePage() {
                 key={item.id}
                 type="button"
                 onClick={() => setArchivePanel((current) => (current === item.id ? null : (item.id as typeof archivePanel)))}
-                className={`justify-self-center rounded-md border border-stone-700 bg-[rgba(37,28,24,0.88)] px-2 py-[3px] text-[10px] leading-none font-mono text-stone-100 transition hover:border-lime-500 hover:text-lime-300 ${
+                className={`min-w-0 justify-self-stretch rounded-[10px] border border-stone-700 bg-[rgba(37,28,24,0.88)] px-[0.45vw] py-[0.3vw] text-[clamp(7px,0.6vw,10px)] leading-none font-mono text-stone-100 transition hover:border-lime-500 hover:text-lime-300 min-[1280px]:px-2.5 min-[1280px]:py-[4px] ${
                   item.id === "routing" ? "col-span-2" : ""
                 }`}
-                style={{ width: item.id === "routing" ? 120 : 92 }}
               >
                 {item.label}
               </button>
@@ -1015,7 +1025,7 @@ export default function OfficePage() {
                 <button
                   type="button"
                   onClick={() => setConversationFilter("all")}
-                  className={`rounded-md border px-2.5 py-1 font-mono text-[10px] transition ${
+                  className={`rounded-[10px] border px-3 py-1.5 font-mono text-[10px] transition ${
                     conversationFilter === "all"
                       ? "border-[#84cc16] bg-[rgba(132,204,22,0.14)] text-[#2f4d0d]"
                       : "border-[#826b58] bg-[rgba(244,231,214,0.46)] text-[#5e4b3d] hover:border-[#84cc16] hover:text-[#2f4d0d]"
@@ -1028,7 +1038,7 @@ export default function OfficePage() {
                     key={agentId}
                     type="button"
                     onClick={() => setConversationFilter(agentId)}
-                    className={`rounded-md border px-2.5 py-1 font-mono text-[10px] transition ${
+                    className={`rounded-[10px] border px-3 py-1.5 font-mono text-[10px] transition ${
                       conversationFilter === agentId
                         ? "border-[#84cc16] bg-[rgba(132,204,22,0.14)] text-[#2f4d0d]"
                         : "border-[#826b58] bg-[rgba(244,231,214,0.46)] text-[#5e4b3d] hover:border-[#84cc16] hover:text-[#2f4d0d]"
@@ -1049,7 +1059,7 @@ export default function OfficePage() {
                   visibleConversation.map((entry) => (
                     <div
                       key={entry.id}
-                      className={`rounded-md border px-3 py-2 ${
+                      className={`rounded-[14px] border px-3.5 py-2.5 shadow-[0_1px_0_rgba(76,60,48,0.16)] ${
                         entry.role === "user"
                           ? "ml-12 border-[#84cc16] bg-[rgba(235,248,196,0.78)]"
                           : "mr-12 border-[#8b7460] bg-[rgba(243,229,211,0.72)]"
@@ -1065,7 +1075,7 @@ export default function OfficePage() {
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-md border border-dashed border-[#8b7460] bg-[rgba(244,231,214,0.45)] px-4 py-6 text-center text-sm text-[#6f5c4b]">
+                  <div className="rounded-[14px] border border-dashed border-[#8b7460] bg-[rgba(244,231,214,0.45)] px-4 py-6 text-center text-sm text-[#6f5c4b]">
                     No messages for this view
                   </div>
                 )}
@@ -1080,12 +1090,12 @@ export default function OfficePage() {
                   onChange={(event) => setChatInput(event.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={conversationFilter === "all" ? "Message @agent or @team..." : `Message @${conversationFilter}...`}
-                  className="h-10 flex-1 rounded-md border border-[#8b7460] bg-[rgba(244,231,214,0.78)] px-3 text-sm text-[#231b16] outline-none transition-colors placeholder:text-[#8a7564] focus:border-[#84cc16]"
+                  className="h-10 flex-1 rounded-[12px] border border-[#8b7460] bg-[rgba(244,231,214,0.78)] px-3.5 text-sm text-[#231b16] outline-none transition-colors placeholder:text-[#8a7564] focus:border-[#84cc16]"
                 />
                 <button
                   onClick={() => void handleSend()}
                   disabled={!chatInput.trim() || sending}
-                  className="flex h-10 w-10 items-center justify-center rounded-md border border-[#8b7460] bg-[rgba(244,231,214,0.78)] text-[#6d5948] transition-colors hover:border-[#84cc16] hover:text-[#45680f] disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-10 w-10 items-center justify-center rounded-[12px] border border-[#8b7460] bg-[rgba(244,231,214,0.78)] text-[#6d5948] transition-colors hover:border-[#84cc16] hover:text-[#45680f] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </button>
