@@ -62,6 +62,7 @@ type StationAssignment = {
   kind: "task" | "route";
   status: PixelDeskStatus;
   startAt: number;
+  responseAt?: number;
   label: string;
   speaker?: boolean;
 };
@@ -83,6 +84,13 @@ type ConversationEntry = {
   sender: string;
   message: string;
   targetAgents: string[];
+  sourceOrder: number;
+};
+
+type AgentWorkSession = {
+  rootMessageId: string;
+  startedAt: number;
+  completedAt?: number;
 };
 
 const AGENT_COLORS = ["#a3e635", "#84cc16", "#f59e0b", "#14b8a6", "#eab308", "#22c55e"];
@@ -208,8 +216,12 @@ export default function OfficePage() {
   const [clock, setClock] = useState({ now: Date.now(), frame: 0 });
   const [archivePanel, setArchivePanel] = useState<"logs" | "workspace" | "outgoing" | "routing" | "tasks" | null>(null);
   const [conversationFilter, setConversationFilter] = useState<string>("all");
+  const [agentWorkSessions, setAgentWorkSessions] = useState<Record<string, AgentWorkSession>>({});
 
   const seenRef = useRef(new Set<string>());
+  const conversationScrollRef = useRef<HTMLDivElement | null>(null);
+  const rootSessionsRef = useRef(new Map<string, { startedAt: number; agentIds: Set<string>; completedAt?: number }>());
+  const openRootOrderRef = useRef<string[]>([]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -219,6 +231,38 @@ export default function OfficePage() {
   }, []);
 
   useEffect(() => {
+    const latestOpenRootId = () => {
+      for (let index = openRootOrderRef.current.length - 1; index >= 0; index -= 1) {
+        const messageId = openRootOrderRef.current[index];
+        const session = rootSessionsRef.current.get(messageId);
+        if (session && !session.completedAt) return messageId;
+      }
+      return null;
+    };
+
+    const attachAgentToLatestRoot = (agentId: string, timestamp: number) => {
+      const rootMessageId = latestOpenRootId();
+      if (!rootMessageId) return;
+
+      const rootSession = rootSessionsRef.current.get(rootMessageId);
+      if (!rootSession) return;
+
+      rootSession.agentIds.add(agentId);
+      setAgentWorkSessions((current) => {
+        const existing = current[agentId];
+        if (existing && existing.rootMessageId === rootMessageId && !existing.completedAt) {
+          return current;
+        }
+        return {
+          ...current,
+          [agentId]: {
+            rootMessageId,
+            startedAt: existing && !existing.completedAt ? existing.startedAt : timestamp,
+          },
+        };
+      });
+    };
+
     const unsubscribe = subscribeToEvents(
       (event: EventData) => {
         setConnected(true);
@@ -236,7 +280,17 @@ export default function OfficePage() {
         if (event.type === "message_enqueued") {
           const message = (payload.message as string) || "";
           const sender = (payload.sender as string) || "User";
+          const messageId = payload.messageId ? String(payload.messageId) : undefined;
           if (!message) return;
+
+          if (messageId) {
+            rootSessionsRef.current.set(messageId, {
+              startedAt: event.timestamp,
+              agentIds: new Set<string>(),
+            });
+            openRootOrderRef.current = [...openRootOrderRef.current.filter((id) => id !== messageId), messageId];
+          }
+
           setBubbles((current) =>
             [
               ...current,
@@ -251,7 +305,19 @@ export default function OfficePage() {
           );
         }
 
+        if (event.type === "chain_step_start" && agentId) {
+          attachAgentToLatestRoot(agentId, event.timestamp);
+        }
+
+        if (event.type === "chain_handoff") {
+          const toAgent = payload.toAgent ? String(payload.toAgent) : undefined;
+          const fromAgent = payload.fromAgent ? String(payload.fromAgent) : undefined;
+          if (fromAgent) attachAgentToLatestRoot(fromAgent, event.timestamp);
+          if (toAgent) attachAgentToLatestRoot(toAgent, event.timestamp);
+        }
+
         if (event.type === "agent_message" && agentId) {
+          attachAgentToLatestRoot(agentId, event.timestamp);
           const message = (payload.content as string) || "";
           if (!message) return;
           setBubbles((current) =>
@@ -267,6 +333,26 @@ export default function OfficePage() {
             ].slice(-80),
           );
         }
+
+        if (event.type === "response_ready") {
+          const messageId = payload.messageId ? String(payload.messageId) : undefined;
+          if (!messageId) return;
+          const rootSession = rootSessionsRef.current.get(messageId);
+          if (!rootSession) return;
+
+          rootSession.completedAt = event.timestamp;
+          openRootOrderRef.current = openRootOrderRef.current.filter((id) => id !== messageId);
+
+          setAgentWorkSessions((current) => {
+            const next = { ...current };
+            rootSession.agentIds.forEach((sessionAgentId) => {
+              const existing = next[sessionAgentId];
+              if (!existing || existing.rootMessageId !== messageId) return;
+              next[sessionAgentId] = { ...existing, completedAt: event.timestamp };
+            });
+            return next;
+          });
+        }
       },
       () => setConnected(false),
     );
@@ -276,7 +362,7 @@ export default function OfficePage() {
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      const cutoff = Date.now() - 22000;
+      const cutoff = Date.now() - 180000;
       setBubbles((current) => current.filter((bubble) => bubble.timestamp > cutoff));
     }, 2000);
     return () => window.clearInterval(interval);
@@ -286,12 +372,17 @@ export default function OfficePage() {
     if (!chatInput.trim() || sending) return;
     setSending(true);
     try {
-      await sendMessage({ message: chatInput, sender: "Web", channel: "web" });
+      const message =
+        conversationFilter !== "all" && !chatInput.trim().startsWith("@")
+          ? `@${conversationFilter} ${chatInput.trim()}`
+          : chatInput.trim();
+
+      await sendMessage({ message, sender: "Web", channel: "web" });
       setChatInput("");
     } finally {
       setSending(false);
     }
-  }, [chatInput, sending]);
+  }, [chatInput, conversationFilter, sending]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -340,11 +431,14 @@ export default function OfficePage() {
     return lookup;
   }, [bubbles]);
 
-  const latestUserTargetByAgent = useMemo(() => {
+  const latestRelevantBubbleByAgent = useMemo(() => {
     const lookup = new Map<string, LiveBubble>();
     bubbles.forEach((bubble) => {
-      if (!bubble.agentId.startsWith("_user_")) return;
-      bubble.targetAgents.forEach((agentId) => {
+      const relatedAgentIds = new Set<string>();
+      if (!bubble.agentId.startsWith("_user_")) relatedAgentIds.add(bubble.agentId);
+      bubble.targetAgents.forEach((agentId) => relatedAgentIds.add(agentId));
+
+      relatedAgentIds.forEach((agentId) => {
         const existing = lookup.get(agentId);
         if (!existing || existing.timestamp < bubble.timestamp) {
           lookup.set(agentId, bubble);
@@ -353,6 +447,18 @@ export default function OfficePage() {
     });
     return lookup;
   }, [bubbles]);
+
+  const latestResponseByAgent = useMemo(() => {
+    const lookup = new Map<string, ResponseData>();
+    (responses ?? []).forEach((response) => {
+      if (!response.agent) return;
+      const existing = lookup.get(response.agent);
+      if (!existing || existing.timestamp < response.timestamp) {
+        lookup.set(response.agent, response);
+      }
+    });
+    return lookup;
+  }, [responses]);
 
   const activeTasks = useMemo(() => {
     const allTasks = tasks ?? [];
@@ -375,7 +481,7 @@ export default function OfficePage() {
       const recentRouteBubble = [...bubbles]
         .filter(
           (bubble) =>
-            clock.now - bubble.timestamp < 10000 &&
+            clock.now - bubble.timestamp < 120000 &&
             (bubble.agentId === agentId || bubble.targetAgents.includes(agentId)),
         )
         .sort((left, right) => right.timestamp - left.timestamp)[0];
@@ -433,6 +539,10 @@ export default function OfficePage() {
             kind: "task",
             status: taskTone(task),
             startAt: task.updatedAt,
+            responseAt:
+              latestResponseByAgent.get(agentId) && latestResponseByAgent.get(agentId)!.timestamp >= task.updatedAt
+                ? latestResponseByAgent.get(agentId)!.timestamp
+                : undefined,
             label: task.title,
             speaker: memberIndex === 0,
           });
@@ -440,34 +550,26 @@ export default function OfficePage() {
       });
     });
 
-    const recentRouteBubble = [...bubbles]
-      .filter((bubble) => clock.now - bubble.timestamp < 10000)
-      .sort((left, right) => right.timestamp - left.timestamp)[0];
+    agentEntries.forEach(([agentId], index) => {
+      if (assignments.has(agentId)) return;
 
-    if (recentRouteBubble) {
-      const routeAgents = recentRouteBubble.targetAgents.filter((agentId) => agents?.[agentId]).slice(0, 3);
-      const speakerIsAgent = !recentRouteBubble.agentId.startsWith("_user_") && agents?.[recentRouteBubble.agentId];
-      const participantIds = speakerIsAgent
-        ? [recentRouteBubble.agentId, ...routeAgents.filter((agentId) => agentId !== recentRouteBubble.agentId)]
-        : routeAgents;
+      const session = agentWorkSessions[agentId];
+      if (!session) return;
+      const relevantBubble = latestRelevantBubbleByAgent.get(agentId);
 
-      participantIds.forEach((agentId) => {
-        if (!assignments.has(agentId)) {
-          const agentDeskIndex = agentEntries.findIndex(([id]) => id === agentId);
-          assignments.set(agentId, {
-            stationIndex: agentDeskIndex >= 0 ? agentDeskIndex : 0,
-            kind: "route",
-            status: routeTone(recentRouteBubble.message),
-            startAt: recentRouteBubble.timestamp,
-            label: trimText(recentRouteBubble.message, 30),
-            speaker: speakerIsAgent ? agentId === recentRouteBubble.agentId : participantIds[0] === agentId,
-          });
-        }
+      assignments.set(agentId, {
+        stationIndex: index,
+        kind: "route",
+        status: routeTone(relevantBubble?.message ?? "working"),
+        startAt: session.startedAt,
+        responseAt: session.completedAt,
+        label: trimText(relevantBubble?.message ?? "working", 30),
+        speaker: true,
       });
-    }
+    });
 
     return assignments;
-  }, [activeTasks, bubbles, clock.now, agents, teams, agentEntries]);
+  }, [activeTasks, latestRelevantBubbleByAgent, clock.now, agents, teams, agentEntries, agentWorkSessions]);
 
   const sceneAgents = useMemo<SceneAgent[]>(() => {
     return agentEntries.map(([agentId], index) => {
@@ -492,34 +594,45 @@ export default function OfficePage() {
           1,
         );
         if (assignment.kind === "route") {
-          const commandBubble = latestUserTargetByAgent.get(agentId);
-          const replyBubble =
-            latestBubble && commandBubble && latestBubble.timestamp > commandBubble.timestamp ? latestBubble : undefined;
-
-          if (commandBubble && !replyBubble) {
-            const age = clock.now - commandBubble.timestamp;
+          if (!assignment.responseAt) {
+            const age = clock.now - assignment.startAt;
             const arriveProgress = clamp(age / 1200, 0, 1);
             target = interpolatePoint(home, stationSpot, easeInOut(arriveProgress));
             anim = age < 1200 ? "walk" : assignment.speaker ? "type" : "idle";
-          } else if (commandBubble && replyBubble) {
-            const replyAge = clock.now - replyBubble.timestamp;
-            const returnProgress = clamp(replyAge / 1200, 0, 1);
-            target = interpolatePoint(stationSpot, home, easeInOut(returnProgress));
-            anim = replyAge < 1200 ? "walk" : index % 2 === 0 ? "idle" : "sleep";
           } else {
-            const age = clock.now - assignment.startAt;
-            const arriveProgress = clamp(age / 1200, 0, 1);
-            const returnProgress = clamp((age - 8500) / 1200, 0, 1);
-            if (age < 8500) {
-              target = interpolatePoint(home, stationSpot, easeInOut(arriveProgress));
+            const replyAge = clock.now - assignment.responseAt;
+            const holdDuration = 5000;
+            if ((queueStatus?.processing ?? 0) > 0) {
+              target = stationSpot;
+              anim = "idle";
+            } else if (replyAge < holdDuration) {
+              target = stationSpot;
+              anim = "idle";
             } else {
+              const returnProgress = clamp((replyAge - holdDuration) / 1200, 0, 1);
               target = interpolatePoint(stationSpot, home, easeInOut(returnProgress));
+              anim = returnProgress < 1 ? "walk" : index % 2 === 0 ? "idle" : "sleep";
             }
-            anim = age < 1200 || (age >= 8500 && age < 9700) ? "walk" : assignment.speaker ? "type" : "idle";
           }
         } else {
           target = stationSpot;
-          anim = assignment.status === "pending" ? "idle" : assignment.speaker ? "type" : "idle";
+          if (assignment.responseAt) {
+            const replyAge = clock.now - assignment.responseAt;
+            const holdDuration = 5000;
+            if ((queueStatus?.processing ?? 0) > 0) {
+              target = stationSpot;
+              anim = "idle";
+            } else if (replyAge < holdDuration) {
+              target = stationSpot;
+              anim = "idle";
+            } else {
+              const returnProgress = clamp((replyAge - holdDuration) / 1200, 0, 1);
+              target = interpolatePoint(stationSpot, home, easeInOut(returnProgress));
+              anim = returnProgress < 1 ? "walk" : index % 2 === 0 ? "idle" : "sleep";
+            }
+          } else {
+            anim = assignment.status === "pending" ? "idle" : assignment.speaker ? "type" : "idle";
+          }
         }
       }
 
@@ -537,7 +650,7 @@ export default function OfficePage() {
         flip: target.x < home.x,
       };
     });
-  }, [agentEntries, clock.now, homePositions, latestAgentBubbleById, latestUserTargetByAgent, stationAssignments, taskStations.length]);
+  }, [agentEntries, clock.now, homePositions, latestAgentBubbleById, queueStatus?.processing, stationAssignments, taskStations.length]);
 
   const taskSummaries = useMemo<SceneTaskSummary[]>(() => {
     const allTasks = tasks ?? [];
@@ -629,8 +742,8 @@ export default function OfficePage() {
     if (latestUserBubble && clock.now - latestUserBubble.timestamp < 10000) {
       items.push({
         id: latestUserBubble.id,
-        x: PIXEL_SCENE_LAYOUT.bossRoomX + PIXEL_SCENE_LAYOUT.bossRoomWidth - 28,
-        y: PIXEL_SCENE_LAYOUT.bossRoomY + 86,
+        x: PIXEL_SCENE_LAYOUT.bossRoomX + 108,
+        y: PIXEL_SCENE_LAYOUT.bossRoomY + 152,
         color: "#84cc16",
         heading: "boss command",
         message: trimText(latestUserBubble.message, 220),
@@ -660,7 +773,7 @@ export default function OfficePage() {
       const seenHistory = new Set<string>();
 
       Object.entries(agentHistories ?? {}).forEach(([agentId, messages]) => {
-        messages.forEach((message) => {
+        messages.forEach((message, index) => {
           const dedupeKey =
             message.role === "user"
               ? `user:${message.message_id || message.id}:${message.content}`
@@ -676,11 +789,12 @@ export default function OfficePage() {
             sender: message.role === "user" ? message.sender || "Boss" : agents?.[agentId]?.name || `@${agentId}`,
             message: message.content,
             targetAgents: message.role === "user" ? [agentId] : [],
+            sourceOrder: index,
           });
         });
       });
 
-      const liveEntries = [...bubbles].map((bubble) => {
+      const liveEntries = [...bubbles].map((bubble, index) => {
         if (bubble.agentId.startsWith("_user_")) {
           return {
             id: bubble.id,
@@ -689,6 +803,7 @@ export default function OfficePage() {
             sender: "Boss",
             message: bubble.message,
             targetAgents: bubble.targetAgents,
+            sourceOrder: index,
           };
         }
 
@@ -701,13 +816,18 @@ export default function OfficePage() {
           sender: agent?.name || `@${bubble.agentId}`,
           message: bubble.message,
           targetAgents: bubble.targetAgents,
+          sourceOrder: index,
         };
       });
 
       const merged = [...historyEntries, ...liveEntries];
       const seen = new Set<string>();
       return merged
-        .sort((left, right) => left.timestamp - right.timestamp)
+        .sort((left, right) => {
+          if (left.timestamp !== right.timestamp) return left.timestamp - right.timestamp;
+          if (left.role !== right.role) return left.role === "user" ? -1 : 1;
+          return left.sourceOrder - right.sourceOrder;
+        })
         .filter((entry) => {
           const key = `${entry.role}:${entry.agentId || "boss"}:${entry.timestamp}:${entry.message}`;
           if (seen.has(key)) return false;
@@ -727,6 +847,12 @@ export default function OfficePage() {
       })
       .slice(-60);
   }, [conversationEntries, conversationFilter]);
+
+  useEffect(() => {
+    const node = conversationScrollRef.current;
+    if (!node) return;
+    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+  }, [visibleConversation]);
 
   return (
     <div className="flex h-full flex-col">
@@ -752,8 +878,8 @@ export default function OfficePage() {
             className="absolute grid grid-cols-2 gap-2.5"
             style={{
               left: `${((PIXEL_SCENE_LAYOUT.archiveRoomX + 41) / PIXEL_SCENE_LAYOUT.width) * 100}%`,
-              top: `${((PIXEL_SCENE_LAYOUT.archiveRoomY + 178) / PIXEL_SCENE_LAYOUT.height) * 100}%`,
-              width: `${(154 / PIXEL_SCENE_LAYOUT.width) * 100}%`,
+              top: `${((PIXEL_SCENE_LAYOUT.archiveRoomY + 166) / PIXEL_SCENE_LAYOUT.height) * 100}%`,
+              width: `${(148 / PIXEL_SCENE_LAYOUT.width) * 100}%`,
             }}
           >
             {[
@@ -767,9 +893,10 @@ export default function OfficePage() {
                 key={item.id}
                 type="button"
                 onClick={() => setArchivePanel((current) => (current === item.id ? null : (item.id as typeof archivePanel)))}
-                className={`rounded-md border border-stone-700 bg-[rgba(37,28,24,0.88)] px-2 py-1 text-[10px] font-mono text-stone-100 transition hover:border-lime-500 hover:text-lime-300 ${
+                className={`justify-self-center rounded-md border border-stone-700 bg-[rgba(37,28,24,0.88)] px-2 py-[3px] text-[10px] leading-none font-mono text-stone-100 transition hover:border-lime-500 hover:text-lime-300 ${
                   item.id === "routing" ? "col-span-2" : ""
                 }`}
+                style={{ width: item.id === "routing" ? 120 : 92 }}
               >
                 {item.label}
               </button>
@@ -913,7 +1040,10 @@ export default function OfficePage() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(199,171,143,0.92),rgba(176,146,119,0.88))] px-4 py-4">
+            <div
+              ref={conversationScrollRef}
+              className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(199,171,143,0.92),rgba(176,146,119,0.88))] px-4 py-4"
+            >
               <div className="space-y-3">
                 {visibleConversation.length > 0 ? (
                   visibleConversation.map((entry) => (
@@ -974,21 +1104,30 @@ export default function OfficePage() {
             return (
               <div
                 key={bubble.id}
-                className="absolute z-20 max-w-[380px] -translate-x-1/2 -translate-y-full animate-slide-up"
+                className={`absolute z-20 h-[76px] w-[192px] -translate-x-1/2 animate-slide-up ${
+                  bubble.heading === "boss command" ? "" : "-translate-y-full"
+                }`}
                 style={{ left: position.left, top: position.top }}
               >
                 <div
-                  className="relative rounded-md border px-3 py-2 text-[11px] leading-relaxed text-white shadow-xl"
+                  className="relative flex h-full w-full flex-col rounded-[12px] border px-2.5 py-2 text-[10px] leading-relaxed text-white shadow-xl"
                   style={{ borderColor: bubble.color, background: "rgba(17, 24, 39, 0.94)" }}
                 >
-                  <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em]" style={{ color: bubble.color }}>
+                  <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: bubble.color }}>
                     {bubble.heading}
                   </div>
-                  <p className="break-words">{bubble.message}</p>
-                  <div
-                    className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-r border-b"
-                    style={{ borderColor: bubble.color, background: "rgba(17, 24, 39, 0.94)" }}
-                  />
+                  <p className="line-clamp-2 break-words overflow-hidden text-ellipsis">{bubble.message}</p>
+                  {bubble.heading === "boss command" ? (
+                    <div
+                      className="absolute left-1/2 top-0 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border-l border-t"
+                      style={{ borderColor: bubble.color, background: "rgba(17, 24, 39, 0.94)" }}
+                    />
+                  ) : (
+                    <div
+                      className="absolute left-1/2 top-full h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border-r border-b"
+                      style={{ borderColor: bubble.color, background: "rgba(17, 24, 39, 0.94)" }}
+                    />
+                  )}
                 </div>
               </div>
             );
