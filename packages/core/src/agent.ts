@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { AgentConfig, TeamConfig } from './types';
 import { SCRIPT_DIR } from './config';
+import { loadMemoryIndex } from './memory';
 
 /**
  * Recursively copy directory
@@ -72,6 +73,10 @@ export function ensureAgentDirectory(agentDir: string): void {
         fs.mkdirSync(targetClaudeSkills, { recursive: true });
         copyDirSync(targetAgentsSkills, targetClaudeSkills);
     }
+
+    // Create memory directory for hierarchical memory system
+    const targetMemory = path.join(agentDir, 'memory');
+    fs.mkdirSync(targetMemory, { recursive: true });
 
     // Create .tinyclaw directory and copy SOUL.md
     const targetTinyclaw = path.join(agentDir, '.tinyclaw');
@@ -144,4 +149,48 @@ export function updateAgentTeammates(agentDir: string, agentId: string, agents: 
         claudeContent = claudeContent.trimEnd() + '\n\n' + startMarker + block + endMarker + '\n';
     }
     fs.writeFileSync(claudeMdPath, claudeContent);
+}
+
+/**
+ * Update the AGENTS.md (and .claude/CLAUDE.md) with the current memory index.
+ * Replaces content between <!-- MEMORY_START --> and <!-- MEMORY_END --> markers.
+ */
+export function updateAgentMemoryIndex(agentDir: string): void {
+    const memoryTree = loadMemoryIndex(agentDir);
+
+    const startMarker = '<!-- MEMORY_START -->';
+    const endMarker = '<!-- MEMORY_END -->';
+
+    let block = '';
+    if (memoryTree) {
+        block = '\n' + memoryTree + '\n\n' +
+            'To read a memory in detail, read the file at `memory/<path>`. ' +
+            'Use the **memory** skill to create, update, or reorganize memories.\n';
+    } else {
+        block = '\nNo memories yet. Use the **memory** skill to start building your memory.\n';
+    }
+
+    // Update AGENTS.md
+    const agentsMdPath = path.join(agentDir, 'AGENTS.md');
+    if (fs.existsSync(agentsMdPath)) {
+        let content = fs.readFileSync(agentsMdPath, 'utf8');
+        const startIdx = content.indexOf(startMarker);
+        const endIdx = content.indexOf(endMarker);
+        if (startIdx !== -1 && endIdx !== -1) {
+            content = content.substring(0, startIdx + startMarker.length) + block + content.substring(endIdx);
+            fs.writeFileSync(agentsMdPath, content);
+        }
+    }
+
+    // Update .claude/CLAUDE.md
+    const claudeMdPath = path.join(agentDir, '.claude', 'CLAUDE.md');
+    if (fs.existsSync(claudeMdPath)) {
+        let content = fs.readFileSync(claudeMdPath, 'utf8');
+        const startIdx = content.indexOf(startMarker);
+        const endIdx = content.indexOf(endMarker);
+        if (startIdx !== -1 && endIdx !== -1) {
+            content = content.substring(0, startIdx + startMarker.length) + block + content.substring(endIdx);
+            fs.writeFileSync(claudeMdPath, content);
+        }
+    }
 }

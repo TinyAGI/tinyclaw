@@ -4,7 +4,7 @@ import path from 'path';
 import { AgentConfig, CustomProvider, TeamConfig } from './types';
 import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel, getSettings } from './config';
 import { log } from './logging';
-import { ensureAgentDirectory, updateAgentTeammates } from './agent';
+import { ensureAgentDirectory, updateAgentTeammates, updateAgentMemoryIndex } from './agent';
 
 export async function runCommand(command: string, args: string[], cwd?: string, envOverrides?: Record<string, string>): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -70,6 +70,9 @@ export async function invokeAgent(
 
     // Update AGENTS.md with current teammate info
     updateAgentTeammates(agentDir, agentId, agents, teams);
+
+    // Update AGENTS.md with current memory index
+    updateAgentMemoryIndex(agentDir);
 
     // Resolve working directory
     const workingDir = agent.working_directory
