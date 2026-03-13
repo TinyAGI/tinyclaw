@@ -65,9 +65,9 @@ jobs:
       - name: Create bundle tarball
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
-          BUNDLE_NAME="tinyclaw-bundle.tar.gz"
+          BUNDLE_NAME="tinyagi-bundle.tar.gz"
           TEMP_DIR=$(mktemp -d)
-          BUNDLE_DIR="$TEMP_DIR/tinyclaw"
+          BUNDLE_DIR="$TEMP_DIR/tinyagi"
 
           mkdir -p "$BUNDLE_DIR"
 
@@ -81,7 +81,7 @@ jobs:
           cp -r .agents/ "$BUNDLE_DIR/"
           cp -r tinyoffice/ "$BUNDLE_DIR/"
 
-          cp tinyclaw.sh "$BUNDLE_DIR/"
+          cp tinyagi.sh "$BUNDLE_DIR/"
 
           # Copy root files
           cp package.json "$BUNDLE_DIR/"
@@ -95,8 +95,8 @@ jobs:
           cp .gitignore "$BUNDLE_DIR/"
 
           # Make scripts executable
-          chmod +x "$BUNDLE_DIR/bin/tinyclaw"
-          chmod +x "$BUNDLE_DIR/tinyclaw.sh"
+          chmod +x "$BUNDLE_DIR/bin/tinyagi"
+          chmod +x "$BUNDLE_DIR/tinyagi.sh"
           chmod +x "$BUNDLE_DIR/scripts/install.sh"
           chmod +x "$BUNDLE_DIR/scripts/uninstall.sh"
           chmod +x "$BUNDLE_DIR/scripts/bundle.sh"
@@ -106,7 +106,7 @@ jobs:
 
           # Create tarball
           cd "$TEMP_DIR"
-          tar -czf "$GITHUB_WORKSPACE/$BUNDLE_NAME" tinyclaw/
+          tar -czf "$GITHUB_WORKSPACE/$BUNDLE_NAME" tinyagi/
 
           # Get bundle info
           BUNDLE_SIZE=$(du -h "$GITHUB_WORKSPACE/$BUNDLE_NAME" | cut -f1)
@@ -137,7 +137,7 @@ jobs:
           if [ ! -s release_notes.md ]; then
             echo "::warning::Could not extract annotated tag message, using fallback"
             cat > release_notes.md <<EOF
-          ## TinyClaw $VERSION
+          ## TinyAGI $VERSION
 
           See commits since last release for detailed changes.
           EOF
@@ -152,7 +152,7 @@ jobs:
         with:
           body_path: release_notes.md
           files: |
-            tinyclaw-bundle.tar.gz
+            tinyagi-bundle.tar.gz
           draft: false
           prerelease: false
         env:
@@ -162,6 +162,6 @@ jobs:
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: tinyclaw-bundle
-          path: tinyclaw-bundle.tar.gz
+          name: tinyagi-bundle
+          path: tinyagi-bundle.tar.gz
           retention-days: 7

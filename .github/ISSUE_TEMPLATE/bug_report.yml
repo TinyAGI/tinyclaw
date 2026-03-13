@@ -25,7 +25,7 @@ body:
     id: component
     attributes:
       label: Component
-      description: Which part of TinyClaw is affected?
+      description: Which part of TinyAGI is affected?
       options:
         - "Agent execution"
         - "Team / multi-agent coordination"
@@ -79,8 +79,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: TinyClaw Version
-      description: Output of `tinyclaw --version` or the release you're using.
+      label: TinyAGI Version
+      description: Output of `tinyagi --version` or the release you're using.
       placeholder: e.g., 0.5.0
     validations:
       required: true

@@ -4,12 +4,12 @@ import { jsonrepair } from 'jsonrepair';
 import { Settings, AgentConfig, TeamConfig, CLAUDE_MODEL_IDS, CODEX_MODEL_IDS, OPENCODE_MODEL_IDS } from './types';
 
 export const SCRIPT_DIR = path.resolve(__dirname, '../../..');
-export const TINYCLAW_HOME = process.env.TINYCLAW_HOME
-    || path.join(require('os').homedir(), '.tinyclaw');
-export const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/queue.log');
-export const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
-export const CHATS_DIR = path.join(TINYCLAW_HOME, 'chats');
-export const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
+export const TINYAGI_HOME = process.env.TINYAGI_HOME
+    || path.join(require('os').homedir(), '.tinyagi');
+export const LOG_FILE = path.join(TINYAGI_HOME, 'logs/queue.log');
+export const SETTINGS_FILE = path.join(TINYAGI_HOME, 'settings.json');
+export const CHATS_DIR = path.join(TINYAGI_HOME, 'chats');
+export const FILES_DIR = path.join(TINYAGI_HOME, 'files');
 
 export function getSettings(): Settings {
     try {
@@ -73,7 +73,7 @@ export function getDefaultAgentFromModels(settings: Settings): AgentConfig {
     }
 
     // Get workspace path from settings or use default
-    const workspacePath = settings?.workspace?.path || path.join(require('os').homedir(), 'tinyclaw-workspace');
+    const workspacePath = settings?.workspace?.path || path.join(require('os').homedir(), 'tinyagi-workspace');
     const defaultAgentDir = path.join(workspacePath, 'default');
 
     return {

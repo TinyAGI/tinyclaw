@@ -1,5 +1,5 @@
 {
-  "name": "@tinyclaw/core",
+  "name": "@tinyagi/core",
   "version": "0.0.10",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

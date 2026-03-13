@@ -1,6 +1,6 @@
 # Queue System
 
-TinyClaw uses a SQLite-backed queue (`tinyclaw.db`) to coordinate message processing across multiple channels and agents. Messages are stored in a `messages` table (incoming) and `responses` table (outgoing), with atomic transactions replacing the previous file-based approach.
+TinyAGI uses a SQLite-backed queue (`tinyagi.db`) to coordinate message processing across multiple channels and agents. Messages are stored in a `messages` table (incoming) and `responses` table (outgoing), with atomic transactions replacing the previous file-based approach.
 
 ## Overview
 
@@ -18,7 +18,7 @@ The queue system acts as a central coordinator between:
                      │ enqueueMessage()
                      ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   ~/.tinyclaw/tinyclaw.db                     │
+│                   ~/.tinyagi/tinyagi.db                     │
 │                                                              │
 │  messages table                    responses table           │
 │  status: pending → processing →   status: pending → acked   │
@@ -45,7 +45,7 @@ The queue system acts as a central coordinator between:
 
 ## Database Schema
 
-The queue lives in `~/.tinyclaw/tinyclaw.db` (SQLite, WAL mode):
+The queue lives in `~/.tinyagi/tinyagi.db` (SQLite, WAL mode):
 
 ### Messages Table (incoming queue)
 
@@ -256,7 +256,7 @@ The TUI visualizer and web dashboard both consume SSE for live updates.
 
 ## API Endpoints
 
-The API server runs on port 3777 (configurable via `TINYCLAW_API_PORT`):
+The API server runs on port 3777 (configurable via `TINYAGI_API_PORT`):
 
 | Endpoint | Description |
 |----------|-------------|
@@ -285,18 +285,18 @@ Periodic cleanup tasks run automatically:
 curl http://localhost:3777/api/queue/status | jq
 
 # View queue logs
-tinyclaw logs queue
+tinyagi logs queue
 ```
 
 ### Common Issues
 
 **Messages not processing:**
-- Queue processor not running → `tinyclaw status`
-- Check logs → `tinyclaw logs queue`
+- Queue processor not running → `tinyagi status`
+- Check logs → `tinyagi logs queue`
 
 **Messages stuck in processing:**
 - Will auto-recover after 10 minutes
-- Or restart: `tinyclaw restart`
+- Or restart: `tinyagi restart`
 
 **Dead messages accumulating:**
 - Check via API: `curl http://localhost:3777/api/queue/dead | jq`

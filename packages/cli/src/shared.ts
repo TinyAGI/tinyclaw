@@ -1,10 +1,10 @@
 import * as p from '@clack/prompts';
 import fs from 'fs';
 import path from 'path';
-import { Settings, SETTINGS_FILE, TINYCLAW_HOME, SCRIPT_DIR } from '@tinyclaw/core';
+import { Settings, SETTINGS_FILE, TINYAGI_HOME, SCRIPT_DIR } from '@tinyagi/core';
 
 // Re-export for convenience
-export { SETTINGS_FILE, TINYCLAW_HOME, SCRIPT_DIR };
+export { SETTINGS_FILE, TINYAGI_HOME, SCRIPT_DIR };
 
 /**
  * Unwrap a clack prompt result: exit on cancel, return typed value.

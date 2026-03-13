@@ -1,13 +1,13 @@
 # Plugin Development Guide
 
-TinyClaw supports plugins that can intercept messages, transform content, and react to system events. Plugins are auto-discovered from the `plugins/` folder inside your TinyClaw home directory.
+TinyAGI supports plugins that can intercept messages, transform content, and react to system events. Plugins are auto-discovered from the `plugins/` folder inside your TinyAGI home directory.
 
 ## Quick Start
 
 1. Create a plugin directory:
 
 ```bash
-mkdir -p ~/.tinyclaw/plugins/my-plugin
+mkdir -p ~/.tinyagi/plugins/my-plugin
 ```
 
 2. Create `index.js`:
@@ -33,12 +33,12 @@ exports.hooks = {
 };
 ```
 
-3. Restart TinyClaw. Your plugin loads automatically.
+3. Restart TinyAGI. Your plugin loads automatically.
 
 ## Plugin Structure
 
 ```
-~/.tinyclaw/plugins/
+~/.tinyagi/plugins/
 └── my-plugin/
     └── index.js       # Required entry point (or index.ts compiled to JS)
 ```
@@ -77,9 +77,9 @@ ctx.log('INFO', 'Processing complete');
 // Output: [plugin:my-plugin] Processing complete
 ```
 
-### `ctx.getTinyClawHome()`
+### `ctx.getTinyAGIHome()`
 
-Returns the resolved TinyClaw home directory path (e.g., `~/.tinyclaw`).
+Returns the resolved TinyAGI home directory path (e.g., `~/.tinyagi`).
 
 ## Hooks
 
@@ -192,7 +192,7 @@ const fs = require('fs');
 const path = require('path');
 
 exports.activate = function(ctx) {
-  const logFile = path.join(ctx.getTinyClawHome(), 'plugins', 'logger', 'messages.log');
+  const logFile = path.join(ctx.getTinyAGIHome(), 'plugins', 'logger', 'messages.log');
 
   ctx.on('message_received', (event) => {
     const line = `[${new Date(event.timestamp).toISOString()}] ${event.channel}/${event.sender}: ${event.message}\n`;
@@ -261,12 +261,12 @@ Plugin errors are caught and logged — a failing plugin will never crash the qu
 You can write plugins in TypeScript. Compile to JavaScript before loading:
 
 ```bash
-cd ~/.tinyclaw/plugins/my-plugin
+cd ~/.tinyagi/plugins/my-plugin
 npx tsc index.ts --outDir . --skipLibCheck
 ```
 
-The plugin loader will pick up `index.js`. Types can be imported from the TinyClaw source if you have it available:
+The plugin loader will pick up `index.js`. Types can be imported from the TinyAGI source if you have it available:
 
 ```ts
-import type { PluginContext, Hooks, HookContext } from 'tinyclaw/src/lib/plugins';
+import type { PluginContext, Hooks, HookContext } from 'tinyagi/src/lib/plugins';
 ```

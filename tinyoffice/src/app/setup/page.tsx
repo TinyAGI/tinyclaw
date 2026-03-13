@@ -85,7 +85,7 @@ export default function SetupPage() {
   const [provider, setProvider] = useState("anthropic");
   const [model, setModel] = useState("sonnet");
   const [heartbeat, setHeartbeat] = useState("3600");
-  const [workspaceName, setWorkspaceName] = useState("tinyclaw-workspace");
+  const [workspaceName, setWorkspaceName] = useState("tinyagi-workspace");
   const [agents, setAgents] = useState<SetupAgent[]>([
     { id: "assistant", name: "Assistant", provider: "anthropic", model: "sonnet" },
   ]);
@@ -205,7 +205,7 @@ export default function SetupPage() {
           Setup
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure TinyClaw in a few steps
+          Configure TinyAGI in a few steps
         </p>
       </div>
 
@@ -314,7 +314,7 @@ export default function SetupPage() {
                 <Input
                   value={workspaceName}
                   onChange={(e) => setWorkspaceName(e.target.value)}
-                  placeholder="tinyclaw-workspace"
+                  placeholder="tinyagi-workspace"
                   className="mt-1"
                 />
                 <p className="text-xs text-muted-foreground mt-1">

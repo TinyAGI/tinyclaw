@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="./docs/images/tinyclaw.png" alt="TinyClaw" width="600" />
-  <h1>TinyClaw 🦞</h1>
+  <img src="./docs/images/tinyagi.png" alt="TinyAGI" width="600" />
+  <h1>TinyAGI 🦞</h1>
   <p><strong>Multi-agent, Multi-team, Multi-channel, 24/7 AI assistant</strong></p>
   <p>Run multiple teams of AI agents that collaborate with each other simultaneously with isolated workspaces.</p>
   <p>
@@ -11,8 +11,8 @@
     <a href="https://discord.gg/jH6AcEChuD">
       <img src="https://img.shields.io/discord/1353722981163208785?logo=discord&logoColor=white&label=Discord&color=7289DA" alt="Discord" />
     </a>
-    <a href="https://github.com/TinyAGI/tinyclaw/releases/latest">
-      <img src="https://img.shields.io/github/v/release/TinyAGI/tinyclaw?label=Latest&color=green" alt="Latest Release" />
+    <a href="https://github.com/TinyAGI/tinyagi/releases/latest">
+      <img src="https://img.shields.io/github/v/release/TinyAGI/tinyagi?label=Latest&color=green" alt="Latest Release" />
     </a>
   </p>
 </div>
@@ -34,7 +34,7 @@
 - ✅ **Live TUI dashboard** - Real-time team visualizer and chatroom viewer
 - ✅ **Persistent sessions** - Conversation context maintained across restarts
 - ✅ **SQLite queue** - Atomic transactions, retry logic, dead-letter management
-- ✅ **Plugin system** - Extend TinyClaw with custom plugins for message hooks and event listeners
+- ✅ **Plugin system** - Extend TinyAGI with custom plugins for message hooks and event listeners
 - ✅ **24/7 operation** - Runs in tmux for always-on availability
 
 ## Community
@@ -59,7 +59,7 @@ We are actively looking for contributors. Please reach out.
 **Option 1: One-line Install (Recommended)**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyagi/main/scripts/remote-install.sh | bash
 ```
 
 <details>
@@ -68,16 +68,16 @@ curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remot
 **From Release:**
 
 ```bash
-wget https://github.com/TinyAGI/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
-tar -xzf tinyclaw-bundle.tar.gz
-cd tinyclaw && ./scripts/install.sh
+wget https://github.com/TinyAGI/tinyagi/releases/latest/download/tinyagi-bundle.tar.gz
+tar -xzf tinyagi-bundle.tar.gz
+cd tinyagi && ./scripts/install.sh
 ```
 
 **From Source:**
 
 ```bash
-git clone https://github.com/TinyAGI/tinyclaw.git
-cd tinyclaw && npm install && ./scripts/install.sh
+git clone https://github.com/TinyAGI/tinyagi.git
+cd tinyagi && npm install && ./scripts/install.sh
 ```
 
 </details>
@@ -85,7 +85,7 @@ cd tinyclaw && npm install && ./scripts/install.sh
 ### First Run
 
 ```bash
-tinyclaw start  # Runs interactive setup wizard
+tinyagi start  # Runs interactive setup wizard
 ```
 
 The setup wizard will guide you through channel selection, bot tokens, workspace setup, default agent, AI provider, model selection, and heartbeat interval.
@@ -110,7 +110,7 @@ The setup wizard will guide you through channel selection, bot tokens, workspace
 
 ### WhatsApp Setup
 
-After starting TinyClaw, scan the QR code:
+After starting TinyAGI, scan the QR code:
 
 ```text
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -127,18 +127,18 @@ After starting TinyClaw, scan the QR code:
 
 ## 🌐 TinyOffice Web Portal
 
-TinyClaw includes a web portal for managing your agents, teams, tasks, and chat — all from the browser.
+TinyAGI includes a web portal for managing your agents, teams, tasks, and chat — all from the browser.
 
 <div align="center">
   <img src="./docs/images/tinyoffice.png" alt="TinyOffice Office View" width="700" />
 </div>
 
-Once you start running TinyClaw locally, you can control it by visiting **[office.tinyagicompany.com](https://office.tinyagicompany.com/)**. It connects to your local TinyClaw API at `localhost:3777` — no account or sign-up needed.
+Once you start running TinyAGI locally, you can control it by visiting **[office.tinyagicompany.com](https://office.tinyagicompany.com/)**. It connects to your local TinyAGI API at `localhost:3777` — no account or sign-up needed.
 
 Alternatively, you can run TinyOffice locally:
 
 ```bash
-tinyclaw office  # Builds and starts on http://localhost:3000
+tinyagi office  # Builds and starts on http://localhost:3000
 ```
 
 <details>
@@ -149,7 +149,7 @@ tinyclaw office  # Builds and starts on http://localhost:3000
 - **Agents & Teams** - Create, edit, and remove agents/teams
 - **Tasks (Kanban)** - Create tasks, drag across stages, assign to agent/team
 - **Logs & Events** - Inspect queue logs and streaming events
-- **Settings** - Edit TinyClaw configuration (`settings.json`) via UI
+- **Settings** - Edit TinyAGI configuration (`settings.json`) via UI
 - **Office View** - Visual simulation of agent interactions
 - **Org Chart** - Hierarchical visualization of teams and agents
 - **Chat Rooms** - Slack-style persistent chat rooms per team
@@ -157,13 +157,13 @@ tinyclaw office  # Builds and starts on http://localhost:3000
 
 ### Running Locally
 
-Start TinyClaw first (API default: `http://localhost:3777`), then:
+Start TinyAGI first (API default: `http://localhost:3777`), then:
 
 ```bash
-tinyclaw office
+tinyagi office
 ```
 
-This auto-detects when dependencies or builds are needed (e.g. after `tinyclaw update`) and starts the production server on `http://localhost:3000`.
+This auto-detects when dependencies or builds are needed (e.g. after `tinyagi update`) and starts the production server on `http://localhost:3000`.
 
 For development with hot-reload:
 
@@ -173,7 +173,7 @@ npm install
 npm run dev
 ```
 
-If TinyClaw API is on a different host/port, set:
+If TinyAGI API is on a different host/port, set:
 
 ```bash
 cd tinyoffice
@@ -184,50 +184,50 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:3777' > .env.local
 
 ## 📋 Commands
 
-Commands work with `tinyclaw` (if CLI installed) or `./tinyclaw.sh` (direct script).
+Commands work with `tinyagi` (if CLI installed) or `./tinyagi.sh` (direct script).
 
 ### Core Commands
 
 | Command       | Description                                               | Example               |
 | ------------- | --------------------------------------------------------- | --------------------- |
-| `start`       | Start TinyClaw daemon                                     | `tinyclaw start`      |
-| `stop`        | Stop all processes                                        | `tinyclaw stop`       |
-| `restart`     | Restart TinyClaw                                          | `tinyclaw restart`    |
-| `status`      | Show current status and activity                          | `tinyclaw status`     |
-| `setup`       | Run setup wizard (reconfigure)                            | `tinyclaw setup`      |
-| `logs [type]` | View logs (discord/telegram/whatsapp/queue/heartbeat/all) | `tinyclaw logs queue` |
-| `attach`      | Attach to tmux session                                    | `tinyclaw attach`     |
+| `start`       | Start TinyAGI daemon                                     | `tinyagi start`      |
+| `stop`        | Stop all processes                                        | `tinyagi stop`       |
+| `restart`     | Restart TinyAGI                                          | `tinyagi restart`    |
+| `status`      | Show current status and activity                          | `tinyagi status`     |
+| `setup`       | Run setup wizard (reconfigure)                            | `tinyagi setup`      |
+| `logs [type]` | View logs (discord/telegram/whatsapp/queue/heartbeat/all) | `tinyagi logs queue` |
+| `attach`      | Attach to tmux session                                    | `tinyagi attach`     |
 
 ### Agent Commands
 
 | Command                               | Description                     | Example                                                      |
 | ------------------------------------- | ------------------------------- | ------------------------------------------------------------ |
-| `agent list`                          | List all configured agents      | `tinyclaw agent list`                                        |
-| `agent add`                           | Add new agent (interactive)     | `tinyclaw agent add`                                         |
-| `agent show <id>`                     | Show agent configuration        | `tinyclaw agent show coder`                                  |
-| `agent remove <id>`                   | Remove an agent                 | `tinyclaw agent remove coder`                                |
-| `agent reset <id>`                    | Reset agent conversation        | `tinyclaw agent reset coder`                                 |
-| `agent provider <id> [provider]`      | Show or set agent's AI provider | `tinyclaw agent provider coder anthropic`                    |
-| `agent provider <id> <p> --model <m>` | Set agent's provider and model  | `tinyclaw agent provider coder openai --model gpt-5.3-codex` |
+| `agent list`                          | List all configured agents      | `tinyagi agent list`                                        |
+| `agent add`                           | Add new agent (interactive)     | `tinyagi agent add`                                         |
+| `agent show <id>`                     | Show agent configuration        | `tinyagi agent show coder`                                  |
+| `agent remove <id>`                   | Remove an agent                 | `tinyagi agent remove coder`                                |
+| `agent reset <id>`                    | Reset agent conversation        | `tinyagi agent reset coder`                                 |
+| `agent provider <id> [provider]`      | Show or set agent's AI provider | `tinyagi agent provider coder anthropic`                    |
+| `agent provider <id> <p> --model <m>` | Set agent's provider and model  | `tinyagi agent provider coder openai --model gpt-5.3-codex` |
 
 ### Team Commands
 
 | Command                     | Description                        | Example                                   |
 | --------------------------- | ---------------------------------- | ----------------------------------------- |
-| `team list`                 | List all configured teams          | `tinyclaw team list`                      |
-| `team add`                  | Add new team (interactive)         | `tinyclaw team add`                       |
-| `team show <id>`            | Show team configuration            | `tinyclaw team show dev`                  |
-| `team remove <id>`          | Remove a team                      | `tinyclaw team remove dev`                |
-| `team add-agent <t> <a>`    | Add an existing agent to a team    | `tinyclaw team add-agent dev reviewer`    |
-| `team remove-agent <t> <a>` | Remove an agent from a team        | `tinyclaw team remove-agent dev reviewer` |
-| `team visualize [id]`       | Live TUI dashboard for team chains | `tinyclaw team visualize dev`             |
+| `team list`                 | List all configured teams          | `tinyagi team list`                      |
+| `team add`                  | Add new team (interactive)         | `tinyagi team add`                       |
+| `team show <id>`            | Show team configuration            | `tinyagi team show dev`                  |
+| `team remove <id>`          | Remove a team                      | `tinyagi team remove dev`                |
+| `team add-agent <t> <a>`    | Add an existing agent to a team    | `tinyagi team add-agent dev reviewer`    |
+| `team remove-agent <t> <a>` | Remove an agent from a team        | `tinyagi team remove-agent dev reviewer` |
+| `team visualize [id]`       | Live TUI dashboard for team chains | `tinyagi team visualize dev`             |
 
 ### Chatroom Commands
 
 | Command             | Description                                   | Example                    |
 | ------------------- | --------------------------------------------- | -------------------------- |
-| `chatroom <team>`   | Real-time TUI viewer with type-to-send        | `tinyclaw chatroom dev`    |
-| `office`            | Start TinyOffice web portal on port 3000      | `tinyclaw office`          |
+| `chatroom <team>`   | Real-time TUI viewer with type-to-send        | `tinyagi chatroom dev`    |
+| `office`            | Start TinyOffice web portal on port 3000      | `tinyagi office`          |
 
 Every team has a persistent chat room. Agents post to it using `[#team_id: message]` tags, and messages are broadcast to all teammates. The chatroom viewer polls for new messages in real time — type a message and press Enter to post, or press `q`/Esc to quit.
 
@@ -242,13 +242,13 @@ POST /api/chatroom/:teamId          # Post a message (body: { "message": "..." }
 
 | Command                                       | Description                                              | Example                                          |
 | --------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------ |
-| `provider [name]`                             | Show or switch global AI provider                        | `tinyclaw provider anthropic`                    |
-| `provider <name> --model <model>`             | Switch provider and model; propagates to matching agents | `tinyclaw provider openai --model gpt-5.3-codex` |
-| `provider <name> --auth-token <key>`          | Store API key for a built-in provider                    | `tinyclaw provider anthropic --auth-token sk-...` |
-| `provider list`                               | List all custom providers                                | `tinyclaw provider list`                         |
-| `provider add`                                | Add a new custom provider (interactive)                  | `tinyclaw provider add`                          |
-| `provider remove <id>`                        | Remove a custom provider                                 | `tinyclaw provider remove proxy`                 |
-| `model [name]`                                | Show or switch AI model                                  | `tinyclaw model opus`                            |
+| `provider [name]`                             | Show or switch global AI provider                        | `tinyagi provider anthropic`                    |
+| `provider <name> --model <model>`             | Switch provider and model; propagates to matching agents | `tinyagi provider openai --model gpt-5.3-codex` |
+| `provider <name> --auth-token <key>`          | Store API key for a built-in provider                    | `tinyagi provider anthropic --auth-token sk-...` |
+| `provider list`                               | List all custom providers                                | `tinyagi provider list`                         |
+| `provider add`                                | Add a new custom provider (interactive)                  | `tinyagi provider add`                          |
+| `provider remove <id>`                        | Remove a custom provider                                 | `tinyagi provider remove proxy`                 |
+| `model [name]`                                | Show or switch AI model                                  | `tinyagi model opus`                            |
 
 <details>
 <summary><b>Custom provider details</b></summary>
@@ -282,15 +282,15 @@ Custom providers let you use any OpenAI or Anthropic-compatible API endpoint (e.
 **Assign a custom provider to an agent:**
 
 ```bash
-tinyclaw agent provider coder custom:my-proxy
-tinyclaw agent provider coder custom:my-proxy --model gpt-4o
+tinyagi agent provider coder custom:my-proxy
+tinyagi agent provider coder custom:my-proxy --model gpt-4o
 ```
 
 **Auth token storage** — store API keys for built-in providers so you don't need separate CLI auth:
 
 ```bash
-tinyclaw provider anthropic --auth-token sk-ant-...
-tinyclaw provider openai --auth-token sk-...
+tinyagi provider anthropic --auth-token sk-ant-...
+tinyagi provider openai --auth-token sk-...
 ```
 
 Tokens are saved in `settings.json` under `models.<provider>.auth_token` and automatically exported as `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` when invoking CLIs.
@@ -314,16 +314,16 @@ Use sender pairing to control who can message your agents.
 
 | Command                                | Description                                        | Example                                    |
 | -------------------------------------- | -------------------------------------------------- | ------------------------------------------ |
-| `pairing pending`                      | Show pending sender approvals (with pairing codes) | `tinyclaw pairing pending`                 |
-| `pairing approved`                     | Show approved senders                              | `tinyclaw pairing approved`                |
-| `pairing list`                         | Show both pending and approved senders             | `tinyclaw pairing list`                    |
-| `pairing approve <code>`               | Move a sender from pending to approved by code     | `tinyclaw pairing approve ABCD1234`        |
-| `pairing unpair <channel> <sender_id>` | Remove an approved sender from the allowlist       | `tinyclaw pairing unpair telegram 1234567` |
+| `pairing pending`                      | Show pending sender approvals (with pairing codes) | `tinyagi pairing pending`                 |
+| `pairing approved`                     | Show approved senders                              | `tinyagi pairing approved`                |
+| `pairing list`                         | Show both pending and approved senders             | `tinyagi pairing list`                    |
+| `pairing approve <code>`               | Move a sender from pending to approved by code     | `tinyagi pairing approve ABCD1234`        |
+| `pairing unpair <channel> <sender_id>` | Remove an approved sender from the allowlist       | `tinyagi pairing unpair telegram 1234567` |
 
 Pairing behavior:
 
-- First message from unknown sender: TinyClaw generates a code and sends approval instructions.
-- Additional messages while still pending: TinyClaw blocks silently (no repeated pairing message).
+- First message from unknown sender: TinyAGI generates a code and sends approval instructions.
+- Additional messages while still pending: TinyAGI blocks silently (no repeated pairing message).
 - After approval: messages from that sender are processed normally.
 
 </details>
@@ -333,8 +333,8 @@ Pairing behavior:
 
 | Command          | Description                 | Example                          |
 | ---------------- | --------------------------- | -------------------------------- |
-| `send <message>` | Send message to AI manually | `tinyclaw send "Hello!"`         |
-| `send <message>` | Route to specific agent     | `tinyclaw send "@coder fix bug"` |
+| `send <message>` | Send message to AI manually | `tinyagi send "Hello!"`         |
+| `send <message>` | Route to specific agent     | `tinyagi send "@coder fix bug"` |
 
 These commands work in Discord, Telegram, and WhatsApp:
 
@@ -346,7 +346,7 @@ These commands work in Discord, Telegram, and WhatsApp:
 | `/team`             | List all available teams             | `/team`                 |
 | `@agent_id /reset`  | Reset specific agent conversation    | `@coder /reset`         |
 | `/reset`            | Reset conversation (WhatsApp/global) | `/reset` or `!reset`    |
-| `/restart`          | Restart TinyClaw process             | `/restart`              |
+| `/restart`          | Restart TinyAGI process             | `/restart`              |
 | `message`           | Send to default agent (no prefix)    | `help me with this`     |
 
 **Note:** The `@agent_id` routing prefix requires a space after it (e.g., `@coder fix` not `@coderfix`).
@@ -360,22 +360,22 @@ These commands work in Discord, Telegram, and WhatsApp:
 
 | Command  | Description                       | Example           |
 | -------- | --------------------------------- | ----------------- |
-| `update` | Update TinyClaw to latest version | `tinyclaw update` |
+| `update` | Update TinyAGI to latest version | `tinyagi update` |
 
 > **Note:** If you are on v0.0.1 or v0.0.2, the update script was broken. Please re-install instead:
 >
 > ```bash
-> curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
+> curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyagi/main/scripts/remote-install.sh | bash
 > ```
 >
 > Your settings and user data will be preserved.
 
-**Auto-detection:** TinyClaw checks for updates on startup (once per hour).
+**Auto-detection:** TinyAGI checks for updates on startup (once per hour).
 
 **Disable update checks:**
 
 ```bash
-export TINYCLAW_SKIP_UPDATE_CHECK=1
+export TINYAGI_SKIP_UPDATE_CHECK=1
 ```
 
 </details>
@@ -385,8 +385,8 @@ export TINYCLAW_SKIP_UPDATE_CHECK=1
 
 | Command                  | Description                  | Example                          |
 | ------------------------ | ---------------------------- | -------------------------------- |
-| `reset`                  | Reset all conversations      | `tinyclaw reset`                 |
-| `channels reset <chan>`  | Reset channel authentication | `tinyclaw channels reset whatsapp` |
+| `reset`                  | Reset all conversations      | `tinyagi reset`                 |
+| `channels reset <chan>`  | Reset channel authentication | `tinyagi channels reset whatsapp` |
 
 </details>
 
@@ -403,7 +403,7 @@ help me with this  ← goes to default agent (no prefix needed)
 <details>
 <summary><b>Agent configuration</b></summary>
 
-Agents are configured in `.tinyclaw/settings.json`:
+Agents are configured in `.tinyagi/settings.json`:
 
 ```json
 {
@@ -412,13 +412,13 @@ Agents are configured in `.tinyclaw/settings.json`:
       "name": "Code Assistant",
       "provider": "anthropic",
       "model": "sonnet",
-      "working_directory": "/Users/me/tinyclaw-workspace/coder"
+      "working_directory": "/Users/me/tinyagi-workspace/coder"
     },
     "writer": {
       "name": "Technical Writer",
       "provider": "custom:my-proxy",
       "model": "gpt-5.3-codex",
-      "working_directory": "/Users/me/tinyclaw-workspace/writer"
+      "working_directory": "/Users/me/tinyagi-workspace/writer"
     }
   }
 }
@@ -426,7 +426,7 @@ Agents are configured in `.tinyclaw/settings.json`:
 
 Each agent operates in isolation:
 
-- **Separate workspace directory** - `~/tinyclaw-workspace/{agent_id}/`
+- **Separate workspace directory** - `~/tinyagi-workspace/{agent_id}/`
 - **Own conversation history** - Maintained by CLI
 - **Custom configuration** - `.claude/`, `heartbeat.md` (root), `AGENTS.md`
 - **Independent resets** - Reset individual agent conversations
@@ -448,7 +448,7 @@ See [docs/AGENTS.md](docs/AGENTS.md) for full details on architecture, use cases
                      │ enqueueMessage()
                      ↓
 ┌─────────────────────────────────────────────────────────────┐
-│               ~/.tinyclaw/tinyclaw.db (SQLite)               │
+│               ~/.tinyagi/tinyagi.db (SQLite)               │
 │                                                              │
 │  messages: pending → processing → completed / dead          │
 │  responses: pending → acked                                  │
@@ -489,7 +489,7 @@ See [docs/QUEUE.md](docs/QUEUE.md) for detailed queue system documentation.
 <details>
 <summary><b>Settings file reference</b></summary>
 
-Located at `.tinyclaw/settings.json`:
+Located at `.tinyagi/settings.json`:
 
 ```json
 {
@@ -500,15 +500,15 @@ Located at `.tinyclaw/settings.json`:
     "whatsapp": {}
   },
   "workspace": {
-    "path": "/Users/me/tinyclaw-workspace",
-    "name": "tinyclaw-workspace"
+    "path": "/Users/me/tinyagi-workspace",
+    "name": "tinyagi-workspace"
   },
   "agents": {
     "assistant": {
       "name": "Assistant",
       "provider": "anthropic",
       "model": "sonnet",
-      "working_directory": "/Users/me/tinyclaw-workspace/assistant"
+      "working_directory": "/Users/me/tinyagi-workspace/assistant"
     }
   },
   "teams": {
@@ -545,7 +545,7 @@ Located at `.tinyclaw/settings.json`:
 Edit agent-specific heartbeat prompts:
 
 ```bash
-nano ~/tinyclaw-workspace/coder/heartbeat.md
+nano ~/tinyagi-workspace/coder/heartbeat.md
 ```
 
 Default heartbeat prompt:
@@ -566,19 +566,19 @@ Take action if needed.
 <summary><b>Directory structure</b></summary>
 
 ```text
-tinyclaw/
+tinyagi/
 ├── packages/                # Monorepo packages
 │   ├── core/                #   Shared types, config, queue, agent invocation
 │   ├── main/                #   Queue processor entry point
 │   ├── teams/               #   Team conversation orchestration
 │   ├── server/              #   API server (REST + SSE)
 │   ├── channels/            #   Channel clients (Discord, Telegram, WhatsApp)
-│   ├── cli/                 #   CLI commands (tinyclaw.sh helpers)
+│   ├── cli/                 #   CLI commands (tinyagi.sh helpers)
 │   └── visualizer/          #   TUI dashboard and chatroom viewer
 ├── tinyoffice/              # TinyOffice web portal (Next.js)
-├── .tinyclaw/               # TinyClaw data (created at runtime)
+├── .tinyagi/               # TinyAGI data (created at runtime)
 │   ├── settings.json        #   Configuration
-│   ├── tinyclaw.db          #   SQLite queue database
+│   ├── tinyagi.db          #   SQLite queue database
 │   ├── logs/                #   All logs
 │   ├── channels/            #   Channel state
 │   ├── files/               #   Uploaded files
@@ -588,13 +588,13 @@ tinyclaw/
 │   ├── .claude/             #   Template for agents
 │   ├── heartbeat.md         #   Template for agents
 │   └── AGENTS.md            #   Template for agents
-├── ~/tinyclaw-workspace/    # Agent workspaces
+├── ~/tinyagi-workspace/    # Agent workspaces
 │   ├── coder/
 │   ├── writer/
 │   └── assistant/
 ├── lib/                     # Runtime scripts
 ├── scripts/                 # Installation scripts
-└── tinyclaw.sh              # Main script
+└── tinyagi.sh              # Main script
 ```
 
 </details>
@@ -656,28 +656,28 @@ Teams support sequential chains (single handoff) and parallel fan-out (multiple 
 
 ```bash
 # Reset everything (preserves settings)
-tinyclaw stop && rm -rf .tinyclaw/queue/* && tinyclaw start
+tinyagi stop && rm -rf .tinyagi/queue/* && tinyagi start
 
 # Reset WhatsApp
-tinyclaw channels reset whatsapp
+tinyagi channels reset whatsapp
 
 # Check status
-tinyclaw status
+tinyagi status
 
 # View logs
-tinyclaw logs all
+tinyagi logs all
 ```
 
 **Common issues:**
 
-- WhatsApp not connecting → Reset auth: `tinyclaw channels reset whatsapp`
-- Messages stuck → Clear queue: `rm -rf .tinyclaw/queue/processing/*`
-- Agent not found → Check: `tinyclaw agent list`
-- Corrupted settings.json → TinyClaw auto-repairs invalid JSON (trailing commas, comments, BOM) and creates a `.bak` backup
+- WhatsApp not connecting → Reset auth: `tinyagi channels reset whatsapp`
+- Messages stuck → Clear queue: `rm -rf .tinyagi/queue/processing/*`
+- Agent not found → Check: `tinyagi agent list`
+- Corrupted settings.json → TinyAGI auto-repairs invalid JSON (trailing commas, comments, BOM) and creates a `.bak` backup
 
 </details>
 
-**Need help?** [GitHub Issues](https://github.com/TinyAGI/tinyclaw/issues) · `tinyclaw logs all`
+**Need help?** [GitHub Issues](https://github.com/TinyAGI/tinyagi/issues) · `tinyagi logs all`
 
 ## 🙏 Credits
 
@@ -691,6 +691,6 @@ MIT
 
 ---
 
-**TinyClaw - Tiny but mighty!** 🦞✨
+**TinyAGI - Tiny but mighty!** 🦞✨
 
-[![Star History Chart](https://api.star-history.com/svg?repos=TinyAGI/tinyclaw&type=date&legend=top-left)](https://www.star-history.com/#TinyAGI/tinyclaw&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=TinyAGI/tinyagi&type=date&legend=top-left)](https://www.star-history.com/#TinyAGI/tinyagi&type=date&legend=top-left)

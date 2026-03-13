@@ -90,12 +90,12 @@ export function ensureAgentDirectory(agentDir: string): void {
         // Create empty AGENTS.md for user customization
         fs.writeFileSync(path.join(agentDir, 'AGENTS.md'), '');
 
-        // Create .tinyclaw directory and copy SOUL.md
-        const targetTinyclaw = path.join(agentDir, '.tinyclaw');
-        fs.mkdirSync(targetTinyclaw, { recursive: true });
+        // Create .tinyagi directory and copy SOUL.md
+        const targetTinyagi = path.join(agentDir, '.tinyagi');
+        fs.mkdirSync(targetTinyagi, { recursive: true });
         const sourceSoul = path.join(SCRIPT_DIR, 'SOUL.md');
         if (fs.existsSync(sourceSoul)) {
-            fs.copyFileSync(sourceSoul, path.join(targetTinyclaw, 'SOUL.md'));
+            fs.copyFileSync(sourceSoul, path.join(targetTinyagi, 'SOUL.md'));
         }
     }
 

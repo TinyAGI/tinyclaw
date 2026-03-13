@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { getSettings, getTeams, getChatMessages } from '@tinyclaw/core';
-import { postToChatRoom } from '@tinyclaw/teams';
+import { getSettings, getTeams, getChatMessages } from '@tinyagi/core';
+import { postToChatRoom } from '@tinyagi/teams';
 
 const app = new Hono();
 

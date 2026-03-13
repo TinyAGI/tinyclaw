@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tc-api.sh — Thin wrapper for TinyClaw API operations
+# tc-api.sh — Thin wrapper for TinyAGI API operations
 # Handles API availability checks and common CRUD operations.
 #
 # Usage:
@@ -23,13 +23,13 @@
 
 set -euo pipefail
 
-API_PORT="${TINYCLAW_API_PORT:-3777}"
+API_PORT="${TINYAGI_API_PORT:-3777}"
 API_BASE="http://localhost:${API_PORT}"
 
 check_api() {
     if ! curl -sf "${API_BASE}/api/queue/status" > /dev/null 2>&1; then
-        echo "ERROR: TinyClaw API not reachable at ${API_BASE}" >&2
-        echo "Is TinyClaw running? Try: tinyclaw start" >&2
+        echo "ERROR: TinyAGI API not reachable at ${API_BASE}" >&2
+        echo "Is TinyAGI running? Try: tinyagi start" >&2
         exit 1
     fi
 }
@@ -137,7 +137,7 @@ case "$cmd" in
 
     help|*)
         cat <<'USAGE'
-tc-api.sh — TinyClaw API wrapper
+tc-api.sh — TinyAGI API wrapper
 
 Commands:
   status                       Overview (queue + agents + teams)

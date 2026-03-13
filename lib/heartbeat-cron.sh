@@ -3,10 +3,10 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-TINYCLAW_HOME="${TINYCLAW_HOME:-$HOME/.tinyclaw}"
-LOG_FILE="$TINYCLAW_HOME/logs/heartbeat.log"
-SETTINGS_FILE="$TINYCLAW_HOME/settings.json"
-API_PORT="${TINYCLAW_API_PORT:-3777}"
+TINYAGI_HOME="${TINYAGI_HOME:-$HOME/.tinyagi}"
+LOG_FILE="$TINYAGI_HOME/logs/heartbeat.log"
+SETTINGS_FILE="$TINYAGI_HOME/settings.json"
+API_PORT="${TINYAGI_API_PORT:-3777}"
 API_URL="http://localhost:${API_PORT}"
 
 # Read interval from settings.json, default to 3600
@@ -72,7 +72,7 @@ while true; do
     # Get workspace path
     WORKSPACE_PATH=$(jq -r '.workspace.path // empty' "$SETTINGS_FILE" 2>/dev/null)
     if [ -z "$WORKSPACE_PATH" ]; then
-        WORKSPACE_PATH="$HOME/tinyclaw-workspace"
+        WORKSPACE_PATH="$HOME/tinyagi-workspace"
     fi
 
     # Get all agent IDs

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getAgentMessages, getAllAgentMessages } from '@tinyclaw/core';
+import { getAgentMessages, getAllAgentMessages } from '@tinyagi/core';
 
 const app = new Hono();
 

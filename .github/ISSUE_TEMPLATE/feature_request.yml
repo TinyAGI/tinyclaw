@@ -12,7 +12,7 @@ body:
     id: component
     attributes:
       label: Component
-      description: Which part of TinyClaw does this relate to?
+      description: Which part of TinyAGI does this relate to?
       options:
         - "Agent execution"
         - "Team / multi-agent coordination"

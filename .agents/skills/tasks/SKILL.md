@@ -1,11 +1,11 @@
 ---
 name: tasks
-description: "Manage your assigned tasks on the TinyClaw kanban board — list tasks, update task status, and create new tasks. Use when: you receive a message with a [task:ID] tag and need to mark it done, you want to check your task queue, or you want to propose new work. Triggers: 'update task', 'mark task done', 'list my tasks', 'create task', 'check tasks', or any message containing [task:ID]."
+description: "Manage your assigned tasks on the TinyAGI kanban board — list tasks, update task status, and create new tasks. Use when: you receive a message with a [task:ID] tag and need to mark it done, you want to check your task queue, or you want to propose new work. Triggers: 'update task', 'mark task done', 'list my tasks', 'create task', 'check tasks', or any message containing [task:ID]."
 ---
 
 # Tasks
 
-Manage tasks on the TinyClaw kanban board via the REST API.
+Manage tasks on the TinyAGI kanban board via the REST API.
 
 ## Automatic task completion
 
@@ -25,7 +25,7 @@ Replace `TASK_ID` with the ID from the `[task:...]` tag in the message.
 # List all tasks
 <skill_dir>/scripts/tasks.sh list
 
-# List only your own tasks (uses TINYCLAW_AGENT_ID env var)
+# List only your own tasks (uses TINYAGI_AGENT_ID env var)
 <skill_dir>/scripts/tasks.sh list --mine
 
 # List tasks with a specific status
@@ -64,5 +64,5 @@ New tasks are always created in `backlog` status.
 
 ## Environment
 
-- `TINYCLAW_AGENT_ID` — your agent ID (set automatically, used by `--mine`)
-- `TINYCLAW_API_PORT` — API port (default: 3777)
+- `TINYAGI_AGENT_ID` — your agent ID (set automatically, used by `--mine`)
+- `TINYAGI_API_PORT` — API port (default: 3777)

@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
-import { TINYCLAW_HOME } from '@tinyclaw/core';
-import { log } from '@tinyclaw/core';
+import { TINYAGI_HOME } from '@tinyagi/core';
+import { log } from '@tinyagi/core';
 
 type TaskStatus = 'backlog' | 'in_progress' | 'review' | 'done';
 
@@ -18,7 +18,7 @@ interface Task {
     updatedAt: number;
 }
 
-const TASKS_FILE = path.join(TINYCLAW_HOME, 'tasks.json');
+const TASKS_FILE = path.join(TINYAGI_HOME, 'tasks.json');
 
 function readTasks(): Task[] {
     try {
