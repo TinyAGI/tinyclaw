@@ -13,6 +13,8 @@ import {
   getAgentMemory,
   getAgentHeartbeat,
   saveAgentHeartbeat,
+  searchRegistrySkills,
+  installRegistrySkill,
   type AgentConfig,
   type Settings,
   type WorkspaceSkill,
@@ -60,7 +62,7 @@ export default function AgentConfigPage({
   const { id: agentId } = use(params);
   const { data: agents, refresh } = usePolling<Record<string, AgentConfig>>(
     getAgents,
-    5000
+    0,
   );
   const { data: settings } = usePolling<Settings>(getSettings, 0);
 
@@ -74,7 +76,9 @@ export default function AgentConfigPage({
   const [systemPromptPath, setSystemPromptPath] = useState<string>("");
   const [systemPromptLoaded, setSystemPromptLoaded] = useState(false);
   const [memoryIndex, setMemoryIndex] = useState<string>("");
-  const [memoryFiles, setMemoryFiles] = useState<{ name: string; path: string }[]>([]);
+  const [memoryFiles, setMemoryFiles] = useState<
+    { name: string; path: string }[]
+  >([]);
   const [memoryDir, setMemoryDir] = useState<string>("");
   const [heartbeatContent, setHeartbeatContent] = useState<string>("");
   const [heartbeatPath, setHeartbeatPath] = useState<string>("");
@@ -90,7 +94,9 @@ export default function AgentConfigPage({
   useEffect(() => {
     if (!agent) return;
 
-    getAgentSkills(agentId).then(setWorkspaceSkills).catch(() => {});
+    getAgentSkills(agentId)
+      .then(setWorkspaceSkills)
+      .catch(() => {});
 
     getAgentSystemPrompt(agentId)
       .then((data) => {
@@ -172,7 +178,9 @@ export default function AgentConfigPage({
   ]);
 
   const refreshWorkspaceData = useCallback(() => {
-    getAgentSkills(agentId).then(setWorkspaceSkills).catch(() => {});
+    getAgentSkills(agentId)
+      .then(setWorkspaceSkills)
+      .catch(() => {});
     getAgentMemory(agentId)
       .then((data) => {
         setMemoryIndex(data.index);
@@ -244,11 +252,7 @@ export default function AgentConfigPage({
           </div>
         </div>
 
-        <Button
-          onClick={handleSave}
-          disabled={saving}
-          className="gap-2"
-        >
+        <Button onClick={handleSave} disabled={saving} className="gap-2">
           {saving ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : saved ? (
@@ -304,6 +308,7 @@ export default function AgentConfigPage({
             agentName={agent.name}
             agentInitials={agent.name.slice(0, 2).toUpperCase()}
             onRefresh={refreshWorkspaceData}
+            agentId={agentId}
           />
         )}
         {activeTab === "system-prompt" && (
@@ -347,13 +352,24 @@ function SkillsTab({
   agentName,
   agentInitials,
   onRefresh,
+  agentId,
 }: {
   skills: SkillEntry[];
   agentName: string;
   agentInitials: string;
   onRefresh: () => void;
+  agentId: string;
 }) {
   const [search, setSearch] = useState("");
+  const [registryQuery, setRegistryQuery] = useState("");
+  const [registryResults, setRegistryResults] = useState<
+    { ref: string; installs?: string; url?: string }[]
+  >([]);
+  const [registryLoading, setRegistryLoading] = useState(false);
+  const [registryError, setRegistryError] = useState<string | null>(null);
+  const [installingRef, setInstallingRef] = useState<string | null>(null);
+  const [installMessage, setInstallMessage] = useState<string | null>(null);
+  const [registryOpen, setRegistryOpen] = useState(false);
 
   const filtered = skills.filter((s) => {
     if (
@@ -364,6 +380,38 @@ function SkillsTab({
       return false;
     return true;
   });
+
+  const runRegistrySearch = async () => {
+    const q = registryQuery.trim();
+    if (!q) return;
+    setRegistryLoading(true);
+    setRegistryError(null);
+    setInstallMessage(null);
+    try {
+      const res = await searchRegistrySkills(agentId, q);
+      setRegistryResults(res.results || []);
+    } catch (err) {
+      setRegistryError((err as Error).message);
+      setRegistryResults([]);
+    } finally {
+      setRegistryLoading(false);
+    }
+  };
+
+  const handleInstall = async (ref: string) => {
+    setInstallingRef(ref);
+    setRegistryError(null);
+    setInstallMessage(null);
+    try {
+      await installRegistrySkill(agentId, ref);
+      setInstallMessage(`Installed ${ref}.`);
+      onRefresh();
+    } catch (err) {
+      setRegistryError((err as Error).message);
+    } finally {
+      setInstallingRef(null);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -382,12 +430,98 @@ function SkillsTab({
           <RefreshCw className="h-3 w-3" />
           Refresh
         </button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setRegistryOpen(true)}
+        >
+          Registry Search
+        </Button>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-[10px] text-muted-foreground">
             {filtered.length} skills
           </span>
         </div>
       </div>
+
+      {registryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-3xl bg-card border shadow-lg">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="text-sm font-semibold">Registry Search</div>
+              <button
+                onClick={() => setRegistryOpen(false)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={registryQuery}
+                  onChange={(e) => setRegistryQuery(e.target.value)}
+                  placeholder="Search skills registry (skills.sh)..."
+                  className="flex-1 h-9 text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") runRegistrySearch();
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={runRegistrySearch}
+                  disabled={registryLoading || !registryQuery.trim()}
+                >
+                  {registryLoading ? "Searching..." : "Search"}
+                </Button>
+              </div>
+              {registryError && (
+                <div className="text-[11px] text-destructive">
+                  {registryError}
+                </div>
+              )}
+              {installMessage && (
+                <div className="text-[11px] text-primary">{installMessage}</div>
+              )}
+              {registryResults.length > 0 && (
+                <div className="space-y-2">
+                  {registryResults.map((r) => (
+                    <div
+                      key={r.ref}
+                      className="flex items-center gap-3 px-3 py-2 border bg-card/60"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">
+                          {r.ref}
+                        </div>
+                        {r.installs && (
+                          <div className="text-[10px] text-muted-foreground">
+                            {r.installs} installs
+                          </div>
+                        )}
+                        {r.url && (
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {r.url}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleInstall(r.ref)}
+                        disabled={installingRef === r.ref}
+                      >
+                        {installingRef === r.ref ? "Installing..." : "Install"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Constellation */}
       {filtered.length > 0 ? (
@@ -404,12 +538,15 @@ function SkillsTab({
             <Swords className="h-8 w-8 mx-auto mb-3 opacity-30" />
             <p className="text-sm">No skills found in workspace</p>
             <p className="text-xs mt-1">
-              Skills are loaded from <code className="bg-muted px-1 py-0.5 text-[10px] font-mono">.agents/skills/</code> in the agent workspace
+              Skills are loaded from{" "}
+              <code className="bg-muted px-1 py-0.5 text-[10px] font-mono">
+                .agents/skills/
+              </code>{" "}
+              in the agent workspace
             </p>
           </div>
         </div>
       )}
-
     </div>
   );
 }
@@ -446,8 +583,8 @@ function SystemPromptTab({
               Loaded from{" "}
               <code className="bg-muted px-1 py-0.5 font-mono text-[10px]">
                 {filePath || "AGENTS.md"}
-              </code>
-              {" "}in the agent workspace. Changes are saved back to this file.
+              </code>{" "}
+              in the agent workspace. Changes are saved back to this file.
             </p>
           </div>
 
@@ -463,7 +600,8 @@ function SystemPromptTab({
               </label>
               <p className="text-[11px] text-muted-foreground/70 mb-2">
                 This is the agent&apos;s AGENTS.md file — it defines behavior,
-                team communication, memory index, and other persistent instructions.
+                team communication, memory index, and other persistent
+                instructions.
               </p>
               <Textarea
                 value={content}
@@ -474,7 +612,8 @@ function SystemPromptTab({
               />
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-muted-foreground">
-                  {content.length} characters &middot; {content.split("\n").length} lines
+                  {content.length} characters &middot;{" "}
+                  {content.split("\n").length} lines
                 </span>
                 <span className="text-[10px] text-muted-foreground">
                   Markdown
@@ -526,9 +665,9 @@ function MemoryTab({
               Memory files loaded from{" "}
               <code className="bg-muted px-1 py-0.5 font-mono text-[10px]">
                 {memoryDir || `memory/`}
-              </code>
-              {" "}in the agent workspace. The agent manages its own memory using
-              the memory skill.
+              </code>{" "}
+              in the agent workspace. The agent manages its own memory using the
+              memory skill.
             </p>
           </div>
 
@@ -547,7 +686,8 @@ function MemoryTab({
               <Brain className="h-6 w-6 mx-auto mb-2 opacity-30" />
               <p className="text-sm">No memories yet</p>
               <p className="text-xs mt-1">
-                The agent will build memories as it works using the memory skill.
+                The agent will build memories as it works using the memory
+                skill.
               </p>
             </div>
           )}
@@ -676,8 +816,8 @@ function HeartbeatTab({
                   Every{" "}
                   {intervalSec >= 60
                     ? `${Math.floor(intervalSec / 60)}m ${intervalSec % 60 ? `${intervalSec % 60}s` : ""}`
-                    : `${intervalSec}s`}
-                  {" "}the agent will wake up and execute the heartbeat prompt
+                    : `${intervalSec}s`}{" "}
+                  the agent will wake up and execute the heartbeat prompt
                 </p>
               </div>
 
@@ -723,7 +863,9 @@ function HeartbeatTab({
                       Active
                     </span>
                   </div>
-                  <span className="text-[10px] text-muted-foreground/50">|</span>
+                  <span className="text-[10px] text-muted-foreground/50">
+                    |
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     Next beat in ~{Math.floor(intervalSec / 2)}s
                   </span>

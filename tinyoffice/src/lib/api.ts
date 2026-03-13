@@ -101,6 +101,24 @@ export async function getSettings(): Promise<Settings> {
   return apiFetch("/api/settings");
 }
 
+export async function searchRegistrySkills(
+  agentId: string,
+  query: string
+): Promise<{ results: { ref: string; installs?: string; url?: string }[]; raw?: string }> {
+  const q = encodeURIComponent(query);
+  return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/skills/registry?query=${q}`);
+}
+
+export async function installRegistrySkill(
+  agentId: string,
+  ref: string
+): Promise<{ ok: boolean; output: string }> {
+  return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/skills/install`, {
+    method: "POST",
+    body: JSON.stringify({ ref }),
+  });
+}
+
 export async function updateSettings(settings: Partial<Settings>): Promise<{ ok: boolean; settings: Settings }> {
   return apiFetch("/api/settings", { method: "PUT", body: JSON.stringify(settings) });
 }
