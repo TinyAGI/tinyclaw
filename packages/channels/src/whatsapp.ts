@@ -9,7 +9,7 @@ import { Client, LocalAuth, Message, Chat, MessageMedia, MessageTypes } from 'wh
 import qrcode from 'qrcode-terminal';
 import fs from 'fs';
 import path from 'path';
-import { ensureSenderPaired } from '@tinyclaw/core';
+import { ensureSenderPaired, genId } from '@tinyclaw/core';
 import { createSSEClient } from './sse-client';
 import { applyDefaultAgent } from './default-agent';
 
@@ -239,7 +239,7 @@ client.on('message_create', async (message: Message) => {
         }
 
         // Generate unique message ID
-        const messageId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const messageId = genId('whatsapp');
 
         // Download media if present
         if (hasMedia) {
@@ -360,7 +360,6 @@ client.on('message_create', async (message: Message) => {
                 senderId: message.from,
                 message: fullMessage,
                 messageId,
-                files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
             }),
         });
 

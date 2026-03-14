@@ -11,7 +11,6 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
 import { RESPONSE_ALREADY_SENT } from '@hono/node-server/utils/response';
-import { Conversation } from '@tinyclaw/core';
 import { log } from '@tinyclaw/core';
 import { addSSEClient, removeSSEClient } from './sse';
 
@@ -32,13 +31,9 @@ const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 /**
  * Create and start the API server.
  *
- * @param conversations  Live reference to the queue-processor conversation map
- *                       so the /api/queue/status endpoint can report active count.
  * @returns The http.Server instance (for graceful shutdown).
  */
-export function startApiServer(
-    conversations: Map<string, Conversation>
-): http.Server {
+export function startApiServer(): http.Server {
     const app = new Hono();
 
     // CORS middleware
@@ -49,7 +44,7 @@ export function startApiServer(
     app.route('/', agentsRoutes);
     app.route('/', teamsRoutes);
     app.route('/', settingsRoutes);
-    app.route('/', createQueueRoutes(conversations));
+    app.route('/', createQueueRoutes());
     app.route('/', tasksRoutes);
     app.route('/', projectsRoutes);
     app.route('/', logsRoutes);

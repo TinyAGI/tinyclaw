@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
 import {
-    Conversation, log,
-    getQueueStatus, getRecentResponses, getResponsesForChannel,
+    log, genId,
+    getQueueStatus, getAgentQueueStatus, getRecentResponses, getResponsesForChannel,
     ackResponse, enqueueResponse,
     getDeadMessages, retryDeadMessage, deleteDeadMessage,
 } from '@tinyclaw/core';
 
-export function createQueueRoutes(conversations: Map<string, Conversation>) {
+export function createQueueRoutes() {
     const app = new Hono();
 
     // GET /api/queue/status
@@ -18,7 +18,6 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
             completed: status.completed,
             dead: status.dead,
             outgoing: status.responsesPending,
-            activeConversations: conversations.size,
         });
     });
 
@@ -72,7 +71,7 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
             return c.json({ error: 'channel, sender, and message are required' }, 400);
         }
 
-        const messageId = `proactive_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const messageId = genId('proactive');
         enqueueResponse({
             channel,
             sender,
@@ -93,6 +92,11 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
         const id = parseInt(c.req.param('id'), 10);
         ackResponse(id);
         return c.json({ ok: true });
+    });
+
+    // GET /api/queue/agents — per-agent queue depth
+    app.get('/api/queue/agents', (c) => {
+        return c.json(getAgentQueueStatus());
     });
 
     // GET /api/queue/dead

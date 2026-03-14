@@ -26,8 +26,8 @@ export function initQueueDb(): void {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             message_id TEXT NOT NULL UNIQUE,
             channel TEXT NOT NULL, sender TEXT NOT NULL, sender_id TEXT,
-            message TEXT NOT NULL, agent TEXT, files TEXT,
-            conversation_id TEXT, from_agent TEXT,
+            message TEXT NOT NULL, agent TEXT,
+            from_agent TEXT,
             status TEXT NOT NULL DEFAULT 'pending',
             retry_count INTEGER NOT NULL DEFAULT 0, last_error TEXT,
             created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
@@ -62,10 +62,17 @@ export function initQueueDb(): void {
         CREATE INDEX IF NOT EXISTS idx_agent_messages_agent ON agent_messages(agent_id, created_at);
     `);
 
-    // Migrate: add metadata column to responses if missing (for existing databases)
-    const cols = db.prepare("PRAGMA table_info(responses)").all() as { name: string }[];
-    if (!cols.some(c => c.name === 'metadata')) {
+    // Migrations for existing databases
+    const respCols = db.prepare("PRAGMA table_info(responses)").all() as { name: string }[];
+    if (!respCols.some(c => c.name === 'metadata')) {
         db.exec('ALTER TABLE responses ADD COLUMN metadata TEXT');
+    }
+    const msgCols = db.prepare("PRAGMA table_info(messages)").all() as { name: string }[];
+    if (msgCols.some(c => c.name === 'files')) {
+        db.exec('ALTER TABLE messages DROP COLUMN files');
+    }
+    if (msgCols.some(c => c.name === 'conversation_id')) {
+        db.exec('ALTER TABLE messages DROP COLUMN conversation_id');
     }
 }
 
@@ -80,11 +87,10 @@ export function enqueueMessage(data: MessageJobData): number | null {
     const now = Date.now();
     try {
         const r = getDb().prepare(
-            `INSERT INTO messages (message_id,channel,sender,sender_id,message,agent,files,conversation_id,from_agent,status,created_at,updated_at)
-             VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`
+            `INSERT INTO messages (message_id,channel,sender,sender_id,message,agent,from_agent,status,created_at,updated_at)
+             VALUES (?,?,?,?,?,?,?,'pending',?,?)`
         ).run(data.messageId, data.channel, data.sender, data.senderId ?? null, data.message,
-            data.agent ?? null, data.files ? JSON.stringify(data.files) : null,
-            data.conversationId ?? null, data.fromAgent ?? null, now, now);
+            data.agent ?? null, data.fromAgent ?? null, now, now);
         queueEvents.emit('message:enqueued', { id: r.lastInsertRowid, agent: data.agent });
         return r.lastInsertRowid as number;
     } catch (err: any) {
@@ -166,6 +172,15 @@ export function getQueueStatus() {
     for (const row of counts) if (row.status in result) result[row.status] = row.cnt;
     result.responsesPending = (d.prepare(`SELECT COUNT(*) as cnt FROM responses WHERE status='pending'`).get() as { cnt: number }).cnt;
     return result;
+}
+
+export function getAgentQueueStatus(): { agent: string; pending: number; processing: number }[] {
+    return getDb().prepare(
+        `SELECT COALESCE(agent,'default') as agent,
+                SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status='processing' THEN 1 ELSE 0 END) as processing
+         FROM messages WHERE status IN ('pending','processing') GROUP BY agent`
+    ).all() as { agent: string; pending: number; processing: number }[];
 }
 
 export function getDeadMessages(): any[] {

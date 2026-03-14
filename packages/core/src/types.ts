@@ -25,11 +25,6 @@ export interface TeamConfig {
     leader_agent: string;
 }
 
-export interface ChainStep {
-    agentId: string;
-    response: string;
-}
-
 export interface Settings {
     workspace?: {
         path?: string;
@@ -72,29 +67,7 @@ export interface MessageData {
     timestamp: number;
     messageId: string;
     agent?: string; // optional: pre-routed agent id from channel client
-    files?: string[];
-    // Internal message fields (agent-to-agent)
-    conversationId?: string; // links to parent conversation
-    fromAgent?: string;      // which agent sent this internal message
-}
-
-export interface Conversation {
-    id: string;
-    channel: string;
-    sender: string;
-    originalMessage: string;
-    messageId: string;
-    pending: number;
-    responses: ChainStep[];
-    files: Set<string>;
-    totalMessages: number;
-    maxMessages: number;
-    teamContext: { teamId: string; team: TeamConfig };
-    startTime: number;
-    // Track how many mentions each agent sent out (for inbox draining)
-    outgoingMentions: Map<string, number>;
-    // Track agents that have been enqueued but haven't finished responding
-    pendingAgents: Set<string>;
+    fromAgent?: string; // which agent sent this internal message
 }
 
 export interface ResponseData {
@@ -152,8 +125,6 @@ export interface MessageJobData {
     message: string;
     messageId: string;
     agent?: string;
-    files?: string[];
-    conversationId?: string;
     fromAgent?: string;
 }
 

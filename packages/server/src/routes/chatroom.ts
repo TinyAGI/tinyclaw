@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getSettings, getTeams, getChatMessages } from '@tinyclaw/core';
+import { getSettings, getTeams, getChatMessages, genId } from '@tinyclaw/core';
 import { postToChatRoom } from '@tinyclaw/teams';
 
 const app = new Hono();
@@ -35,7 +35,7 @@ app.post('/api/chatroom/:teamId', async (c) => {
     const id = postToChatRoom(teamId, 'user', body.message.trim(), team.agents, {
         channel: 'chatroom',
         sender: 'user',
-        messageId: `chatroom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        messageId: genId('chatroom'),
     });
 
     return c.json({ ok: true, id });

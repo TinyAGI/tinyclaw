@@ -10,7 +10,8 @@
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "dotenv": "^16.4.0",
-    "jsonrepair": "^3.13.2"
+    "jsonrepair": "^3.13.2",
+    "nanoid": "^5.1.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13"
