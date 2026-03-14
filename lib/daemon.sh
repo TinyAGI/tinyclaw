@@ -9,6 +9,7 @@ start_daemon() {
         return 1
     fi
 
+    show_banner
     log "Starting TinyClaw daemon..."
 
     # Check if Node.js dependencies are installed
@@ -289,6 +290,7 @@ restart_daemon() {
 
 # Status
 status_daemon() {
+    show_banner
     echo -e "${BLUE}TinyClaw Status${NC}"
     echo "==============="
     echo ""

@@ -3,7 +3,7 @@ import * as p from '@clack/prompts';
 import { Settings } from '@tinyclaw/core';
 import {
     unwrap, cleanId, validateId,
-    writeSettings, requireSettings,
+    writeSettings, requireSettings, printBanner,
 } from './shared.ts';
 
 // --- team add ---
@@ -18,6 +18,7 @@ async function teamAdd() {
         process.exit(1);
     }
 
+    printBanner();
     p.intro('Add New Team');
 
     const teamId = cleanId(unwrap(await p.text({

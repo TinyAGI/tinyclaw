@@ -6,6 +6,18 @@ import { Settings, SETTINGS_FILE, TINYCLAW_HOME, SCRIPT_DIR } from '@tinyclaw/co
 // Re-export for convenience
 export { SETTINGS_FILE, TINYCLAW_HOME, SCRIPT_DIR };
 
+const BANNER = `
+  ▀█▀ █ █▄ █ █▄█ ▄▀█ █▀▀ █
+   █  █ █ ▀█  █  █▀█ █▄█ █
+`;
+
+/**
+ * Print the TinyAGI ASCII banner.
+ */
+export function printBanner(): void {
+    console.log(BANNER);
+}
+
 /**
  * Unwrap a clack prompt result: exit on cancel, return typed value.
  */

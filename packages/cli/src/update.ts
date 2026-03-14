@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { SCRIPT_DIR } from '@tinyclaw/core';
-import { unwrap } from './shared.ts';
+import { unwrap, printBanner } from './shared.ts';
 
 const GITHUB_REPO = 'TinyAGI/tinyclaw';
 const UPDATE_CHECK_CACHE = path.join(process.env.HOME || '~', '.tinyclaw', '.update_check');
@@ -53,6 +53,7 @@ function sessionExists(): boolean {
 }
 
 async function doUpdate() {
+    printBanner();
     p.intro('TinyClaw Update');
 
     // Check if running
