@@ -7,7 +7,7 @@ TinyClaw uses a SQLite-backed queue (`tinyclaw.db`) to coordinate message proces
 The queue system acts as a central coordinator between:
 - **Channel clients** (Discord, Telegram, WhatsApp) - produce messages
 - **Queue processor** - routes and processes messages
-- **AI providers** (Claude, Codex) - generate responses
+- **AI providers** (Claude, Codex, Gemini) - generate responses
 - **Agents** - isolated AI agents with different configs
 
 ```

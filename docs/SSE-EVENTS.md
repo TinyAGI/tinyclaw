@@ -54,7 +54,7 @@ A message has been routed to a specific agent.
 |-----------------|-----------|------------------------------------------|
 | `agentId`       | `string`  | Agent identifier                         |
 | `agentName`     | `string`  | Agent display name                       |
-| `provider`      | `string`  | LLM provider (anthropic, openai, …)      |
+| `provider`      | `string`  | LLM provider (`anthropic`, `openai`, `google` or `custom:...`) |
 | `model`         | `string`  | Model identifier                         |
 | `isTeamRouted`  | `boolean` | Whether the message was routed via @team |
 
