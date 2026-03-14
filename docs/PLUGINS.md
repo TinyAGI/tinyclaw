@@ -168,7 +168,7 @@ User Message
  chain_step_start event
      │
      ▼
- Agent processes message (Claude, Codex, etc.)
+ Agent processes message (Claude, Codex, Gemini, etc.)
      │
      ▼
  chain_step_done event

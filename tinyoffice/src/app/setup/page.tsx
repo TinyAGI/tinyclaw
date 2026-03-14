@@ -24,6 +24,7 @@ import {
 const PROVIDERS = [
   { value: "anthropic", label: "Anthropic (Claude)", hint: "recommended" },
   { value: "openai", label: "OpenAI (Codex/GPT)" },
+  { value: "google", label: "Google (Gemini CLI)" },
   { value: "opencode", label: "OpenCode" },
 ] as const;
 
@@ -35,6 +36,10 @@ const MODELS: Record<string, { value: string; label: string }[]> = {
   openai: [
     { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
     { value: "gpt-5.2", label: "GPT-5.2" },
+  ],
+  google: [
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+    { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
   ],
   opencode: [
     { value: "opencode/claude-sonnet-4-5", label: "opencode/claude-sonnet-4-5" },
@@ -177,6 +182,7 @@ export default function SetupPage() {
         provider,
         ...(provider === "anthropic" ? { anthropic: { model } } : {}),
         ...(provider === "openai" ? { openai: { model } } : {}),
+        ...(provider === "google" ? { google: { model } } : {}),
         ...(provider === "opencode" ? { opencode: { model } } : {}),
       },
       monitoring: { heartbeat_interval: parseInt(heartbeat) || 3600 },

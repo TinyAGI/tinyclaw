@@ -191,6 +191,12 @@ brew install tmux            # macOS
 
 # Claude Code
 # Visit: https://claude.com/claude-code
+
+# Codex CLI
+# Visit: https://docs.openai.com/codex
+
+# Gemini CLI
+# Visit: https://geminicli.com/
 ```
 
 ### Bundle download fails

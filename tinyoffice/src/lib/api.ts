@@ -43,8 +43,9 @@ export interface Settings {
   };
   models?: {
     provider?: string;
-    anthropic?: { model?: string };
-    openai?: { model?: string };
+    anthropic?: { model?: string; auth_token?: string };
+    openai?: { model?: string; auth_token?: string };
+    google?: { model?: string; auth_token?: string };
     opencode?: { model?: string };
   };
   agents?: Record<string, AgentConfig>;

@@ -108,7 +108,22 @@ async function processMessage(dbMsg: any): Promise<void> {
         response = await invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams);
     } catch (error) {
         const provider = agent.provider || 'anthropic';
-        const providerLabel = provider === 'openai' ? 'Codex' : provider === 'opencode' ? 'OpenCode' : 'Claude';
+        let providerLabel = 'Claude';
+        if (provider.startsWith('custom:')) {
+            const customId = provider.slice('custom:'.length);
+            const harness = settings.custom_providers?.[customId]?.harness;
+            if (harness === 'codex') {
+                providerLabel = 'Codex';
+            } else if (harness === 'gemini') {
+                providerLabel = 'Gemini';
+            }
+        } else if (provider === 'openai') {
+            providerLabel = 'Codex';
+        } else if (provider === 'opencode') {
+            providerLabel = 'OpenCode';
+        } else if (provider === 'google') {
+            providerLabel = 'Gemini';
+        }
         log('ERROR', `${providerLabel} error (agent: ${agentId}): ${(error as Error).message}`);
         response = "Sorry, I encountered an error processing your request. Please check the queue logs.";
     }

@@ -10,7 +10,7 @@ The agent management feature enables you to:
 - **Route messages** to specific agents using `@agent_id` syntax
 - **Isolate conversations** - each agent has its own workspace directory and conversation history
 - **Specialize agents** - give each agent a custom system prompt and configuration
-- **Switch providers** - mix Anthropic (Claude) and OpenAI (Codex) agents
+- **Switch providers** - mix Anthropic (Claude), OpenAI (Codex), and Google (Gemini) agents
 - **Customize workspaces** - organize agents in your own workspace directory
 
 ## Architecture
@@ -162,7 +162,7 @@ Templates and shared resources are stored in `~/.tinyclaw/`:
 - Each agent runs CLI commands in its own workspace directory (`~/workspace/agent_id/`)
 - Each agent gets its own copy of `.claude/`, `heartbeat.md`, and `AGENTS.md` from templates
 - Agents can customize their settings, hooks, and documentation independently
-- Conversation history is isolated per agent (managed by Claude/Codex CLI)
+- Conversation history is isolated per agent (managed by Claude/Codex/Gemini CLI)
 - Reset flags allow resetting individual agent conversations
 - File operations happen in the agent's directory
 - Templates stored in `~/.tinyclaw/` are copied when creating new agents
@@ -195,6 +195,19 @@ codex exec resume --last \
   "User message here"
 ```
 
+**Google (Gemini):**
+
+```bash
+cd "$agent_working_directory"  # e.g., ~/tinyclaw-workspace/assistant/
+gemini --approval-mode=yolo \
+  --output-format json \
+  --resume latest \
+  --model gemini-2.5-flash \
+  --prompt "User message here"
+```
+
+On the first message for a fresh workspace, TinyClaw retries automatically without `--resume latest` if Gemini has no previous session to continue.
+
 ## Configuration
 
 ### Initial Setup
@@ -221,7 +234,7 @@ This walks you through:
 
 1. Agent ID (e.g., `coder`)
 2. Display name (e.g., `Code Assistant`)
-3. Provider (Anthropic or OpenAI)
+3. Provider (Anthropic, OpenAI, or Google)
 4. Model selection
 5. Optional system prompt
 
@@ -254,8 +267,8 @@ Edit `.tinyclaw/settings.json`:
 | Field               | Required | Description                                                            |
 | ------------------- | -------- | ---------------------------------------------------------------------- |
 | `name`              | Yes      | Human-readable display name                                            |
-| `provider`          | Yes      | `anthropic`, `openai`, `opencode`, or `custom:<provider_id>`           |
-| `model`             | Yes      | Model identifier (e.g., `sonnet`, `opus`, `gpt-5.3-codex`)             |
+| `provider`          | Yes      | `anthropic`, `openai`, `google`, `opencode`, or `custom:<provider_id>` |
+| `model`             | Yes      | Model identifier (e.g., `sonnet`, `opus`, `gpt-5.3-codex`, `gemini-2.5-flash`) |
 | `working_directory` | Yes      | Directory where agent operates (auto-set to `<workspace>/<agent_id>/`) |
 | `system_prompt`     | No       | Inline system prompt text                                              |
 | `prompt_file`       | No       | Path to file containing system prompt                                  |
@@ -312,7 +325,7 @@ Configured Agents
     Prompt:    /path/to/writer-prompt.md
 
   @assistant - Assistant
-    Provider:  anthropic/opus
+    Provider:  google/gemini-2.5-flash
     Directory: /Users/me/tinyclaw-workspace/assistant
 ```
 
@@ -425,6 +438,11 @@ Use different AI providers for different tasks:
       "model": "gpt-5.3-codex",
       "system_prompt": "Code generation specialist."
     },
+    "research": {
+      "provider": "google",
+      "model": "gemini-2.5-flash",
+      "system_prompt": "Fast web research and summarization specialist."
+    },
     "proxy-agent": {
       "provider": "custom:openrouter",
       "model": "claude-sonnet-4-5",
@@ -473,7 +491,9 @@ The `tinyclaw model` and `tinyclaw provider --model` commands update both the gl
 
 - `tinyclaw model sonnet` — updates `.models.anthropic.model` and sets `model = "sonnet"` on every agent with `provider == "anthropic"`.
 - `tinyclaw model gpt-5.3-codex` — updates `.models.openai.model` and sets `model = "gpt-5.3-codex"` on every agent with `provider == "openai"`.
+- `tinyclaw model gemini-2.5-flash` — updates `.models.google.model` and sets `model = "gemini-2.5-flash"` on every agent with `provider == "google"`.
 - `tinyclaw provider openai --model gpt-5.3-codex` — switches the global provider, and updates all agents that were on the **old** provider to the new provider and model.
+- `tinyclaw provider google --model gemini-2.5-flash` — switches the global provider, and updates all agents that were on the **old** provider to the new provider and model.
 - `tinyclaw provider anthropic` (no `--model`) — only switches the global default; agents are **not** changed.
 
 To change a **single** agent's provider/model without affecting others, use:
@@ -550,7 +570,7 @@ For detailed troubleshooting of agent-related issues, see [TROUBLESHOOTING.md](T
 - **Agent not found** → Check: `tinyclaw agent list`
 - **Wrong agent responding** → Verify routing: `@agent_id message` (with space)
 - **Conversation not resetting** → Send message after: `tinyclaw agent reset <id>`
-- **CLI not found** → Install Claude Code or Codex CLI
+- **CLI not found** → Install Claude Code, Codex CLI, or Gemini CLI
 - **Workspace issues** → Check: `cat .tinyclaw/settings.json | jq '.workspace'`
 - **Templates not copying** → Run: `tinyclaw setup`
 
@@ -603,11 +623,11 @@ interface ResponseData {
     └── reset_flag     # Touch to reset conversation
 ```
 
-State is managed by the CLI itself (claude or codex) through the `-c` flag and working directory isolation.
+State is managed by the CLI itself (claude, codex, or gemini) through provider-specific session handling and working directory isolation.
 
 ## Custom Providers
 
-Custom providers let you use any OpenAI or Anthropic-compatible API endpoint (e.g., proxy servers, self-hosted models, OpenRouter) with the existing CLI harnesses.
+Custom providers let you route agents through the `claude`, `codex`, or `gemini` CLI harnesses. The `claude` and `codex` harnesses are a good fit for compatible proxy endpoints such as OpenRouter, proxy servers, or self-hosted models.
 
 ### Configuration
 
@@ -630,7 +650,7 @@ Custom providers are defined in `.tinyclaw/settings.json`:
 | Field      | Required | Description                                          |
 | ---------- | -------- | ---------------------------------------------------- |
 | `name`     | Yes      | Human-readable display name                          |
-| `harness`  | Yes      | Which CLI to use: `claude` or `codex`                |
+| `harness`  | Yes      | Which CLI to use: `claude`, `codex`, or `gemini`     |
 | `base_url` | Yes      | API endpoint URL                                     |
 | `api_key`  | Yes      | API key for authentication                           |
 | `model`    | No       | Default model name to pass to the CLI                |
@@ -665,7 +685,7 @@ curl -X DELETE http://localhost:3777/api/custom-providers/my-proxy
 Use the `custom:<provider_id>` prefix as the agent's provider:
 
 ```bash
-# When adding a new agent (option 4 in provider selection)
+# When adding a new agent, choose the custom provider option
 tinyclaw agent add
 
 # Switch an existing agent
@@ -693,10 +713,11 @@ Or edit settings.json directly:
 When an agent with `provider: "custom:<id>"` is invoked:
 
 1. The custom provider config is looked up from `settings.custom_providers`
-2. The `harness` field determines which CLI to run (`claude` or `codex`)
+2. The `harness` field determines which CLI to run (`claude`, `codex`, or `gemini`)
 3. Environment variables are set based on the harness:
    - **claude harness**: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY=""`
    - **codex harness**: `OPENAI_API_KEY`, `OPENAI_BASE_URL`
+   - **gemini harness**: `GOOGLE_API_KEY`, `GEMINI_API_KEY`, `GEMINI_SANDBOX=true`
 4. The CLI is invoked with the model name passed through (no alias resolution)
 
 ## Teams

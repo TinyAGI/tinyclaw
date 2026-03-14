@@ -269,6 +269,13 @@ codex --version
 codex login
 ```
 
+**For Google agents:**
+
+```bash
+# Check Gemini CLI is installed
+gemini --version
+```
+
 ### Workspace issues
 
 If agents aren't being created:
@@ -393,7 +400,7 @@ tinyclaw restart
 
 ```bash
 # Check which process is using CPU
-top -o cpu | grep -E 'claude|codex|node'
+top -o cpu | grep -E 'claude|codex|gemini|node'
 ```
 
 **Common causes:**
@@ -412,7 +419,7 @@ top -o cpu | grep -E 'claude|codex|node'
 
 ```bash
 # Check memory usage
-ps aux | grep -E 'claude|codex|node' | awk '{print $4, $11}'
+ps aux | grep -E 'claude|codex|gemini|node' | awk '{print $4, $11}'
 ```
 
 **Solutions:**

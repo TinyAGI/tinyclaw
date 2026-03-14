@@ -212,6 +212,7 @@ function AgentEditor({
             <Select value={form.provider} onChange={(e) => set("provider", e.target.value)}>
               <option value="anthropic">anthropic</option>
               <option value="openai">openai</option>
+              <option value="google">google</option>
               <option value="opencode">opencode</option>
             </Select>
           </div>
@@ -220,7 +221,7 @@ function AgentEditor({
             <Input
               value={form.model}
               onChange={(e) => set("model", e.target.value)}
-              placeholder="e.g. sonnet, opus, gpt-5.3-codex"
+              placeholder="e.g. sonnet, gpt-5.3-codex, gemini-2.5-flash"
               className="font-mono"
             />
           </div>
@@ -287,6 +288,7 @@ function AgentCard({
   const providerColors: Record<string, string> = {
     anthropic: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
     openai: "bg-green-500/10 text-green-600 dark:text-green-400",
+    google: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
     opencode: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   };
 

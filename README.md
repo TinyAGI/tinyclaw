@@ -28,7 +28,7 @@
 - ✅ **Multi-channel** - Discord, WhatsApp, and Telegram
 - ✅ **Web portal (TinyOffice)** - Browser-based dashboard for chat, agents, teams, tasks, logs, and settings
 - ✅ **Team chat rooms** - Persistent async chat rooms per team with real-time CLI viewer
-- ✅ **Multiple AI providers** - Anthropic Claude, OpenAI Codex, and custom providers (any OpenAI/Anthropic-compatible endpoint)
+- ✅ **Multiple AI providers** - Anthropic Claude, OpenAI Codex, Google Gemini CLI, and custom providers(any OpenAI/Anthropic-compatible endpoint)
 - ✅ **Auth token management** - Store API keys per provider, no separate CLI auth needed
 - ✅ **Parallel processing** - Agents process messages concurrently
 - ✅ **Live TUI dashboard** - Real-time team visualizer and chatroom viewer
@@ -53,6 +53,7 @@ We are actively looking for contributors. Please reach out.
 - Bash 3.2+
 - [Claude Code CLI](https://claude.com/claude-code) (for Anthropic provider)
 - [Codex CLI](https://docs.openai.com/codex) (for OpenAI provider)
+- [Gemini CLI](https://geminicli.com/)(for Google provider)
 
 ### Installation
 
@@ -240,6 +241,8 @@ POST /api/chatroom/:teamId          # Post a message (body: { "message": "..." }
 
 ### Provider & Custom Provider Commands
 
+Built-in providers are `anthropic`, `openai`, and `google`.
+
 | Command                                       | Description                                              | Example                                          |
 | --------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------ |
 | `provider [name]`                             | Show or switch global AI provider                        | `tinyclaw provider anthropic`                    |
@@ -253,7 +256,7 @@ POST /api/chatroom/:teamId          # Post a message (body: { "message": "..." }
 <details>
 <summary><b>Custom provider details</b></summary>
 
-Custom providers let you use any OpenAI or Anthropic-compatible API endpoint (e.g., OpenRouter, proxy servers, self-hosted models).
+Custom providers let you route agents through the `claude`, `codex`, or `gemini` CLI harnesses with provider-specific API settings. The `claude` and `codex` harnesses are a good fit for compatible proxy endpoints such as OpenRouter, proxy servers, or self-hosted gateways.
 
 **Define a custom provider in `settings.json`:**
 
@@ -274,7 +277,7 @@ Custom providers let you use any OpenAI or Anthropic-compatible API endpoint (e.
 | Field      | Required | Description                          |
 | ---------- | -------- | ------------------------------------ |
 | `name`     | Yes      | Human-readable display name          |
-| `harness`  | Yes      | CLI to use: `claude` or `codex`      |
+| `harness`  | Yes      | CLI to use: `claude`, `codex`, or `gemini` |
 | `base_url` | Yes      | API endpoint URL                     |
 | `api_key`  | Yes      | API key for authentication           |
 | `model`    | No       | Default model name for CLI           |
@@ -291,9 +294,10 @@ tinyclaw agent provider coder custom:my-proxy --model gpt-4o
 ```bash
 tinyclaw provider anthropic --auth-token sk-ant-...
 tinyclaw provider openai --auth-token sk-...
+tinyclaw provider google --auth-token ...
 ```
 
-Tokens are saved in `settings.json` under `models.<provider>.auth_token` and automatically exported as `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` when invoking CLIs.
+Tokens are saved in `settings.json` under `models.<provider>.auth_token` and automatically exported as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, and `GEMINI_API_KEY` when invoking CLIs.
 
 **API endpoints:**
 
@@ -468,7 +472,7 @@ See [docs/AGENTS.md](docs/AGENTS.md) for full details on architecture, use cases
 │       │                  │                     │            │
 └───────┼──────────────────┼─────────────────────┼────────────┘
         ↓                  ↓                     ↓
-   claude CLI         claude CLI             claude CLI
+   claude CLI         codex CLI            gemini CLI
   (workspace/coder)  (workspace/writer)  (workspace/assistant)
 ```
 
@@ -529,7 +533,8 @@ Located at `.tinyclaw/settings.json`:
   },
   "models": {
     "anthropic": { "auth_token": "sk-ant-..." },
-    "openai": { "auth_token": "sk-..." }
+    "openai": { "auth_token": "sk-..." },
+    "google": { "auth_token": "..." }
   },
   "monitoring": {
     "heartbeat_interval": 3600
