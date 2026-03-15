@@ -6,7 +6,7 @@ import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel
 import { log } from './logging';
 import { ensureAgentDirectory, buildSystemPrompt } from './agent';
 
-export async function runCommand(command: string, args: string[], cwd?: string, envOverrides?: Record<string, string>): Promise<string> {
+export async function runCommand(command: string, args: string[], cwd?: string, envOverrides?: Record<string, string>, timeoutMs = 5 * 60 * 1000): Promise<string> {
     return new Promise((resolve, reject) => {
         const env = { ...process.env, ...envOverrides };
         delete env.CLAUDECODE;
@@ -19,6 +19,13 @@ export async function runCommand(command: string, args: string[], cwd?: string, 
 
         let stdout = '';
         let stderr = '';
+        let timedOut = false;
+
+        const timer = setTimeout(() => {
+            timedOut = true;
+            child.kill('SIGKILL');
+            reject(new Error(`Agent process timed out after ${timeoutMs / 1000}s`));
+        }, timeoutMs);
 
         child.stdout.setEncoding('utf8');
         child.stderr.setEncoding('utf8');
@@ -32,10 +39,13 @@ export async function runCommand(command: string, args: string[], cwd?: string, 
         });
 
         child.on('error', (error) => {
+            clearTimeout(timer);
             reject(error);
         });
 
         child.on('close', (code) => {
+            clearTimeout(timer);
+            if (timedOut) return; // already rejected
             if (code === 0) {
                 resolve(stdout);
                 return;
