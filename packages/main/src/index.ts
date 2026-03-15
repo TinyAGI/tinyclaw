@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import {
     MessageJobData,
-    getSettings, getAgents, getTeams, LOG_FILE, CHATS_DIR, FILES_DIR,
+    getSettings, getAgents, getTeams, LOG_FILE, FILES_DIR,
     log, emitEvent,
     parseAgentRouting, getAgentResetFlag,
     invokeAgent,
@@ -24,13 +24,12 @@ import {
 } from '@tinyclaw/core';
 import { startApiServer } from '@tinyclaw/server';
 import {
-    conversations,
     handleTeamResponse,
     groupChatroomMessages,
 } from '@tinyclaw/teams';
 
 // Ensure directories exist
-[FILES_DIR, path.dirname(LOG_FILE), CHATS_DIR].forEach(dir => {
+[FILES_DIR, path.dirname(LOG_FILE)].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -46,13 +45,11 @@ async function processMessage(dbMsg: any): Promise<void> {
         message: dbMsg.message,
         messageId: dbMsg.message_id,
         agent: dbMsg.agent ?? undefined,
-        files: dbMsg.files ? JSON.parse(dbMsg.files) : undefined,
-        conversationId: dbMsg.conversation_id ?? undefined,
         fromAgent: dbMsg.from_agent ?? undefined,
     };
 
     const { channel, sender, message: rawMessage, messageId, agent: preRoutedAgent } = data;
-    const isInternal = !!data.conversationId;
+    const isInternal = !!data.fromAgent;
 
     log('INFO', `Processing [${isInternal ? 'internal' : channel}] ${isInternal ? `@${data.fromAgent}→@${preRoutedAgent}` : `from ${sender}`}: ${rawMessage.substring(0, 50)}...`);
     if (!isInternal) {
@@ -221,7 +218,7 @@ function logAgentConfig(): void {
 
 initQueueDb();
 
-const apiServer = startApiServer(conversations);
+const apiServer = startApiServer();
 
 // Event-driven: process queue when a new message arrives
 queueEvents.on('message:enqueued', () => processQueue());

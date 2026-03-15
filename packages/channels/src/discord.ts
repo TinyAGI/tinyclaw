@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
-import { ensureSenderPaired } from '@tinyclaw/core';
+import { ensureSenderPaired, genId } from '@tinyclaw/core';
 import { createSSEClient } from './sse-client';
 import { applyDefaultAgent } from './default-agent';
 
@@ -236,7 +236,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
         const sender = message.author.username;
 
         // Generate unique message ID
-        const messageId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const messageId = genId('discord');
 
         // Download any attachments
         const downloadedFiles: string[] = [];
@@ -360,7 +360,6 @@ client.on(Events.MessageCreate, async (message: Message) => {
                 senderId: message.author.id,
                 message: fullMessage,
                 messageId,
-                files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
             }),
         });
 

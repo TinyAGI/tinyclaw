@@ -1,14 +1,8 @@
 # Queue System
 
-TinyClaw uses a SQLite-backed queue (`tinyclaw.db`) to coordinate message processing across multiple channels and agents. Messages are stored in a `messages` table (incoming) and `responses` table (outgoing), with atomic transactions replacing the previous file-based approach.
+TinyClaw uses a SQLite-backed queue (`tinyclaw.db`) to coordinate message processing across multiple channels and agents. Messages are stored in a `messages` table (incoming) and `responses` table (outgoing), with atomic transactions for reliable delivery.
 
 ## Overview
-
-The queue system acts as a central coordinator between:
-- **Channel clients** (Discord, Telegram, WhatsApp) - produce messages
-- **Queue processor** - routes and processes messages
-- **AI providers** (Claude, Codex) - generate responses
-- **Agents** - isolated AI agents with different configs
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -45,26 +39,23 @@ The queue system acts as a central coordinator between:
 
 ## Database Schema
 
-The queue lives in `~/.tinyclaw/tinyclaw.db` (SQLite, WAL mode):
+The queue lives in `~/.tinyclaw/tinyclaw.db` (SQLite, WAL mode).
 
 ### Messages Table (incoming queue)
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | INTEGER | Auto-incrementing primary key |
-| `message_id` | TEXT | Unique message identifier |
+| `message_id` | TEXT | Unique message identifier (nanoid with prefix) |
 | `channel` | TEXT | Source channel (discord, telegram, web, etc.) |
 | `sender` | TEXT | Sender display name |
 | `sender_id` | TEXT | Sender platform ID |
 | `message` | TEXT | Message content |
 | `agent` | TEXT | Target agent (null = default) |
-| `files` | TEXT | JSON array of file paths |
-| `conversation_id` | TEXT | Team conversation ID (internal messages) |
 | `from_agent` | TEXT | Source agent (internal messages) |
 | `status` | TEXT | `pending` → `processing` → `completed` / `dead` |
 | `retry_count` | INTEGER | Number of failed attempts |
 | `last_error` | TEXT | Last error message |
-| `claimed_by` | TEXT | Agent that claimed this message |
 | `created_at` | INTEGER | Timestamp (ms) |
 | `updated_at` | INTEGER | Timestamp (ms) |
 
@@ -76,10 +67,12 @@ The queue lives in `~/.tinyclaw/tinyclaw.db` (SQLite, WAL mode):
 | `message_id` | TEXT | Original message ID |
 | `channel` | TEXT | Target channel for delivery |
 | `sender` | TEXT | Original sender |
+| `sender_id` | TEXT | Original sender platform ID |
 | `message` | TEXT | Response content |
 | `original_message` | TEXT | Original user message |
 | `agent` | TEXT | Agent that generated the response |
 | `files` | TEXT | JSON array of file paths |
+| `metadata` | TEXT | JSON metadata from hooks |
 | `status` | TEXT | `pending` → `acked` |
 | `created_at` | INTEGER | Timestamp (ms) |
 | `acked_at` | INTEGER | Timestamp when channel client acknowledged |
@@ -94,7 +87,40 @@ The queue lives in `~/.tinyclaw/tinyclaw.db` (SQLite, WAL mode):
 | `message` | TEXT | Message content |
 | `created_at` | INTEGER | Timestamp (ms) |
 
-This table is append-only and used purely for persistence. All chat room delivery happens through the messages table via `postToChatRoom()`, which enqueues a copy for each teammate.
+This table is append-only and grows indefinitely. All chat room delivery happens through the messages table via `postToChatRoom()`.
+
+### Agent Messages Table (per-agent history)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Auto-incrementing primary key |
+| `agent_id` | TEXT | Agent identifier |
+| `role` | TEXT | `user` or `assistant` |
+| `channel` | TEXT | Source channel |
+| `sender` | TEXT | Sender name |
+| `message_id` | TEXT | Related message ID |
+| `content` | TEXT | Message content |
+| `created_at` | INTEGER | Timestamp (ms) |
+
+This table is append-only and grows indefinitely. Provides complete agent interaction history.
+
+## Message IDs
+
+All message IDs use nanoid (8 lowercase alphanumeric chars) with a descriptive prefix:
+
+| Prefix | Source |
+|--------|--------|
+| `api_` | Messages from the REST API |
+| `discord_` | Messages from Discord |
+| `telegram_` | Messages from Telegram |
+| `whatsapp_` | Messages from WhatsApp |
+| `internal_` | Agent-to-agent DMs (teammate mentions) |
+| `chat_` | Chat room broadcasts to individual agents |
+| `chatroom_` | Chat room posts via API |
+| `chatroom_batch_` | Batched chat room messages |
+| `proactive_` | Proactive outgoing messages |
+
+Example: `internal_a1b2c3d4`, `api_x9y8z7w6`
 
 ## Message Flow
 
@@ -108,30 +134,27 @@ enqueueMessage({
     sender: 'Alice',
     senderId: 'user_12345',
     message: '@coder fix the authentication bug',
-    messageId: 'discord_msg_123',
-    files: ['/path/to/screenshot.png'],
+    messageId: genId('discord'),
 });
 ```
 
-This inserts a row into `messages` with `status = 'pending'` and emits a
-`message:enqueued` event for instant pickup.
+This inserts a row into `messages` with `status = 'pending'` and emits a `message:enqueued` event for instant pickup.
 
 ### 2. Processing
 
 The queue processor picks up messages via two mechanisms:
 
 - **Event-driven**: `queueEvents.on('message:enqueued')` — instant for in-process messages
-- **Polling fallback**: Every 500ms — catches cross-process messages from channel clients
+- **Polling fallback**: Every 5s — catches cross-process messages from channel clients
 
 For each pending agent, the processor claims all pending messages at once via `claimAllPendingMessages(agentId)`:
 
 ```typescript
-// Atomic claim using BEGIN IMMEDIATE transaction
 const msgs = claimAllPendingMessages('coder');
-// Sets status = 'processing', claimed_by = 'coder' for all claimed messages
+// Sets status = 'processing' for all claimed messages
 ```
 
-The first message becomes the primary message; the rest are batched as additional context and delivered together in a single agent invocation. This prevents redundant invocations when multiple messages (e.g., chat room broadcasts) arrive for the same agent.
+The first message becomes the primary message; the rest are batched as additional context and delivered together in a single agent invocation.
 
 ### 3. Agent Processing
 
@@ -149,21 +172,9 @@ agentChain: msg1 → msg2 → msg3
 
 ### 4. Response
 
-After the AI responds, the processor writes to the responses table:
+After the AI responds, the response is streamed to the user immediately via `streamResponse()`, which enqueues it in the responses table. The original message is marked `status = 'completed'`.
 
-```typescript
-enqueueResponse({
-    channel: 'discord',
-    sender: 'Alice',
-    message: "I've identified the issue in auth.ts:42...",
-    originalMessage: '@coder fix the authentication bug',
-    messageId: 'discord_msg_123',
-    agent: 'coder',
-    files: ['/path/to/fix.patch'],
-});
-```
-
-The original message is marked `status = 'completed'`.
+If the response contains `[@teammate: message]` tags, those are extracted and enqueued as new internal messages — flat DMs with no conversation tracking.
 
 ### 5. Channel Delivery
 
@@ -194,8 +205,6 @@ Messages that exhaust retries (default: 5) are marked `status = 'dead'`.
 
 ### Dead-Letter Management
 
-Dead messages can be inspected and managed via the API:
-
 ```
 GET    /api/queue/dead           → list dead messages
 POST   /api/queue/dead/:id/retry → reset retry count, re-queue
@@ -204,44 +213,15 @@ DELETE /api/queue/dead/:id       → permanently delete
 
 ### Stale Message Recovery
 
-Messages stuck in `processing` (e.g., from a crash) are automatically
-recovered every 5 minutes:
+Messages stuck in `processing` (e.g., from a crash) are automatically recovered every minute:
 
 ```typescript
 recoverStaleMessages(10 * 60 * 1000);  // anything processing > 10 min
 ```
 
-## Parallel Processing
-
-### How It Works
-
-Each agent has its own **promise chain** that processes messages sequentially:
-
-```typescript
-const agentProcessingChains = new Map<string, Promise<void>>();
-```
-
-**Example: 3 messages sent simultaneously**
-
-```
-@coder fix bug 1     [████████████████] 30s
-@writer docs         [██████████] 20s ← concurrent!
-@assistant help      [████████] 15s   ← concurrent!
-Total: 30 seconds (2.2x faster vs 65s sequential)
-```
-
-Messages to the **same agent** remain sequential:
-
-```
-@coder fix bug 1     [████] 10s
-@coder fix bug 2             [████] 10s  ← waits for bug 1
-@writer docs         [██████] 15s        ← parallel with both
-```
-
 ## Real-Time Events
 
-The queue processor emits events via an in-memory listener system. The API
-server broadcasts these over SSE at `GET /api/events/stream`.
+The queue processor emits events via an in-memory listener system. The API server broadcasts these over SSE at `GET /api/events/stream`.
 
 | Event | Description |
 |-------|-------------|
@@ -249,10 +229,9 @@ server broadcasts these over SSE at `GET /api/events/stream`.
 | `agent_routed` | Message routed to agent |
 | `chain_step_start` | Agent begins processing |
 | `chain_step_done` | Agent finished (includes response) |
+| `chain_handoff` | Agent mentions a teammate |
 | `response_ready` | Response enqueued for delivery |
 | `processor_start` | Queue processor started |
-
-The TUI visualizer and web dashboard both consume SSE for live updates.
 
 ## API Endpoints
 
@@ -262,6 +241,7 @@ The API server runs on port 3777 (configurable via `TINYCLAW_API_PORT`):
 |----------|-------------|
 | `POST /api/message` | Enqueue a message |
 | `GET /api/queue/status` | Queue depth (pending, processing, dead) |
+| `GET /api/queue/agents` | Per-agent queue depth (pending, processing) |
 | `GET /api/responses` | Recent responses |
 | `GET /api/queue/dead` | Dead messages |
 | `POST /api/queue/dead/:id/retry` | Retry a dead message |
@@ -270,43 +250,17 @@ The API server runs on port 3777 (configurable via `TINYCLAW_API_PORT`):
 
 ## Maintenance
 
-Periodic cleanup tasks run automatically:
+Periodic cleanup tasks run every 60 seconds:
 
-- **Stale message recovery**: Every 5 minutes (messages stuck in `processing` > 10 min)
-- **Acked response pruning**: Every hour (responses acked > 24h ago)
-- **Conversation TTL**: Every 30 minutes (team conversations older than 30 min)
-
-## Debugging
-
-### Check Queue Status
-
-```bash
-# Via API
-curl http://localhost:3777/api/queue/status | jq
-
-# View queue logs
-tinyclaw logs queue
-```
-
-### Common Issues
-
-**Messages not processing:**
-- Queue processor not running → `tinyclaw status`
-- Check logs → `tinyclaw logs queue`
-
-**Messages stuck in processing:**
-- Will auto-recover after 10 minutes
-- Or restart: `tinyclaw restart`
-
-**Dead messages accumulating:**
-- Check via API: `curl http://localhost:3777/api/queue/dead | jq`
-- Retry: `curl -X POST http://localhost:3777/api/queue/dead/123/retry`
+- **Stale message recovery**: Messages stuck in `processing` > 10 min reset to `pending`
+- **Acked response pruning**: Responses acked > 24h ago are deleted
+- **Completed message pruning**: Messages completed > 24h ago are deleted
 
 ## See Also
 
+- [MESSAGE-PATTERNS.md](MESSAGE-PATTERNS.md) - Team message patterns (DM, fan-out, chat room)
 - [AGENTS.md](AGENTS.md) - Agent configuration and management
 - [TEAMS.md](TEAMS.md) - Team collaboration and message passing
-- [README.md](../README.md) - Main project documentation
 - [packages/core/src/queues.ts](../packages/core/src/queues.ts) - Queue implementation
 - [packages/main/src/index.ts](../packages/main/src/index.ts) - Queue processor entry point
-- [packages/teams/src/conversation.ts](../packages/teams/src/conversation.ts) - Team conversation orchestration
+- [packages/teams/src/conversation.ts](../packages/teams/src/conversation.ts) - Team message routing

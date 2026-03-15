@@ -13,7 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
-import { ensureSenderPaired } from '@tinyclaw/core';
+import { ensureSenderPaired, genId } from '@tinyclaw/core';
 import { createSSEClient } from './sse-client';
 import { applyDefaultAgent } from './default-agent';
 
@@ -298,7 +298,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
         // Determine message text and any media files
         let messageText = msg.text || msg.caption || '';
         const downloadedFiles: string[] = [];
-        const queueMessageId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const queueMessageId = genId('telegram');
 
         // Handle photo messages
         if (msg.photo && msg.photo.length > 0) {
@@ -480,7 +480,6 @@ bot.on('message', async (msg: TelegramBot.Message) => {
                 senderId,
                 message: fullMessage,
                 messageId: queueMessageId,
-                files: downloadedFiles.length > 0 ? downloadedFiles : undefined,
             }),
         });
 
