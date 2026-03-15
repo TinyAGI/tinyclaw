@@ -1,0 +1,22 @@
+{
+  "agents": {
+    "jobs": {
+      "name": "Jobs",
+      "provider": "anthropic",
+      "model": "sonnet",
+      "working_directory": "/home/josh/workspace/.tinyclaw/jobs"
+    },
+    "fitness": {
+      "name": "Fitness",
+      "provider": "anthropic",
+      "model": "sonnet",
+      "working_directory": "/home/josh/workspace/.tinyclaw/fitness"
+    },
+    "content": {
+      "name": "Content",
+      "provider": "anthropic",
+      "model": "sonnet",
+      "working_directory": "/home/josh/workspace/.tinyclaw/content"
+    }
+  }
+}
