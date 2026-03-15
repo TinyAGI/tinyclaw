@@ -60,7 +60,6 @@ app.put('/api/agents/:id', async (c) => {
             provider: body.provider!,
             model: body.model!,
             working_directory: workingDir,
-            ...(body.system_prompt ? { system_prompt: body.system_prompt } : {}),
             ...(body.prompt_file ? { prompt_file: body.prompt_file } : {}),
         };
     });
@@ -68,13 +67,14 @@ app.put('/api/agents/:id', async (c) => {
     if (isNew) {
         try {
             ensureAgentDirectory(workingDir);
-            if (body.system_prompt) {
-                fs.writeFileSync(path.join(workingDir, 'AGENTS.md'), body.system_prompt, 'utf8');
-            }
             log('INFO', `[API] Agent '${agentId}' provisioned at ${workingDir}`);
         } catch (err) {
             log('ERROR', `[API] Agent '${agentId}' provisioning failed: ${(err as Error).message}`);
         }
+    }
+
+    if (body.system_prompt != null) {
+        fs.writeFileSync(path.join(workingDir, 'AGENTS.md'), body.system_prompt, 'utf8');
     }
 
     log('INFO', `[API] Agent '${agentId}' saved`);
