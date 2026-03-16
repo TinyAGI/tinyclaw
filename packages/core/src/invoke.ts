@@ -11,10 +11,14 @@ export async function runCommand(command: string, args: string[], cwd?: string, 
         const env = { ...process.env, ...envOverrides };
         delete env.CLAUDECODE;
 
+        // detached: true puts the child in its own process group so that
+        // killing -pid on timeout takes out the entire tree (git, compilers,
+        // sub-shells, etc.) spawned by the agent CLI — not just the top process.
         const child = spawn(command, args, {
             cwd: cwd || SCRIPT_DIR,
             stdio: ['ignore', 'pipe', 'pipe'],
             env,
+            detached: true,
         });
 
         let stdout = '';
@@ -23,7 +27,13 @@ export async function runCommand(command: string, args: string[], cwd?: string, 
 
         const timer = setTimeout(() => {
             timedOut = true;
-            child.kill('SIGKILL');
+            try {
+                // Kill the entire process group (negative PID = process group leader)
+                process.kill(-(child.pid!), 'SIGKILL');
+            } catch {
+                // Process may have already exited; fall back to direct kill
+                child.kill('SIGKILL');
+            }
             reject(new Error(`Agent process timed out after ${timeoutMs / 1000}s`));
         }, timeoutMs);
 
