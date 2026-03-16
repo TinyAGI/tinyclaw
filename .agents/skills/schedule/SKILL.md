@@ -1,17 +1,28 @@
 ---
 name: schedule
-description: "Create, list, and delete scheduled (cron) tasks that send messages to the tinyclaw incoming queue at specified intervals. Use when the user wants to: schedule a recurring task for an agent, set up a cron job that triggers an agent, list existing scheduled tasks, delete or remove a scheduled task, or automate periodic agent work (reports, checks, reminders, syncs)."
+description: "Create, list, and delete scheduled tasks (recurring or one-time) that send messages to agents. Use when the user wants to: schedule a recurring task for an agent, set up a one-time future task, list existing scheduled tasks, delete or remove a scheduled task, or automate periodic agent work (reports, checks, reminders, syncs)."
 ---
 
 # Schedule Skill
 
-Manage cron-based scheduled tasks that deliver messages to the tinyclaw queue via the API server. Each schedule fires at a cron interval and POSTs a routed message (`@agent_id <task>`) to `POST /api/message`, where the queue processor picks it up and invokes the target agent.
+Manage scheduled tasks that deliver messages to agents via the tinyclaw API. Schedules can be **recurring** (cron-based) or **one-time** (fire once at a specific date/time). Each schedule enqueues a routed message (`@agent_id <task>`) that the queue processor picks up and invokes.
 
-## Commands
+Schedules are persisted to `~/.tinyclaw/schedules.json` and run in-process via the `croner` library — no system crontab required.
 
-Use the bundled CLI `scripts/schedule.sh` for all operations.
+## API Endpoints
 
-### Create a schedule
+Schedules are managed via REST endpoints on the API server:
+
+- `GET /api/schedules[?agent=ID]` — list schedules
+- `POST /api/schedules` — create a schedule
+- `PUT /api/schedules/:id` — update a schedule
+- `DELETE /api/schedules/:id` — delete a schedule
+
+## Shell CLI
+
+Use the bundled CLI `scripts/schedule.sh` for shell-based operations.
+
+### Create a recurring schedule
 
 ```bash
 scripts/schedule.sh create \
@@ -23,12 +34,29 @@ scripts/schedule.sh create \
   [--label LABEL]
 ```
 
-- `--cron` — 5-field cron expression (required). Examples: `"0 9 * * *"` (daily 9am), `"*/30 * * * *"` (every 30 min), `"0 0 * * 1"` (weekly Monday midnight).
+- `--cron` — 5-field cron expression (required for recurring). Examples: `"0 9 * * *"` (daily 9am), `"*/30 * * * *"` (every 30 min), `"0 0 * * 1"` (weekly Monday midnight).
 - `--agent` — Target agent ID (required). Must match an agent configured in settings.json.
 - `--message` — The task context / prompt sent to the agent (required).
 - `--channel` — Channel name in the queue message (default: `schedule`).
 - `--sender` — Sender name in the queue message (default: `Scheduler`).
-- `--label` — Unique label to identify this schedule (default: auto-generated). Use a descriptive label for easy management.
+- `--label` — Unique label to identify this schedule (default: auto-generated).
+
+### Create a one-time schedule (via API)
+
+One-time schedules are created via the REST API by passing `runAt` (ISO 8601 datetime) instead of `cron`:
+
+```bash
+curl -X POST http://localhost:3777/api/schedules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "runAt": "2026-03-20T09:00:00.000Z",
+    "agentId": "coder",
+    "message": "Deploy the staging build",
+    "label": "staging-deploy"
+  }'
+```
+
+One-time schedules automatically disable themselves after firing.
 
 ### List schedules
 
@@ -50,9 +78,11 @@ Delete a specific schedule by label, or delete all tinyclaw schedules.
 ## Workflow
 
 1. Confirm the target agent ID exists (check `settings.json` or ask the user).
-2. Determine the cron expression from the user's description (e.g., "every morning" → `"0 9 * * *"`).
+2. Determine recurring vs one-time:
+   - **Recurring**: determine the cron expression from the user's description (e.g., "every morning" -> `"0 9 * * *"`).
+   - **One-time**: determine the target date/time and convert to ISO 8601 format.
 3. Compose a clear task message — this is the prompt the agent will receive.
-4. Run `scripts/schedule.sh create` with the parameters.
+4. Run `scripts/schedule.sh create` (recurring) or use the API (one-time) with the parameters.
 5. Verify with `scripts/schedule.sh list`.
 
 ## Cron expression quick reference
@@ -99,14 +129,12 @@ scripts/schedule.sh create \
   --label health-check
 ```
 
-### Weekly code review reminder
+### One-time deployment task
 
 ```bash
-scripts/schedule.sh create \
-  --cron "0 10 * * 1" \
-  --agent coder \
-  --message "Review open PRs and summarize status" \
-  --label weekly-pr-review
+curl -X POST http://localhost:3777/api/schedules \
+  -H "Content-Type: application/json" \
+  -d '{"runAt":"2026-03-20T14:00:00.000Z","agentId":"devops","message":"Deploy v2.1 to production","label":"prod-deploy-v21"}'
 ```
 
 ### List and clean up
@@ -127,9 +155,13 @@ scripts/schedule.sh delete --all
 
 ## How it works
 
-- Schedules are stored as system cron entries tagged with `# tinyclaw-schedule:<label>`.
-- When a cron job fires, it POSTs a message to the API server (`POST /api/message`) with the `@agent_id` routing prefix.
+- Schedules are persisted in `~/.tinyclaw/schedules.json`.
+- The server runs an in-process cron scheduler (using `croner`) — no system crontab needed.
+- When a schedule fires, it directly enqueues a message in the SQLite queue.
 - The queue processor picks up the message and invokes the target agent, exactly like a message from any channel.
+- One-time schedules (`runAt`) auto-disable after firing.
 - Responses are stored in the SQLite queue and delivered by channel clients.
 
-For queue message format details, see `references/queue-format.md`.
+## TinyOffice UI
+
+Schedules can also be managed via the **Schedule** tab on each agent's detail page in TinyOffice. The UI provides a calendar view showing upcoming scheduled events and a form to create new schedules (recurring or one-time) without writing cron expressions.

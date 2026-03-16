@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
+    "croner": "^10.0.1",
     "dotenv": "^16.4.0",
     "jsonrepair": "^3.13.2"
   },

@@ -16,3 +16,4 @@ export * from './response';
 export * from './agent';
 export * from './queues';
 export * from './memory';
+export * from './schedules';

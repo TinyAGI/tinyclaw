@@ -144,6 +144,20 @@ export const OPENCODE_MODEL_IDS: Record<string, string> = {
     'opus': 'opencode/claude-opus-4-6',
 };
 
+// Schedule types
+export interface Schedule {
+    id: string;
+    label: string;
+    cron: string;           // 5-field cron expression (empty for one-time)
+    agentId: string;
+    message: string;
+    channel: string;        // default "schedule"
+    sender: string;         // default "Scheduler"
+    enabled: boolean;
+    createdAt: number;      // epoch ms
+    runAt?: string;         // ISO date string for one-time schedules
+}
+
 // Queue job data types
 export interface MessageJobData {
     channel: string;

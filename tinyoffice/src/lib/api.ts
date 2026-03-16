@@ -325,6 +325,52 @@ export async function deleteProject(id: string): Promise<{ ok: boolean }> {
   return apiFetch(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+// ── Schedules ─────────────────────────────────────────────────────────────
+
+export interface Schedule {
+  id: string;
+  label: string;
+  cron: string;
+  agentId: string;
+  message: string;
+  channel: string;
+  sender: string;
+  enabled: boolean;
+  createdAt: number;
+  runAt?: string;
+}
+
+export async function getSchedules(agentId?: string): Promise<Schedule[]> {
+  const params = agentId ? `?agent=${encodeURIComponent(agentId)}` : "";
+  return apiFetch(`/api/schedules${params}`);
+}
+
+export async function createSchedule(data: {
+  cron?: string;
+  runAt?: string;
+  agentId: string;
+  message: string;
+  label?: string;
+  channel?: string;
+  sender?: string;
+}): Promise<{ ok: boolean; schedule: Schedule }> {
+  return apiFetch("/api/schedules", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateSchedule(
+  id: string,
+  data: Partial<Omit<Schedule, "id" | "createdAt">>
+): Promise<{ ok: boolean; schedule: Schedule }> {
+  return apiFetch(`/api/schedules/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSchedule(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/schedules/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 // ── SSE ───────────────────────────────────────────────────────────────────
 
 export function subscribeToEvents(

@@ -15,9 +15,13 @@ import {
   saveAgentHeartbeat,
   searchRegistrySkills,
   installRegistrySkill,
+  getSchedules,
+  createSchedule,
+  deleteSchedule,
   type AgentConfig,
   type Settings,
   type WorkspaceSkill,
+  type Schedule,
 } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,25 +34,33 @@ import {
 } from "@/components/skills-constellation";
 import { AgentChatView } from "@/components/agent-chat-view";
 import {
+  FullScreenCalendar,
+  type CalendarData,
+} from "@/components/ui/fullscreen-calendar";
+import {
   Bot,
   Swords,
   FileText,
   Brain,
   HeartPulse,
+  CalendarDays,
   ArrowLeft,
   Check,
   Loader2,
   Save,
   FolderOpen,
   RefreshCw,
+  Trash2,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 
-type TabId = "chat" | "skills" | "system-prompt" | "memory" | "heartbeat";
+type TabId = "chat" | "skills" | "schedule" | "system-prompt" | "memory" | "heartbeat";
 
 const TABS: { id: TabId; label: string; icon: typeof Swords }[] = [
   { id: "chat", label: "Chat", icon: Bot },
   { id: "skills", label: "Skills", icon: Swords },
+  { id: "schedule", label: "Schedule", icon: CalendarDays },
   { id: "system-prompt", label: "System Prompt", icon: FileText },
   { id: "memory", label: "Memory", icon: Brain },
   { id: "heartbeat", label: "Heartbeat", icon: HeartPulse },
@@ -310,6 +322,9 @@ export default function AgentConfigPage({
             onRefresh={refreshWorkspaceData}
             agentId={agentId}
           />
+        )}
+        {activeTab === "schedule" && (
+          <ScheduleTab agentId={agentId} />
         )}
         {activeTab === "system-prompt" && (
           <SystemPromptTab
@@ -875,6 +890,578 @@ function HeartbeatTab({
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ── Schedule Tab ─────────────────────────────────────────────────────────────
+
+function cronNextOccurrences(cron: string, count: number): Date[] {
+  const fields = cron.trim().split(/\s+/);
+  if (fields.length !== 5) return [];
+
+  const [minF, hourF, domF, monF, dowF] = fields;
+  const results: Date[] = [];
+  const now = new Date();
+  const cursor = new Date(now);
+  cursor.setSeconds(0, 0);
+
+  function matches(val: number, field: string): boolean {
+    if (field === "*") return true;
+    for (const part of field.split(",")) {
+      if (part.includes("/")) {
+        const [base, step] = part.split("/");
+        const stepN = parseInt(step);
+        const baseN = base === "*" ? 0 : parseInt(base);
+        if (stepN > 0 && (val - baseN) % stepN === 0 && val >= baseN) return true;
+      } else if (part.includes("-")) {
+        const [lo, hi] = part.split("-").map(Number);
+        if (val >= lo && val <= hi) return true;
+      } else {
+        if (parseInt(part) === val) return true;
+      }
+    }
+    return false;
+  }
+
+  for (let i = 0; i < 60 * 24 * 90 && results.length < count; i++) {
+    cursor.setMinutes(cursor.getMinutes() + 1);
+    const min = cursor.getMinutes();
+    const hour = cursor.getHours();
+    const dom = cursor.getDate();
+    const mon = cursor.getMonth() + 1;
+    const dow = cursor.getDay();
+
+    if (
+      matches(min, minF) &&
+      matches(hour, hourF) &&
+      matches(dom, domF) &&
+      matches(mon, monF) &&
+      (matches(dow, dowF) || matches(dow === 0 ? 7 : dow, dowF))
+    ) {
+      results.push(new Date(cursor));
+    }
+  }
+  return results;
+}
+
+type RepeatMode = "once" | "daily" | "weekdays" | "weekly" | "monthly" | "hourly" | "custom";
+const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+function buildCron(opts: {
+  repeat: RepeatMode;
+  hour: number;
+  minute: number;
+  days: number[];  // 0=Sun..6=Sat
+  monthDay: number;
+  customCron: string;
+  intervalMinutes: number;
+}): string {
+  switch (opts.repeat) {
+    case "once":
+      return ""; // one-time uses runAt, not cron
+    case "hourly":
+      return opts.intervalMinutes > 0
+        ? `*/${opts.intervalMinutes} * * * *`
+        : `${opts.minute} * * * *`;
+    case "daily":
+      return `${opts.minute} ${opts.hour} * * *`;
+    case "weekdays":
+      return `${opts.minute} ${opts.hour} * * 1-5`;
+    case "weekly":
+      if (opts.days.length === 0) return `${opts.minute} ${opts.hour} * * *`;
+      return `${opts.minute} ${opts.hour} * * ${opts.days.join(",")}`;
+    case "monthly":
+      return `${opts.minute} ${opts.hour} ${opts.monthDay} * *`;
+    case "custom":
+      return opts.customCron;
+  }
+}
+
+function describeSchedule(opts: {
+  repeat: RepeatMode;
+  hour: number;
+  minute: number;
+  days: number[];
+  monthDay: number;
+  intervalMinutes: number;
+  runAtDate: string;
+  runAtTime: string;
+}): string {
+  const timeStr = `${opts.hour % 12 || 12}:${String(opts.minute).padStart(2, "0")} ${opts.hour >= 12 ? "PM" : "AM"}`;
+  switch (opts.repeat) {
+    case "once": {
+      if (!opts.runAtDate) return "Pick a date and time";
+      const d = new Date(`${opts.runAtDate}T${opts.runAtTime || "09:00"}`);
+      return `Once on ${d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })} at ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+    }
+    case "hourly":
+      return opts.intervalMinutes > 0
+        ? `Every ${opts.intervalMinutes} minutes`
+        : `Every hour at :${String(opts.minute).padStart(2, "0")}`;
+    case "daily":
+      return `Every day at ${timeStr}`;
+    case "weekdays":
+      return `Weekdays (Mon-Fri) at ${timeStr}`;
+    case "weekly": {
+      if (opts.days.length === 0) return `Every day at ${timeStr}`;
+      const names = opts.days.map(d => DAYS_OF_WEEK[d]);
+      return `Every ${names.join(", ")} at ${timeStr}`;
+    }
+    case "monthly":
+      return `${ordinal(opts.monthDay)} of every month at ${timeStr}`;
+    case "custom":
+      return "Custom cron expression";
+  }
+}
+
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function ScheduleTab({ agentId }: { agentId: string }) {
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+
+  // Form state — Google Calendar style
+  const [formRepeat, setFormRepeat] = useState<RepeatMode>("daily");
+  const [formHour, setFormHour] = useState(9);
+  const [formMinute, setFormMinute] = useState(0);
+  const [formDays, setFormDays] = useState<number[]>([1]); // Monday
+  const [formMonthDay, setFormMonthDay] = useState(1);
+  const [formIntervalMinutes, setFormIntervalMinutes] = useState(30);
+  const [formCustomCron, setFormCustomCron] = useState("");
+  const [formRunAtDate, setFormRunAtDate] = useState(""); // yyyy-MM-dd
+  const [formRunAtTime, setFormRunAtTime] = useState("09:00"); // HH:mm
+  const [formMessage, setFormMessage] = useState("");
+  const [formLabel, setFormLabel] = useState("");
+  const [formSaving, setFormSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const loadSchedules = useCallback(() => {
+    getSchedules(agentId)
+      .then((data) => {
+        setSchedules(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [agentId]);
+
+  useEffect(() => {
+    loadSchedules();
+  }, [loadSchedules]);
+
+  const handleCreate = async () => {
+    if (!formMessage.trim()) return;
+
+    const isOnce = formRepeat === "once";
+    const cron = isOnce ? undefined : buildCron({
+      repeat: formRepeat,
+      hour: formHour,
+      minute: formMinute,
+      days: formDays,
+      monthDay: formMonthDay,
+      customCron: formCustomCron,
+      intervalMinutes: formIntervalMinutes,
+    });
+    const runAt = isOnce && formRunAtDate
+      ? new Date(`${formRunAtDate}T${formRunAtTime || "09:00"}`).toISOString()
+      : undefined;
+
+    if (!isOnce && (!cron || !cron.trim())) return;
+    if (isOnce && !runAt) return;
+
+    setFormSaving(true);
+    setFormError(null);
+    try {
+      await createSchedule({
+        cron: cron || undefined,
+        runAt,
+        agentId,
+        message: formMessage,
+        label: formLabel || undefined,
+      });
+      setShowForm(false);
+      setFormRepeat("daily");
+      setFormHour(9);
+      setFormMinute(0);
+      setFormDays([1]);
+      setFormMonthDay(1);
+      setFormIntervalMinutes(30);
+      setFormCustomCron("");
+      setFormRunAtDate("");
+      setFormRunAtTime("09:00");
+      setFormMessage("");
+      setFormLabel("");
+      loadSchedules();
+    } catch (err) {
+      setFormError((err as Error).message);
+    } finally {
+      setFormSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteSchedule(id);
+      loadSchedules();
+    } catch { /* ignore */ }
+  };
+
+  // Convert schedules to calendar data (next 60 occurrences per schedule)
+  const calendarData: CalendarData[] = [];
+  const dayMap = new Map<string, CalendarData>();
+
+  for (const s of schedules) {
+    if (!s.enabled) continue;
+
+    // One-time events
+    if (s.runAt) {
+      const occ = new Date(s.runAt);
+      const key = occ.toDateString();
+      if (!dayMap.has(key)) {
+        dayMap.set(key, { day: new Date(occ.getFullYear(), occ.getMonth(), occ.getDate()), events: [] });
+      }
+      const hours = occ.getHours();
+      const mins = occ.getMinutes();
+      const ampm = hours >= 12 ? "PM" : "AM";
+      const h12 = hours % 12 || 12;
+      dayMap.get(key)!.events.push({
+        id: s.id,
+        name: s.label || s.message.slice(0, 40),
+        time: `${h12}:${String(mins).padStart(2, "0")} ${ampm}`,
+        datetime: occ.toISOString(),
+      });
+      continue;
+    }
+
+    // Recurring events
+    const occurrences = cronNextOccurrences(s.cron, 60);
+    for (const occ of occurrences) {
+      const key = occ.toDateString();
+      if (!dayMap.has(key)) {
+        dayMap.set(key, { day: new Date(occ.getFullYear(), occ.getMonth(), occ.getDate()), events: [] });
+      }
+      const hours = occ.getHours();
+      const mins = occ.getMinutes();
+      const ampm = hours >= 12 ? "PM" : "AM";
+      const h12 = hours % 12 || 12;
+      const timeStr = `${h12}:${String(mins).padStart(2, "0")} ${ampm}`;
+      dayMap.get(key)!.events.push({
+        id: `${s.id}-${occ.getTime()}`,
+        name: s.label || s.message.slice(0, 40),
+        time: timeStr,
+        datetime: occ.toISOString(),
+      });
+    }
+  }
+  calendarData.push(...dayMap.values());
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading schedules...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Schedule list bar */}
+      {schedules.length > 0 && (
+        <div className="flex items-center gap-3 px-6 py-3 border-b bg-card/50">
+          <div className="flex items-center gap-2 flex-1 overflow-x-auto">
+            {schedules.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center gap-2 px-3 py-1.5 border bg-card text-xs shrink-0"
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${s.enabled ? "bg-primary" : "bg-muted-foreground/30"}`} />
+                <span className="font-medium">{s.label}</span>
+                <span className="text-muted-foreground font-mono">
+                  {s.runAt
+                    ? new Date(s.runAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+                    : s.cron}
+                </span>
+                <button
+                  onClick={() => handleDelete(s.id)}
+                  className="text-muted-foreground hover:text-destructive transition-colors ml-1"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <span className="text-[10px] text-muted-foreground shrink-0">
+            {schedules.length} schedule(s)
+          </span>
+        </div>
+      )}
+
+      {/* New schedule form modal — Google Calendar style */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md bg-card border shadow-lg rounded-lg">
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <div className="text-sm font-semibold">New Schedule</div>
+              <button
+                onClick={() => setShowForm(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-5">
+              {/* Task message — first, like a Google Calendar title */}
+              <div className="space-y-1.5">
+                <Input
+                  value={formLabel}
+                  onChange={(e) => setFormLabel(e.target.value)}
+                  placeholder="Add title"
+                  className="text-base font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Textarea
+                  value={formMessage}
+                  onChange={(e) => setFormMessage(e.target.value)}
+                  placeholder="What should the agent do?"
+                  rows={2}
+                  className="text-sm"
+                />
+              </div>
+
+              {/* Repeat */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <RefreshCw className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <select
+                    value={formRepeat}
+                    onChange={(e) => setFormRepeat(e.target.value as RepeatMode)}
+                    className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="once">Does not repeat</option>
+                    <option value="hourly">Every hour</option>
+                    <option value="daily">Every day</option>
+                    <option value="weekdays">Every weekday (Mon-Fri)</option>
+                    <option value="weekly">Weekly on specific days</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="custom">Custom cron</option>
+                  </select>
+                </div>
+
+                {/* Date + time picker for one-time events */}
+                {formRepeat === "once" && (
+                  <div className="flex items-center gap-3">
+                    <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="date"
+                        value={formRunAtDate}
+                        onChange={(e) => setFormRunAtDate(e.target.value)}
+                        min={new Date().toISOString().split("T")[0]}
+                        className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                      />
+                      <input
+                        type="time"
+                        value={formRunAtTime}
+                        onChange={(e) => setFormRunAtTime(e.target.value)}
+                        className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Time picker for recurring — not shown for hourly with interval */}
+                {formRepeat !== "custom" && formRepeat !== "once" && (
+                  <div className="flex items-center gap-3">
+                    <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+                    {formRepeat === "hourly" ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="text-sm text-muted-foreground">Every</span>
+                        <select
+                          value={formIntervalMinutes}
+                          onChange={(e) => setFormIntervalMinutes(Number(e.target.value))}
+                          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          <option value={15}>15 minutes</option>
+                          <option value={30}>30 minutes</option>
+                          <option value={0}>hour (at :{String(formMinute).padStart(2, "0")})</option>
+                        </select>
+                        {formIntervalMinutes === 0 && (
+                          <>
+                            <span className="text-sm text-muted-foreground">at</span>
+                            <select
+                              value={formMinute}
+                              onChange={(e) => setFormMinute(Number(e.target.value))}
+                              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                            >
+                              {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
+                                <option key={m} value={m}>:{String(m).padStart(2, "0")}</option>
+                              ))}
+                            </select>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="text-sm text-muted-foreground">at</span>
+                        <select
+                          value={formHour}
+                          onChange={(e) => setFormHour(Number(e.target.value))}
+                          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {Array.from({ length: 24 }, (_, i) => {
+                            const h12 = i % 12 || 12;
+                            const ampm = i >= 12 ? "PM" : "AM";
+                            return <option key={i} value={i}>{h12} {ampm}</option>;
+                          })}
+                        </select>
+                        <span className="text-sm text-muted-foreground">:</span>
+                        <select
+                          value={formMinute}
+                          onChange={(e) => setFormMinute(Number(e.target.value))}
+                          className="h-9 w-20 rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
+                            <option key={m} value={m}>{String(m).padStart(2, "0")}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Day-of-week toggles for weekly */}
+                {formRepeat === "weekly" && (
+                  <div className="flex items-center gap-1.5 pl-7">
+                    {DAYS_OF_WEEK.map((day, i) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() =>
+                          setFormDays(prev =>
+                            prev.includes(i) ? prev.filter(d => d !== i) : [...prev, i].sort()
+                          )
+                        }
+                        className={`h-8 w-8 rounded-full text-[11px] font-medium transition-colors ${
+                          formDays.includes(i)
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground hover:bg-muted/80"
+                        }`}
+                      >
+                        {day.charAt(0)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Day of month for monthly */}
+                {formRepeat === "monthly" && (
+                  <div className="flex items-center gap-2 pl-7">
+                    <span className="text-sm text-muted-foreground">on day</span>
+                    <select
+                      value={formMonthDay}
+                      onChange={(e) => setFormMonthDay(Number(e.target.value))}
+                      className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      {Array.from({ length: 28 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>{ordinal(i + 1)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Custom cron input */}
+                {formRepeat === "custom" && (
+                  <div className="pl-7">
+                    <Input
+                      value={formCustomCron}
+                      onChange={(e) => setFormCustomCron(e.target.value)}
+                      placeholder="0 9 * * 1-5"
+                      className="font-mono text-sm"
+                      autoFocus
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      minute hour day-of-month month day-of-week
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Summary */}
+              <div className="rounded-md bg-muted/50 px-3 py-2">
+                <p className="text-xs text-muted-foreground">
+                  {describeSchedule({
+                    repeat: formRepeat,
+                    hour: formHour,
+                    minute: formMinute,
+                    days: formDays,
+                    monthDay: formMonthDay,
+                    intervalMinutes: formIntervalMinutes,
+                    runAtDate: formRunAtDate,
+                    runAtTime: formRunAtTime,
+                  })}
+                </p>
+              </div>
+
+              {formError && (
+                <p className="text-[11px] text-destructive">{formError}</p>
+              )}
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowForm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleCreate}
+                  disabled={formSaving || !formMessage.trim() || (formRepeat === "custom" && !formCustomCron.trim()) || (formRepeat === "once" && !formRunAtDate)}
+                >
+                  {formSaving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Calendar */}
+      {schedules.length > 0 ? (
+        <div className="flex-1">
+          <FullScreenCalendar
+            data={calendarData}
+            onNewEvent={() => setShowForm(true)}
+          />
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center text-muted-foreground">
+            <CalendarDays className="h-8 w-8 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">No schedules configured</p>
+            <p className="text-xs mt-1 mb-4">
+              Schedules send recurring tasks to this agent on a cron interval
+            </p>
+            <Button size="sm" onClick={() => setShowForm(true)}>
+              Create Schedule
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

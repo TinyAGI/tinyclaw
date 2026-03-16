@@ -26,5 +26,8 @@
     "concurrently": "^9.2.1",
     "nodemon": "^3.1.9",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "croner": "^10.0.1"
   }
 }

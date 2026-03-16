@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# schedule.sh — Create, list, and delete scheduled cron jobs that send messages
-#               to the tinyclaw incoming queue with task context and target agent.
+# schedule.sh — Create, list, and delete scheduled tasks via the tinyclaw API.
 #
 # Usage:
 #   schedule.sh create  --cron "EXPR" --agent AGENT_ID --message "MSG" [--channel CH] [--sender S] [--label LABEL]
@@ -8,36 +7,12 @@
 #   schedule.sh delete  --label LABEL
 #   schedule.sh delete  --all
 #
-# Each cron entry is tagged with a comment: # tinyclaw-schedule:<label>
-# so we can list/delete them reliably.
+# Requires: curl, grep, sed (standard POSIX tools). No python3/jq needed.
 
 set -euo pipefail
 
-# Platform check — crontab is not available on Windows natively
-case "$(uname -s)" in
-    CYGWIN*|MINGW*|MSYS*|Windows_NT*)
-        echo "ERROR: schedule.sh requires crontab, which is not available on Windows." >&2
-        echo "Use WSL (Windows Subsystem for Linux) to run this script." >&2
-        exit 1
-        ;;
-esac
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${TINYCLAW_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
-
-# Resolve TINYCLAW_HOME (same logic as the TypeScript config)
-if [ -z "$TINYCLAW_HOME" ]; then
-    if [ -f "$PROJECT_ROOT/.tinyclaw/settings.json" ]; then
-        TINYCLAW_HOME="$PROJECT_ROOT/.tinyclaw"
-    else
-        TINYCLAW_HOME="$HOME/.tinyclaw"
-    fi
-fi
-
 API_PORT="${TINYCLAW_API_PORT:-3777}"
 API_BASE="http://localhost:${API_PORT}"
-
-TAG_PREFIX="tinyclaw-schedule"
 
 # ────────────────────────────────────────────
 # Helpers
@@ -45,7 +20,7 @@ TAG_PREFIX="tinyclaw-schedule"
 
 usage() {
     cat <<'USAGE'
-schedule.sh — manage tinyclaw scheduled tasks (cron jobs)
+schedule.sh — manage tinyclaw scheduled tasks via the API
 
 Commands:
   create   Create a new schedule
@@ -80,37 +55,26 @@ USAGE
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
-generate_label() {
-    echo "sched-$(date +%s)-$$"
+# Escape a string for safe embedding in JSON (handles \, ", newlines, tabs)
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"      # backslash
+    s="${s//\"/\\\"}"      # double quote
+    s="${s//$'\n'/\\n}"    # newline
+    s="${s//$'\t'/\\t}"    # tab
+    printf '%s' "$s"
 }
 
-# Build the cron helper script that POSTs to the API.
-build_cron_command() {
-    local agent="$1" message="$2" channel="$3" sender="$4" label="$5"
+# Extract a simple string value from JSON by key (basic grep, no parser needed)
+# Usage: json_val '{"ok":true,"label":"foo"}' "label"  →  foo
+json_val() {
+    local json="$1" key="$2"
+    echo "$json" | grep -o "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 | sed "s/\"${key}\"[[:space:]]*:[[:space:]]*\"//" | sed 's/"$//'
+}
 
-    # Escape backslashes and double quotes in the message for JSON safety
-    local escaped_message="${message//\\/\\\\}"
-    escaped_message="${escaped_message//\"/\\\"}"
-
-    # Write a per-schedule helper script that cron will call.
-    # This avoids all crontab % escaping issues by keeping logic in a file.
-    local helper_dir="$TINYCLAW_HOME/schedule-jobs"
-    mkdir -p "$helper_dir"
-    local helper="$helper_dir/${label}.sh"
-
-    cat > "$helper" <<HELPER
-#!/bin/bash
-API_BASE="$API_BASE"
-TS=\$(date +%s)
-MSG_ID="${label}_\${TS}_\$\$"
-curl -s -X POST "\${API_BASE}/api/message" \
-    -H "Content-Type: application/json" \
-    -d "{\"channel\":\"$channel\",\"sender\":\"$sender\",\"senderId\":\"${TAG_PREFIX}:${label}\",\"message\":\"@${agent} ${escaped_message}\",\"messageId\":\"\${MSG_ID}\"}" \
-    > /dev/null 2>&1
-HELPER
-    chmod +x "$helper"
-
-    printf '%s' "$helper"
+# Check if JSON contains "ok":true
+json_ok() {
+    echo "$1" | grep -q '"ok"[[:space:]]*:[[:space:]]*true'
 }
 
 # ────────────────────────────────────────────
@@ -141,32 +105,39 @@ cmd_create() {
     field_count=$(echo "$cron_expr" | awk '{print NF}')
     [[ "$field_count" -ne 5 ]] && die "Cron expression must have exactly 5 fields, got $field_count: $cron_expr"
 
-    # Auto-generate label if not provided
-    [[ -z "$label" ]] && label=$(generate_label)
+    # Build JSON payload with proper escaping
+    local escaped_msg escaped_cron escaped_label
+    escaped_msg=$(json_escape "$message")
+    escaped_cron=$(json_escape "$cron_expr")
+    escaped_label=$(json_escape "$label")
 
-    # Check for duplicate label
-    if crontab -l 2>/dev/null | grep -q "# ${TAG_PREFIX}:${label}$"; then
-        die "A schedule with label '$label' already exists. Delete it first or choose a different label."
+    local json="{\"cron\":\"${escaped_cron}\",\"agentId\":\"${agent}\",\"message\":\"${escaped_msg}\",\"channel\":\"${channel}\",\"sender\":\"${sender}\""
+    if [[ -n "$label" ]]; then
+        json="${json},\"label\":\"${escaped_label}\"}"
+    else
+        json="${json}}"
     fi
 
-    # Build the cron line
-    local cron_cmd
-    cron_cmd=$(build_cron_command "$agent" "$message" "$channel" "$sender" "$label")
-    local cron_line="${cron_expr} ${cron_cmd} # ${TAG_PREFIX}:${label}"
+    local response
+    response=$(curl -s -X POST "${API_BASE}/api/schedules" \
+        -H "Content-Type: application/json" \
+        -d "$json")
 
-    # Append to crontab using temp file (avoids crontab - hanging in non-TTY environments)
-    local tmpfile
-    tmpfile=$(mktemp)
-    (crontab -l 2>/dev/null || true; echo "$cron_line") > "$tmpfile"
-    crontab "$tmpfile"
-    rm -f "$tmpfile"
-
-    echo "Schedule created:"
-    echo "  Label:   $label"
-    echo "  Cron:    $cron_expr"
-    echo "  Agent:   @$agent"
-    echo "  Message: $message"
-    echo "  Channel: $channel"
+    if json_ok "$response"; then
+        local resp_label resp_cron
+        resp_label=$(json_val "$response" "label")
+        resp_cron=$(json_val "$response" "cron")
+        echo "Schedule created:"
+        echo "  Label:   ${resp_label:-unknown}"
+        echo "  Cron:    ${resp_cron:-$cron_expr}"
+        echo "  Agent:   @$agent"
+        echo "  Message: $message"
+        echo "  Channel: $channel"
+    else
+        local err
+        err=$(json_val "$response" "error")
+        die "${err:-$response}"
+    fi
 }
 
 cmd_list() {
@@ -179,42 +150,44 @@ cmd_list() {
         esac
     done
 
-    local entries
-    entries=$(crontab -l 2>/dev/null | grep "# ${TAG_PREFIX}:" || true)
-
-    if [[ -z "$entries" ]]; then
-        echo "No tinyclaw schedules found."
-        return
+    local url="${API_BASE}/api/schedules"
+    if [[ -n "$filter_agent" ]]; then
+        url="${url}?agent=${filter_agent}"
     fi
 
-    # Filter by agent if requested
-    if [[ -n "$filter_agent" ]]; then
-        entries=$(echo "$entries" | grep "@${filter_agent} " || true)
-        if [[ -z "$entries" ]]; then
+    local response
+    response=$(curl -s "$url")
+
+    # Check for empty array
+    if [[ "$response" == "[]" ]]; then
+        if [[ -n "$filter_agent" ]]; then
             echo "No schedules found for agent @${filter_agent}."
-            return
+        else
+            echo "No tinyclaw schedules found."
         fi
+        return
     fi
 
     echo "Tinyclaw schedules:"
     echo "---"
 
-    echo "$entries" | while IFS= read -r line; do
-        # Extract label from comment (POSIX-compatible, no grep -P)
-        local label
-        label=$(echo "$line" | sed "s/.*# ${TAG_PREFIX}://")
+    # Parse the JSON array using grep to extract each schedule block
+    # Extract fields from each object in the array
+    local labels crons agents ids enableds
+    labels=$(echo "$response" | grep -o '"label":"[^"]*"' | sed 's/"label":"//;s/"$//')
+    crons=$(echo "$response" | grep -o '"cron":"[^"]*"' | sed 's/"cron":"//;s/"$//')
+    agents=$(echo "$response" | grep -o '"agentId":"[^"]*"' | sed 's/"agentId":"//;s/"$//')
+    ids=$(echo "$response" | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"$//')
+    enableds=$(echo "$response" | grep -o '"enabled":[a-z]*' | sed 's/"enabled"://')
 
-        # Extract cron expression (first 5 fields)
-        local cron_expr
-        cron_expr=$(echo "$line" | awk '{print $1, $2, $3, $4, $5}')
-
-        # Extract agent from @agent pattern in the message (POSIX-compatible)
-        local agent
-        agent=$(echo "$line" | sed -n 's/.*@\([a-zA-Z0-9_-]*\).*/\1/p' | head -1)
-
-        echo "  Label: $label"
-        echo "  Cron:  $cron_expr"
-        echo "  Agent: @${agent:-unknown}"
+    # Combine and print
+    paste -d'|' <(echo "$labels") <(echo "$crons") <(echo "$agents") <(echo "$ids") <(echo "$enableds") | while IFS='|' read -r lbl crn agt sid enb; do
+        local status="enabled"
+        [[ "$enb" == "false" ]] && status="disabled"
+        echo "  Label: $lbl ($status)"
+        echo "  Cron:  $crn"
+        echo "  Agent: @$agt"
+        echo "  ID:    $sid"
         echo "  ---"
     done
 }
@@ -230,48 +203,46 @@ cmd_delete() {
         esac
     done
 
-    local helper_dir="$TINYCLAW_HOME/schedule-jobs"
-
     if $delete_all; then
-        local entries
-        entries=$(crontab -l 2>/dev/null | grep "# ${TAG_PREFIX}:" || true)
-        local count=0
-        [[ -n "$entries" ]] && count=$(echo "$entries" | wc -l | tr -d ' ')
+        local response
+        response=$(curl -s "${API_BASE}/api/schedules")
 
-        if [[ "$count" -eq 0 ]]; then
+        if [[ "$response" == "[]" ]]; then
             echo "No tinyclaw schedules to delete."
             return
         fi
 
-        # Remove helper scripts for all labels
-        while IFS= read -r line; do
-            local lbl
-            lbl=$(echo "$line" | sed "s/.*# ${TAG_PREFIX}://")
-            rm -f "$helper_dir/${lbl}.sh"
-        done <<< "$entries"
+        # Extract all IDs
+        local ids
+        ids=$(echo "$response" | grep -o '"id":"[^"]*"' | sed 's/"id":"//;s/"$//')
 
-        local tmpfile
-        tmpfile=$(mktemp)
-        (crontab -l 2>/dev/null | grep -v "# ${TAG_PREFIX}:" || true) > "$tmpfile"
-        crontab "$tmpfile"
-        rm -f "$tmpfile"
+        if [[ -z "$ids" ]]; then
+            echo "No tinyclaw schedules to delete."
+            return
+        fi
+
+        local count=0
+        while IFS= read -r id; do
+            curl -s -X DELETE "${API_BASE}/api/schedules/${id}" > /dev/null 2>&1
+            count=$((count + 1))
+        done <<< "$ids"
+
         echo "Deleted $count tinyclaw schedule(s)."
         return
     fi
 
     [[ -z "$label" ]] && die "Provide --label LABEL or --all"
 
-    if ! crontab -l 2>/dev/null | grep -q "# ${TAG_PREFIX}:${label}$"; then
-        die "No schedule found with label '$label'."
-    fi
+    local response
+    response=$(curl -s -X DELETE "${API_BASE}/api/schedules/${label}")
 
-    local tmpfile
-    tmpfile=$(mktemp)
-    (crontab -l 2>/dev/null | grep -v "# ${TAG_PREFIX}:${label}$" || true) > "$tmpfile"
-    crontab "$tmpfile"
-    rm -f "$tmpfile"
-    rm -f "$helper_dir/${label}.sh"
-    echo "Deleted schedule: $label"
+    if json_ok "$response"; then
+        echo "Deleted schedule: $label"
+    else
+        local err
+        err=$(json_val "$response" "error")
+        die "${err:-Not found}"
+    fi
 }
 
 # ────────────────────────────────────────────
