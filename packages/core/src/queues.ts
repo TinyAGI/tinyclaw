@@ -11,6 +11,7 @@ import { MessageJobData, ResponseJobData } from './types';
 
 const QUEUE_DB_PATH = path.join(TINYCLAW_HOME, 'tinyclaw.db');
 const MAX_RETRIES = 5;
+const MAX_MANUAL_RETRIES = 3;
 
 let db: Database.Database | null = null;
 export const queueEvents = new EventEmitter();
@@ -29,7 +30,9 @@ export function initQueueDb(): void {
             message TEXT NOT NULL, agent TEXT, files TEXT,
             conversation_id TEXT, from_agent TEXT,
             status TEXT NOT NULL DEFAULT 'pending',
-            retry_count INTEGER NOT NULL DEFAULT 0, last_error TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            manual_retry_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
             created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
         );
         CREATE TABLE IF NOT EXISTS responses (
@@ -66,6 +69,12 @@ export function initQueueDb(): void {
     const cols = db.prepare("PRAGMA table_info(responses)").all() as { name: string }[];
     if (!cols.some(c => c.name === 'metadata')) {
         db.exec('ALTER TABLE responses ADD COLUMN metadata TEXT');
+    }
+
+    // Migrate: add manual_retry_count to messages if missing (for existing databases)
+    const msgCols = db.prepare("PRAGMA table_info(messages)").all() as { name: string }[];
+    if (!msgCols.some(c => c.name === 'manual_retry_count')) {
+        db.exec('ALTER TABLE messages ADD COLUMN manual_retry_count INTEGER NOT NULL DEFAULT 0');
     }
 }
 
@@ -172,8 +181,15 @@ export function getDeadMessages(): any[] {
     return getDb().prepare(`SELECT * FROM messages WHERE status='dead' ORDER BY updated_at DESC`).all();
 }
 
-export function retryDeadMessage(rowId: number): boolean {
-    return getDb().prepare(`UPDATE messages SET status='pending',retry_count=0,updated_at=? WHERE id=? AND status='dead'`).run(Date.now(), rowId).changes > 0;
+export function retryDeadMessage(rowId: number): boolean | 'cap_exceeded' {
+    const msg = getDb().prepare('SELECT manual_retry_count FROM messages WHERE id=? AND status=\'dead\'').get(rowId) as { manual_retry_count: number } | undefined;
+    if (!msg) return false;
+    if (msg.manual_retry_count >= MAX_MANUAL_RETRIES) return 'cap_exceeded';
+    // Set retry_count to MAX_RETRIES - 1 so the message gets exactly one more
+    // automatic attempt before going dead again, rather than a full reset to 0.
+    return getDb().prepare(
+        `UPDATE messages SET status='pending', retry_count=?, manual_retry_count=manual_retry_count+1, updated_at=? WHERE id=? AND status='dead'`
+    ).run(MAX_RETRIES - 1, Date.now(), rowId).changes > 0;
 }
 
 export function deleteDeadMessage(rowId: number): boolean {

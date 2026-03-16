@@ -110,6 +110,8 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
             },
             failedReason: m.last_error,
             attemptsMade: m.retry_count,
+            manualRetriesUsed: m.manual_retry_count,
+            manualRetriesRemaining: Math.max(0, 3 - m.manual_retry_count),
             timestamp: m.created_at,
         })));
     });
@@ -117,8 +119,9 @@ export function createQueueRoutes(conversations: Map<string, Conversation>) {
     // POST /api/queue/dead/:id/retry
     app.post('/api/queue/dead/:id/retry', (c) => {
         const id = parseInt(c.req.param('id'), 10);
-        const ok = retryDeadMessage(id);
-        if (!ok) return c.json({ error: 'dead message not found' }, 404);
+        const result = retryDeadMessage(id);
+        if (result === false) return c.json({ error: 'dead message not found' }, 404);
+        if (result === 'cap_exceeded') return c.json({ error: `Manual retry limit (${3}) reached for this message. Delete it if you want to discard it.` }, 429);
         log('INFO', `[API] Dead message ${id} retried`);
         return c.json({ ok: true });
     });
