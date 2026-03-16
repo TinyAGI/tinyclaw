@@ -91,26 +91,19 @@ export function postToChatRoom(
     teamId: string,
     fromAgent: string,
     message: string,
-    teamAgents: string[],
-    originalData: { channel: string; sender: string; senderId?: string | null; messageId: string }
 ): number {
-    const chatMsg = `[Chat room #${teamId} — @${fromAgent}]:\n${message}`;
     const id = insertChatMessage(teamId, fromAgent, message);
-    // Enqueue for every teammate (except the sender)
-    for (const agentId of teamAgents) {
-        if (agentId === fromAgent) continue;
-        const msgId = `chat_${teamId}_${fromAgent}_${agentId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        enqueueMessage({
-            channel: originalData.channel,
-            sender: originalData.sender,
-            senderId: originalData.senderId ?? undefined,
-            message: chatMsg,
-            messageId: msgId,
-            agent: agentId,
-            fromAgent,
-        });
-    }
-    log('DEBUG', `Chat room message: @${fromAgent} → #${teamId} (${teamAgents.length - 1} teammate(s))`);
+    // Chat room messages are stored as history only — NOT enqueued as active messages for teammates.
+    //
+    // Previously, every [#team: ...] post was fanned out to all other agents as a full queue
+    // message, triggering a new Claude invocation per agent. When agents responded with their
+    // own [#team: ...] posts, this created an exponential feedback loop that exhausted
+    // API token budgets in minutes.
+    //
+    // Agents read recent chat room history as passive context (prepended to their system prompt)
+    // when they are next invoked for a real task. This preserves coordination without the runaway
+    // cost of active fan-out.
+    log('DEBUG', `Chat room message stored: @${fromAgent} → #${teamId} (no fan-out)`);
     return id;
 }
 
@@ -217,9 +210,7 @@ export async function handleTeamResponse(params: {
         log('INFO', `Chat room broadcasts from @${agentId}: ${chatRoomMsgs.map(m => `#${m.teamId}`).join(', ')}`);
     }
     for (const crMsg of chatRoomMsgs) {
-        postToChatRoom(crMsg.teamId, agentId, crMsg.message, teams[crMsg.teamId].agents, {
-            channel, sender, senderId: data.senderId, messageId,
-        });
+        postToChatRoom(crMsg.teamId, agentId, crMsg.message);
     }
 
     const teamContext = resolveTeamContext(agentId, isTeamRouted, data, teams);
