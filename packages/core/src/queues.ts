@@ -214,16 +214,16 @@ export function insertAgentMessage(data: {
     ).run(data.agentId, data.role, data.channel, data.sender, data.messageId, data.content, Date.now()).lastInsertRowid as number;
 }
 
-export function getAgentMessages(agentId: string, limit = 100, sinceId = 0): any[] {
+export function getAgentMessages(agentId: string, limit = 100): any[] {
     return getDb().prepare(
-        `SELECT * FROM agent_messages WHERE agent_id=? AND id>? ORDER BY created_at DESC LIMIT ?`
-    ).all(agentId, sinceId, limit);
+        `SELECT * FROM agent_messages WHERE agent_id=? ORDER BY created_at DESC LIMIT ?`
+    ).all(agentId, limit);
 }
 
-export function getAllAgentMessages(limit = 100, sinceId = 0): any[] {
+export function getAllAgentMessages(limit = 100): any[] {
     return getDb().prepare(
-        `SELECT * FROM agent_messages WHERE id>? ORDER BY created_at DESC LIMIT ?`
-    ).all(sinceId, limit);
+        `SELECT * FROM agent_messages ORDER BY created_at DESC LIMIT ?`
+    ).all(limit);
 }
 
 // ── Chat messages ───────────────────────────────────────────────────────────
@@ -233,8 +233,8 @@ export function insertChatMessage(teamId: string, fromAgent: string, message: st
         .run(teamId, fromAgent, message, Date.now()).lastInsertRowid as number;
 }
 
-export function getChatMessages(teamId: string, limit = 100, sinceId = 0): any[] {
-    return getDb().prepare(`SELECT * FROM chat_messages WHERE team_id=? AND id>? ORDER BY created_at LIMIT ?`).all(teamId, sinceId, limit);
+export function getChatMessages(teamId: string, limit = 100): any[] {
+    return getDb().prepare(`SELECT * FROM chat_messages WHERE team_id=? ORDER BY created_at DESC LIMIT ?`).all(teamId, limit);
 }
 
 // ── Lifecycle ───────────────────────────────────────────────────────────────

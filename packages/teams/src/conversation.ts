@@ -20,7 +20,7 @@ export function postToChatRoom(
     for (const agentId of teamAgents) {
         if (agentId === fromAgent) continue;
         enqueueMessage({
-            channel: originalData.channel,
+            channel: 'chatroom',
             sender: originalData.sender,
             senderId: originalData.senderId ?? undefined,
             message: chatMsg,

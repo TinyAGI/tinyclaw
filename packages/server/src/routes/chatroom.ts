@@ -13,8 +13,7 @@ app.get('/api/chatroom/:teamId', (c) => {
     }
 
     const limit = parseInt(c.req.query('limit') || '100', 10);
-    const sinceId = parseInt(c.req.query('since_id') || '0', 10);
-    const messages = getChatMessages(teamId, limit, sinceId);
+    const messages = getChatMessages(teamId, limit);
     return c.json(messages);
 });
 
