@@ -96,6 +96,15 @@ type AgentWorkSession = {
 const AGENT_COLORS = ["#a3e635", "#84cc16", "#f59e0b", "#14b8a6", "#eab308", "#22c55e"];
 const AGENT_SESSION_RELEASE_MS = 6200;
 const OFFICE_STATION_COUNT = 8;
+const ARCHIVE_BUTTONS = [
+  { id: "logs", label: "Logs" },
+  { id: "outgoing", label: "Ongoing Dock" },
+  { id: "tasks", label: "Task Board" },
+  { id: "routing", label: "Live Routing" },
+] as const satisfies ReadonlyArray<{
+  id: "logs" | "outgoing" | "tasks" | "routing";
+  label: string;
+}>;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -222,6 +231,7 @@ export default function OfficePage() {
 
   const seenRef = useRef(new Set<string>());
   const conversationScrollRef = useRef<HTMLDivElement | null>(null);
+  const conversationStickToBottomRef = useRef(true);
   const rootSessionsRef = useRef(new Map<string, { startedAt: number; agentIds: Set<string>; completedAt?: number }>());
   const openRootOrderRef = useRef<string[]>([]);
 
@@ -874,13 +884,21 @@ export default function OfficePage() {
   useEffect(() => {
     const node = conversationScrollRef.current;
     if (!node) return;
+    if (!conversationStickToBottomRef.current) return;
     node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
   }, [visibleConversation]);
 
+  const handleConversationScroll = useCallback(() => {
+    const node = conversationScrollRef.current;
+    if (!node) return;
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    conversationStickToBottomRef.current = distanceFromBottom <= 32;
+  }, []);
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-hidden border-b border-border bg-[radial-gradient(circle_at_top,#f7ecdd,#b79372_42%,#4b3728_100%)] p-3">
-        <div className="relative size-full">
+      <div className="flex-1 overflow-hidden bg-[#3b3a37] p-3">
+        <div className="relative size-full overflow-hidden border border-[#725844] bg-[linear-gradient(180deg,#ccb294,#b89b7d)] shadow-[0_22px_60px_rgba(28,18,12,0.32)]">
           <PixelOfficeScene
             frame={clock.frame}
             bossRoom={bossRoomModel}
@@ -890,8 +908,32 @@ export default function OfficePage() {
             agents={sceneAgents}
           />
 
+          <div
+            className="absolute z-[90] grid grid-cols-2 gap-1.5"
+            style={{
+              left: `${((PIXEL_SCENE_LAYOUT.archiveRoomX + 36) / PIXEL_SCENE_LAYOUT.width) * 100}%`,
+              top: `${((PIXEL_SCENE_LAYOUT.archiveRoomY + 36) / PIXEL_SCENE_LAYOUT.height) * 100}%`,
+              width: `${(152 / PIXEL_SCENE_LAYOUT.width) * 100}%`,
+            }}
+          >
+            {ARCHIVE_BUTTONS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setArchivePanel((current) => (current === item.id ? null : item.id))}
+                className={`flex h-[28px] w-full items-center justify-center border px-2 py-1 text-center font-mono text-[10px] leading-none shadow-[0_1px_0_rgba(255,255,255,0.06)_inset] transition ${
+                  archivePanel === item.id
+                    ? "border-[#465e14] bg-[#111111] text-[#a3e635]"
+                    : "border-[#885c47] bg-[#dcc3a3] text-[#5c4637] hover:border-[#465e14] hover:bg-[#111111] hover:text-[#a3e635]"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
           {archivePanel && (
-            <div className="absolute inset-y-6 right-4 z-30 w-[380px] rounded-md border border-stone-700 bg-stone-950/95 shadow-2xl">
+            <div className="absolute inset-y-6 right-4 z-[80] w-[380px] border border-stone-700 bg-stone-950/95 shadow-2xl">
               <div className="flex items-center justify-between border-b border-stone-800 px-4 py-3">
                 <div className="font-mono text-xs uppercase tracking-[0.18em] text-lime-300">
                   {archivePanel === "logs" && "Logs"}
@@ -903,7 +945,7 @@ export default function OfficePage() {
                 <button
                   type="button"
                   onClick={() => setArchivePanel(null)}
-                  className="rounded border border-stone-700 px-2 py-1 font-mono text-[10px] text-stone-300 transition hover:border-lime-500 hover:text-lime-300"
+                  className="border border-stone-700 px-2 py-1 font-mono text-[10px] text-stone-300 transition hover:border-lime-500 hover:text-lime-300"
                 >
                   Close
                 </button>
@@ -913,23 +955,23 @@ export default function OfficePage() {
                   <div className="space-y-2 font-mono text-xs text-stone-300">
                     {(logs?.lines ?? []).length > 0 ? (
                       (logs?.lines ?? []).map((line, index) => (
-                        <div key={`${index}-${line.slice(0, 12)}`} className="rounded border border-stone-800 bg-stone-900/90 px-3 py-2 break-words">
+                        <div key={`${index}-${line.slice(0, 12)}`} className="border border-stone-800 bg-stone-900/90 px-3 py-2 break-words">
                           {line}
                         </div>
                       ))
                     ) : (
-                      <div className="rounded border border-stone-800 bg-stone-900/90 px-3 py-2 text-stone-500">No logs yet</div>
+                      <div className="border border-stone-800 bg-stone-900/90 px-3 py-2 text-stone-500">No logs yet</div>
                     )}
                   </div>
                 )}
 
                 {archivePanel === "workspace" && (
                   <div className="space-y-3 font-mono text-xs text-stone-300">
-                    <div className="rounded border border-stone-800 bg-stone-900/90 px-3 py-2">
+                    <div className="border border-stone-800 bg-stone-900/90 px-3 py-2">
                       workspace: {settings?.workspace?.path || settings?.workspace?.name || "not configured"}
                     </div>
                     {agentEntries.map(([agentId, agent]) => (
-                      <div key={agentId} className="rounded border border-stone-800 bg-stone-900/90 px-3 py-2">
+                      <div key={agentId} className="border border-stone-800 bg-stone-900/90 px-3 py-2">
                         <div className="text-lime-300">@{agentId}</div>
                         <div className="mt-1 break-all text-stone-400">{agent.working_directory || "no working directory"}</div>
                       </div>
@@ -940,7 +982,7 @@ export default function OfficePage() {
                 {archivePanel === "tasks" && (
                   <div className="grid grid-cols-2 gap-3 font-mono text-xs text-stone-300">
                     {taskSummaries.map((summary) => (
-                      <div key={summary.label} className="rounded border border-stone-800 bg-stone-900/90 px-3 py-3">
+                      <div key={summary.label} className="border border-stone-800 bg-stone-900/90 px-3 py-3">
                         <div className="text-stone-500">{summary.label}</div>
                         <div className="mt-2 text-xl text-lime-300">{summary.count}</div>
                       </div>
@@ -952,32 +994,32 @@ export default function OfficePage() {
                   <div className="space-y-2 font-mono text-xs text-stone-300">
                     {responseItems.length > 0 ? (
                       responseItems.map((response) => (
-                        <div key={response.id} className="rounded border border-stone-800 bg-stone-900/90 px-3 py-2">
+                        <div key={response.id} className="border border-stone-800 bg-stone-900/90 px-3 py-2">
                           <div className="text-lime-300">{response.label}</div>
                           <div className="mt-1 text-stone-500">{response.subtitle}</div>
                         </div>
                       ))
                     ) : (
-                      <div className="rounded border border-stone-800 bg-stone-900/90 px-3 py-2 text-stone-500">No outgoing responses</div>
+                      <div className="border border-stone-800 bg-stone-900/90 px-3 py-2 text-stone-500">No outgoing responses</div>
                     )}
                   </div>
                 )}
 
                 {archivePanel === "routing" && (
                   <div className="space-y-3 font-mono text-xs text-stone-300">
-                    <div className="rounded border border-stone-800 bg-stone-900/90 px-3 py-2">
+                    <div className="border border-stone-800 bg-stone-900/90 px-3 py-2">
                       <div className="text-stone-500">root</div>
                       <div className="mt-1 text-lime-300">{routeRoot}</div>
                     </div>
                     {routeTargets.length > 0 ? (
                       routeTargets.map((target) => (
-                        <div key={`${target.label}-${target.state}`} className="rounded border border-stone-800 bg-stone-900/90 px-3 py-2">
+                        <div key={`${target.label}-${target.state}`} className="border border-stone-800 bg-stone-900/90 px-3 py-2">
                           <div style={{ color: target.color }}>{target.label}</div>
                           <div className="mt-1 text-stone-500">{target.state}</div>
                         </div>
                       ))
                     ) : (
-                      <div className="rounded border border-stone-800 bg-stone-900/90 px-3 py-2 text-stone-500">No active route</div>
+                      <div className="border border-stone-800 bg-stone-900/90 px-3 py-2 text-stone-500">No active route</div>
                     )}
                   </div>
                 )}
@@ -986,26 +1028,24 @@ export default function OfficePage() {
           )}
 
           <div
-            className="absolute z-40 flex flex-col overflow-hidden rounded-[18px] border border-[#7b6555] bg-[rgba(182,151,122,0.92)] shadow-2xl"
+            className="absolute right-0 top-0 z-40 flex flex-col overflow-hidden border-l border-[#885c47] bg-[#b38857] shadow-[-18px_0_36px_rgba(36,24,16,0.2)]"
             style={{
-              left: `${(680 / PIXEL_SCENE_LAYOUT.width) * 100}%`,
-              top: `${(26 / PIXEL_SCENE_LAYOUT.height) * 100}%`,
-              width: `${(560 / PIXEL_SCENE_LAYOUT.width) * 100}%`,
-              height: `${(668 / PIXEL_SCENE_LAYOUT.height) * 100}%`,
+              width: `${(584 / PIXEL_SCENE_LAYOUT.width) * 100}%`,
+              height: "100%",
             }}
           >
-            <div className="border-b border-[#8e755f] bg-[rgba(120,95,75,0.42)] px-4 py-3">
-              <div className="mb-3 inline-flex h-[18px] items-center rounded-[4px] border border-[#84cc16] bg-[#1c1917] px-3 text-[12px] font-mono text-[#84cc16] shadow-[0_0_0_1px_#84cc16]">
+            <div className="border-b border-[#885c47] bg-[#be9565] px-4 py-3 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]">
+              <div className="mb-3 inline-flex items-center border border-[#465e14] bg-[#161812] px-3 py-1 text-[12px] font-mono font-bold text-[#a3e635] shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]">
                 Conversations
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => setConversationFilter("all")}
-                  className={`rounded-[10px] border px-3 py-1.5 font-mono text-[10px] transition ${
+                  className={`border px-3 py-1.5 font-mono text-[10px] transition ${
                     conversationFilter === "all"
-                      ? "border-[#84cc16] bg-[rgba(132,204,22,0.14)] text-[#2f4d0d]"
-                      : "border-[#826b58] bg-[rgba(244,231,214,0.46)] text-[#5e4b3d] hover:border-[#84cc16] hover:text-[#2f4d0d]"
+                      ? "border-[#465e14] bg-[#111111] text-[#a3e635]"
+                      : "border-[#885c47] bg-[#dcc3a3] text-[#5c4637] hover:border-[#465e14] hover:bg-[#111111] hover:text-[#a3e635]"
                   }`}
                 >
                   All Agents
@@ -1015,10 +1055,10 @@ export default function OfficePage() {
                     key={agentId}
                     type="button"
                     onClick={() => setConversationFilter(agentId)}
-                    className={`rounded-[10px] border px-3 py-1.5 font-mono text-[10px] transition ${
+                    className={`border px-3 py-1.5 font-mono text-[10px] transition ${
                       conversationFilter === agentId
-                        ? "border-[#84cc16] bg-[rgba(132,204,22,0.14)] text-[#2f4d0d]"
-                        : "border-[#826b58] bg-[rgba(244,231,214,0.46)] text-[#5e4b3d] hover:border-[#84cc16] hover:text-[#2f4d0d]"
+                        ? "border-[#465e14] bg-[#111111] text-[#a3e635]"
+                        : "border-[#885c47] bg-[#dcc3a3] text-[#5c4637] hover:border-[#465e14] hover:bg-[#111111] hover:text-[#a3e635]"
                     }`}
                   >
                     {agent.name || `@${agentId}`}
@@ -1029,37 +1069,38 @@ export default function OfficePage() {
 
             <div
               ref={conversationScrollRef}
-              className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(199,171,143,0.92),rgba(176,146,119,0.88))] px-4 py-4"
+              onScroll={handleConversationScroll}
+              className="min-h-0 flex-1 overflow-y-auto border-y border-[#885c47] bg-[#ead8c3] px-4 py-4"
             >
               <div className="space-y-3">
                 {visibleConversation.length > 0 ? (
                   visibleConversation.map((entry) => (
                     <div
                       key={entry.id}
-                      className={`rounded-[14px] border px-3.5 py-2.5 shadow-[0_1px_0_rgba(76,60,48,0.16)] ${
+                      className={`border px-3.5 py-2.5 shadow-[0_1px_0_rgba(255,255,255,0.12)_inset] ${
                         entry.role === "user"
-                          ? "ml-12 border-[#84cc16] bg-[rgba(235,248,196,0.78)]"
-                          : "mr-12 border-[#8b7460] bg-[rgba(243,229,211,0.72)]"
+                          ? "ml-12 border-[#6f7f31] bg-[#cfd88f]"
+                          : "mr-12 border-[#885c47] bg-[#f4e7d6]"
                       }`}
                     >
                       <div className="mb-1 flex items-center justify-between gap-3">
-                        <span className={`font-mono text-[10px] uppercase tracking-[0.14em] ${entry.role === "user" ? "text-[#45680f]" : "text-[#6d5948]"}`}>
+                        <span className={`font-mono text-[10px] uppercase tracking-[0.14em] ${entry.role === "user" ? "text-[#3f5b0f]" : "text-[#6f5c4b]"}`}>
                           {entry.sender}
                         </span>
-                        <span className="font-mono text-[10px] text-[#7f6a57]">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                        <span className="font-mono text-[10px] text-[#6f5c4b]">{new Date(entry.timestamp).toLocaleTimeString()}</span>
                       </div>
-                      <p className="break-words text-sm leading-relaxed text-[#231b16]">{entry.message}</p>
+                      <p className="break-words text-sm leading-relaxed text-[#241b16]">{entry.message}</p>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-[14px] border border-dashed border-[#8b7460] bg-[rgba(244,231,214,0.45)] px-4 py-6 text-center text-sm text-[#6f5c4b]">
+                  <div className="border border-dashed border-[#885c47] bg-[#f4e7d6] px-4 py-6 text-center text-sm text-[#6f5c4b]">
                     No messages for this view
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="border-t border-[#8e755f] bg-[rgba(120,95,75,0.36)] px-4 py-3">
+            <div className="border-t border-[#885c47] bg-[#be9565] px-4 py-3 shadow-[0_-1px_0_rgba(255,255,255,0.08)_inset]">
               <div className="flex items-center gap-3">
                 <input
                   type="text"
@@ -1067,17 +1108,17 @@ export default function OfficePage() {
                   onChange={(event) => setChatInput(event.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={conversationFilter === "all" ? "Message @agent or @team..." : `Message @${conversationFilter}...`}
-                  className="h-10 flex-1 rounded-[12px] border border-[#8b7460] bg-[rgba(244,231,214,0.78)] px-3.5 text-sm text-[#231b16] outline-none transition-colors placeholder:text-[#8a7564] focus:border-[#84cc16]"
+                  className="h-10 flex-1 border border-[#885c47] bg-[#f4e7d6] px-3.5 text-sm text-[#241b16] outline-none transition-colors placeholder:text-[#6f5c4b] focus:border-[#465e14]"
                 />
                 <button
                   onClick={() => void handleSend()}
                   disabled={!chatInput.trim() || sending}
-                  className="flex h-10 w-10 items-center justify-center rounded-[12px] border border-[#8b7460] bg-[rgba(244,231,214,0.78)] text-[#6d5948] transition-colors hover:border-[#84cc16] hover:text-[#45680f] disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-10 w-10 items-center justify-center border border-[#465e14] bg-[#161812] text-[#a3e635] transition-colors hover:border-[#a3e635] hover:text-[#d9f99d] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </button>
               </div>
-              <div className="mt-2 flex items-center justify-between font-mono text-[11px] text-[#6f5c4b]">
+              <div className="mt-2 flex items-center justify-between font-mono text-[11px] text-[#f3eadf]">
                 <span>Cmd/Ctrl + Enter to send</span>
                 <span>
                   {connected ? "SSE online" : "SSE disconnected"} · {taskSummaries[1]?.count ?? 0} active · {queueSnapshot.outgoing} outgoing
@@ -1097,7 +1138,7 @@ export default function OfficePage() {
                 style={{ left: position.left, top: position.top }}
               >
                 <div
-                  className="relative flex h-full w-full flex-col rounded-[12px] border px-2.5 py-2 text-[10px] leading-relaxed text-white shadow-xl"
+                  className="relative flex h-full w-full flex-col border px-2.5 py-2 text-[10px] leading-relaxed text-white shadow-xl"
                   style={{ borderColor: bubble.color, background: "rgba(17, 24, 39, 0.94)" }}
                 >
                   <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: bubble.color }}>

@@ -96,9 +96,9 @@ export const PIXEL_SCENE_LAYOUT = {
   routePanelWidth: 214,
   routePanelHeight: 128,
   loungeX: 56,
-  loungeY: 530,
+  loungeY: 586,
   loungeWidth: 604,
-  loungeHeight: 108,
+  loungeHeight: 120,
   stationAreaX: 44,
   stationAreaY: 228,
   stationAreaWidth: 624,
@@ -309,6 +309,59 @@ function WallTile({
   );
 }
 
+function RoomWallBand({
+  x,
+  y,
+  width,
+  height = 28,
+  zIndex = 7,
+}: {
+  x: number;
+  y: number;
+  width: number;
+  height?: number;
+  zIndex?: number;
+}) {
+  return (
+    <div
+      className="pointer-events-none absolute border-b border-[#5a4f47]"
+      style={{
+        ...rectStyle(x, y, width, height, zIndex),
+        background:
+          "linear-gradient(180deg, rgba(236,233,227,0.98) 0%, rgba(225,220,212,0.98) 72%, rgba(211,203,194,0.98) 100%)",
+        boxShadow: "0 1px 0 rgba(255,255,255,0.45) inset",
+      }}
+    />
+  );
+}
+
+function RoomSideCap({
+  x,
+  y,
+  width = FLOOR_TILE / 2,
+  height = FLOOR_TILE,
+  zIndex = 9,
+  side = "left",
+}: {
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  zIndex?: number;
+  side?: "left" | "right";
+}) {
+  return (
+    <div
+      className={`pointer-events-none absolute ${side === "left" ? "border-r" : "border-l"} border-[#564a42]`}
+      style={{
+        ...rectStyle(x, y, width, height, zIndex),
+        background:
+          "linear-gradient(180deg, rgba(214,208,199,0.98) 0%, rgba(203,197,188,0.98) 100%)",
+      }}
+    />
+  );
+}
+
 function Sprite({
   src,
   x,
@@ -373,18 +426,19 @@ function DeskMonitor({
 function RoomHeader({ x, y, title, accent }: { x: number; y: number; title: string; accent: string }) {
   return (
     <div
-      className="pointer-events-none absolute inline-flex rounded-[12px] border px-3 py-2 font-mono"
+      className="pointer-events-none absolute inline-flex items-center border px-3 py-1 font-mono"
       style={{
         left: toPercent(x, PIXEL_SCENE_LAYOUT.width),
         top: toPercent(y, PIXEL_SCENE_LAYOUT.height),
         zIndex: 40,
-        borderColor: accent,
-        background: "rgba(245, 238, 229, 0.84)",
-        color: "#2d241d",
-        boxShadow: panelShadow(accent),
+        borderColor: "#465e14",
+        background: "#1e2414",
+        color: "#a3e635",
+        boxShadow: "0 1px 0 rgba(255,255,255,0.08) inset",
+        transform: "translateY(calc(-100% - 6px))",
       }}
     >
-      <div className="text-[11px] font-bold uppercase tracking-[0.2em] whitespace-nowrap" style={{ color: accent }}>
+      <div className="text-[12px] font-bold whitespace-nowrap" style={{ color: "#a3e635" }}>
         {title}
       </div>
     </div>
@@ -486,7 +540,6 @@ function StaticOfficeFurniture({ bossRoom, archiveRoom }: { bossRoom: SceneBossR
   const board = scaledAsset(FURNITURE.whiteboard);
   const book = scaledAsset(FURNITURE.bookshelf);
   const paintingLarge = scaledAsset(FURNITURE.paintingLarge);
-  const smallPainting = scaledAsset(FURNITURE.paintingSmall, 2);
   const clock = scaledAsset(FURNITURE.clock, 2);
   const plantLarge = scaledAsset(FURNITURE.largePlant, 1.9);
   const hangingPlant = scaledAsset(FURNITURE.hangingPlant, 2);
@@ -504,14 +557,12 @@ function StaticOfficeFurniture({ bossRoom, archiveRoom }: { bossRoom: SceneBossR
       <Sprite src={FURNITURE.whiteboard.src} x={PIXEL_SCENE_LAYOUT.bossRoomX + 18} y={PIXEL_SCENE_LAYOUT.bossRoomY + 40} width={board.width} height={board.height} zIndex={34} />
       <Sprite src={FURNITURE.paintingLarge.src} x={PIXEL_SCENE_LAYOUT.bossRoomX + 108} y={PIXEL_SCENE_LAYOUT.bossRoomY + 38} width={paintingLarge.width} height={paintingLarge.height} zIndex={34} />
       <Sprite src={FURNITURE.sofaFront.src} x={PIXEL_SCENE_LAYOUT.bossRoomX + 66} y={PIXEL_SCENE_LAYOUT.bossRoomY + 112} width={sofaFront.width} height={sofaFront.height} zIndex={41} />
-      <BossAgent x={PIXEL_SCENE_LAYOUT.bossRoomX + 102} y={PIXEL_SCENE_LAYOUT.bossRoomY + 90} zIndex={42} />
+      <BossAgent x={PIXEL_SCENE_LAYOUT.bossRoomX + 96} y={PIXEL_SCENE_LAYOUT.bossRoomY + 86} zIndex={42} />
       <Sprite src={FURNITURE.hangingPlant.src} x={PIXEL_SCENE_LAYOUT.bossRoomX + 16} y={PIXEL_SCENE_LAYOUT.bossRoomY + 24} width={hangingPlant.width} height={hangingPlant.height} zIndex={44} />
 
       <Sprite src={FURNITURE.bookshelf.src} x={PIXEL_SCENE_LAYOUT.archiveRoomX + 18} y={PIXEL_SCENE_LAYOUT.archiveRoomY + 52} width={book.width} height={book.height} zIndex={34} />
-      <Sprite src={FURNITURE.bookshelf.src} x={PIXEL_SCENE_LAYOUT.archiveRoomX + 94} y={PIXEL_SCENE_LAYOUT.archiveRoomY + 52} width={book.width} height={book.height} zIndex={34} />
       <Sprite src={FURNITURE.bookshelf.src} x={PIXEL_SCENE_LAYOUT.archiveRoomX + 18} y={PIXEL_SCENE_LAYOUT.archiveRoomY + 94} width={book.width} height={book.height} zIndex={34} />
       <Sprite src={FURNITURE.bookshelf.src} x={PIXEL_SCENE_LAYOUT.archiveRoomX + 94} y={PIXEL_SCENE_LAYOUT.archiveRoomY + 94} width={book.width} height={book.height} zIndex={34} />
-      <Sprite src={FURNITURE.paintingSmall.src} x={PIXEL_SCENE_LAYOUT.archiveRoomX + 180} y={PIXEL_SCENE_LAYOUT.archiveRoomY + 52} width={smallPainting.width} height={smallPainting.height} zIndex={36} />
       <Sprite src={FURNITURE.clock.src} x={PIXEL_SCENE_LAYOUT.archiveRoomX + 20} y={PIXEL_SCENE_LAYOUT.archiveRoomY + 24} width={clock.width} height={clock.height} zIndex={36} />
       <Sprite src={FURNITURE.coffee.src} x={PIXEL_SCENE_LAYOUT.archiveRoomX + 176} y={PIXEL_SCENE_LAYOUT.archiveRoomY + 108} width={36} height={36} zIndex={39} />
       <Sprite src={FURNITURE.largePlant.src} x={PIXEL_SCENE_LAYOUT.archiveRoomX + 178} y={PIXEL_SCENE_LAYOUT.archiveRoomY + 100} width={plantLarge.width} height={plantLarge.height} zIndex={40} />
@@ -533,7 +584,7 @@ function LoungeScene({ lounge }: { lounge: SceneLounge }) {
 
   return (
     <>
-      <RoomHeader x={PIXEL_SCENE_LAYOUT.loungeX + 12} y={PIXEL_SCENE_LAYOUT.loungeY - 26} title={lounge.label} accent="#14b8a6" />
+      <RoomHeader x={PIXEL_SCENE_LAYOUT.loungeX + 12} y={PIXEL_SCENE_LAYOUT.loungeY} title={lounge.label} accent="#14b8a6" />
       <Sprite src={FURNITURE.sofaFront.src} x={PIXEL_SCENE_LAYOUT.loungeX + 176} y={PIXEL_SCENE_LAYOUT.loungeY + 8} width={sofaFront.width} height={sofaFront.height} zIndex={30} />
       <Sprite src={FURNITURE.sofaFront.src} x={PIXEL_SCENE_LAYOUT.loungeX + 324} y={PIXEL_SCENE_LAYOUT.loungeY + 8} width={sofaFront.width} height={sofaFront.height} zIndex={30} />
       <Sprite src={FURNITURE.sofaSide.src} x={PIXEL_SCENE_LAYOUT.loungeX + 22} y={PIXEL_SCENE_LAYOUT.loungeY + 36} width={sofaSide.width} height={sofaSide.height} zIndex={33} />
@@ -567,24 +618,19 @@ export function PixelOfficeScene({
   taskStations: SceneTaskStation[];
   agents: SceneAgent[];
 }) {
-  const shellX = 26;
-  const shellY = 24;
-  const shellWidth = 708;
-  const shellHeight = 654;
-
   return (
-    <div className="relative size-full overflow-hidden rounded-[28px] border border-[#7c6550] bg-[#cdb79d] shadow-[0_20px_70px_rgba(20,14,10,0.35)]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,249,241,0.82),rgba(205,183,157,0.74)_38%,rgba(123,98,78,0.8)_100%)]" />
-      <div
-        className="pointer-events-none absolute rounded-[28px] border border-[#856c58]"
-        style={{
-          ...rectStyle(shellX, shellY, shellWidth, shellHeight, 1),
-          background: "rgba(255, 248, 239, 0.36)",
-          boxShadow: "0 0 0 1px rgba(255,255,255,0.12) inset",
-        }}
-      />
+    <div className="relative size-full overflow-hidden bg-[linear-gradient(180deg,#c7ad90,#b89a7d)]">
+      <RoomWallBand x={PIXEL_SCENE_LAYOUT.bossRoomX} y={PIXEL_SCENE_LAYOUT.bossRoomY} width={PIXEL_SCENE_LAYOUT.bossRoomWidth} />
+      <RoomWallBand x={PIXEL_SCENE_LAYOUT.archiveRoomX} y={PIXEL_SCENE_LAYOUT.archiveRoomY} width={PIXEL_SCENE_LAYOUT.archiveRoomWidth} />
+      <RoomWallBand x={PIXEL_SCENE_LAYOUT.routePanelX} y={PIXEL_SCENE_LAYOUT.routePanelY} width={PIXEL_SCENE_LAYOUT.routePanelWidth} />
+      <RoomSideCap x={PIXEL_SCENE_LAYOUT.bossRoomX} y={PIXEL_SCENE_LAYOUT.bossRoomY} side="left" />
+      <RoomSideCap x={PIXEL_SCENE_LAYOUT.bossRoomX + PIXEL_SCENE_LAYOUT.bossRoomWidth - FLOOR_TILE / 2} y={PIXEL_SCENE_LAYOUT.bossRoomY} side="right" />
+      <RoomSideCap x={PIXEL_SCENE_LAYOUT.archiveRoomX} y={PIXEL_SCENE_LAYOUT.archiveRoomY} side="left" />
+      <RoomSideCap x={PIXEL_SCENE_LAYOUT.archiveRoomX + PIXEL_SCENE_LAYOUT.archiveRoomWidth - FLOOR_TILE / 2} y={PIXEL_SCENE_LAYOUT.archiveRoomY} side="right" />
+      <RoomSideCap x={PIXEL_SCENE_LAYOUT.routePanelX} y={PIXEL_SCENE_LAYOUT.routePanelY} side="left" />
+      <RoomSideCap x={PIXEL_SCENE_LAYOUT.routePanelX + PIXEL_SCENE_LAYOUT.routePanelWidth - FLOOR_TILE / 2} y={PIXEL_SCENE_LAYOUT.routePanelY} side="right" />
 
-      <FloorArea x={shellX + 8} y={shellY + 8} width={shellWidth - 16} height={shellHeight - 16} texture={FLOOR_ASSETS.main} zIndex={2} />
+      <FloorArea x={0} y={0} width={PIXEL_SCENE_LAYOUT.width} height={PIXEL_SCENE_LAYOUT.height} texture={FLOOR_ASSETS.main} zIndex={1} />
       <FloorArea x={PIXEL_SCENE_LAYOUT.bossRoomX} y={PIXEL_SCENE_LAYOUT.bossRoomY + 28} width={PIXEL_SCENE_LAYOUT.bossRoomWidth} height={PIXEL_SCENE_LAYOUT.bossRoomHeight - 28} texture={FLOOR_ASSETS.rooms} zIndex={3} insetBorder />
       <FloorArea x={PIXEL_SCENE_LAYOUT.archiveRoomX} y={PIXEL_SCENE_LAYOUT.archiveRoomY + 28} width={PIXEL_SCENE_LAYOUT.archiveRoomWidth} height={PIXEL_SCENE_LAYOUT.archiveRoomHeight - 28} texture={FLOOR_ASSETS.archive} zIndex={3} insetBorder />
       <FloorArea
@@ -616,6 +662,26 @@ export function PixelOfficeScene({
       {Array.from({ length: 3 }).map((_, index) => (
         <WallTile key={`ops-right-${index}`} x={PIXEL_SCENE_LAYOUT.routePanelX + PIXEL_SCENE_LAYOUT.routePanelWidth - FLOOR_TILE / 2} y={PIXEL_SCENE_LAYOUT.routePanelY + FLOOR_TILE + index * FLOOR_TILE} tileX={3} tileY={2} width={FLOOR_TILE / 2} />
       ))}
+      {Array.from({ length: 3 }).map((_, index) => (
+        <WallTile
+          key={`lounge-left-${index}`}
+          x={PIXEL_SCENE_LAYOUT.loungeX}
+          y={PIXEL_SCENE_LAYOUT.loungeY + index * FLOOR_TILE}
+          tileX={0}
+          tileY={2}
+          width={FLOOR_TILE / 2}
+        />
+      ))}
+      {Array.from({ length: 3 }).map((_, index) => (
+        <WallTile
+          key={`lounge-right-${index}`}
+          x={PIXEL_SCENE_LAYOUT.loungeX + PIXEL_SCENE_LAYOUT.loungeWidth - FLOOR_TILE / 2}
+          y={PIXEL_SCENE_LAYOUT.loungeY + index * FLOOR_TILE}
+          tileX={3}
+          tileY={2}
+          width={FLOOR_TILE / 2}
+        />
+      ))}
 
       <StaticOfficeFurniture bossRoom={bossRoom} archiveRoom={archiveRoom} />
 
@@ -627,7 +693,14 @@ export function PixelOfficeScene({
 
       <Sprite src={FURNITURE.bin.src} x={62} y={490} width={36} height={36} zIndex={18} />
       <Sprite src={FURNITURE.bin.src} x={632} y={486} width={36} height={36} zIndex={18} />
-      <Sprite src={FURNITURE.paintingSmall2.src} x={546} y={356} width={36} height={72} zIndex={18} />
+      <Sprite
+        src={FURNITURE.paintingSmall2.src}
+        x={PIXEL_SCENE_LAYOUT.loungeX + 286}
+        y={PIXEL_SCENE_LAYOUT.loungeY + 12}
+        width={36}
+        height={72}
+        zIndex={32}
+      />
       <Sprite src={FURNITURE.plant.src} x={658} y={344} width={36} height={72} zIndex={18} />
 
       {agents.map((agent) => (
