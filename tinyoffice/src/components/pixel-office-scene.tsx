@@ -175,17 +175,13 @@ export function pointToPercent(x: number, y: number) {
 }
 
 export function getLoungeMemberSpot(memberIndex: number, memberTotal: number) {
-  const columns = Math.min(6, Math.max(1, memberTotal));
-  const column = memberIndex % columns;
-  const row = Math.floor(memberIndex / columns);
   const innerLeft = PIXEL_SCENE_LAYOUT.loungeX + 84;
   const innerRight = PIXEL_SCENE_LAYOUT.loungeX + PIXEL_SCENE_LAYOUT.loungeWidth - 84;
-  const spacingX = columns === 1 ? 0 : (innerRight - innerLeft) / Math.max(1, columns - 1);
-  const activityTop = PIXEL_SCENE_LAYOUT.loungeY + 50;
-  const activityBottom = PIXEL_SCENE_LAYOUT.loungeY + PIXEL_SCENE_LAYOUT.loungeHeight - 12;
+  const count = Math.max(1, memberTotal);
+  const spacingX = count === 1 ? 0 : (innerRight - innerLeft) / (count - 1);
   return {
-    x: innerLeft + column * spacingX,
-    y: Math.max(activityTop, activityBottom - row * 26),
+    x: count === 1 ? (innerLeft + innerRight) / 2 : innerLeft + memberIndex * spacingX,
+    y: PIXEL_SCENE_LAYOUT.loungeY + PIXEL_SCENE_LAYOUT.loungeHeight - 12,
   };
 }
 
