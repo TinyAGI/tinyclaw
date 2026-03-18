@@ -360,8 +360,11 @@ export async function invokeAgent(
                 try {
                     const json = JSON.parse(line);
                     // Use result event for the return value (not emitted as progress)
-                    if (json.type === 'result' && json.result) {
-                        response = json.result;
+                    if (json.type === 'result') {
+                        if (json.result) response = json.result;
+                        // Log raw usage stats from the result event
+                        if (json.usage) log('INFO', `Claude usage (${agentId}): ${JSON.stringify(json.usage)}`);
+                        if (json.modelUsage) log('INFO', `Claude model usage (${agentId}): ${JSON.stringify(json.modelUsage)}`);
                         return;
                     }
                     const text = extractClaudeEventText(json);
