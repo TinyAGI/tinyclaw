@@ -1,6 +1,6 @@
 #!/bin/bash
-# TinyClaw CLI Wrapper
-# This wrapper allows tinyclaw to be run from any directory
+# TinyClaw CLI Wrapper (backward compatibility)
+# Delegates to tinyagi — the primary CLI entrypoint
 
 # Resolve the real installation directory (follow symlinks)
 TINYCLAW_BIN="$0"
@@ -22,5 +22,5 @@ REPO_ROOT="$(dirname "$TINYCLAW_DIR")"
 # Installed CLI always uses ~/.tinyclaw for data
 export TINYCLAW_HOME="$HOME/.tinyclaw"
 
-# Execute the main script with all arguments
-exec "$REPO_ROOT/tinyclaw.sh" "$@"
+# Delegate to tinyagi entrypoint
+exec node "$REPO_ROOT/packages/tinyagi/bin/tinyagi.mjs" "$@"

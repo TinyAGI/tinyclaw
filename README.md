@@ -62,14 +62,9 @@ We are actively looking for contributors. Please reach out.
 npx tinyagi
 ```
 
-This installs TinyClaw, creates a default workspace and agent, starts the API server, and opens the web setup portal where you can configure channels, providers, and agents from your browser.
+This installs TinyAGI, creates a default workspace and agent, starts the API server, and opens the web setup portal where you can configure channels, providers, and agents from your browser.
 
-**Option 2: One-line Install**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
-tinyclaw start  # Runs interactive setup wizard
-```
+After the first run, the `tinyagi` command is available globally (no `npx` needed).
 
 <details>
 <summary><b>Other installation methods</b></summary>
@@ -92,9 +87,9 @@ cd tinyclaw && npm install && ./scripts/install.sh
 **Web-based setup (skip CLI wizard):**
 
 ```bash
-tinyclaw start --skip-setup  # Starts API server only
-# Then open https://office.tinyagicompany.com or run: tinyclaw office
-# After setup, restart to enable channels: tinyclaw restart
+tinyagi start --skip-setup  # Starts API server only
+# Then open https://office.tinyagicompany.com or run: tinyagi office
+# After setup, channels start automatically
 ```
 
 </details>
@@ -149,7 +144,7 @@ Once you start running TinyClaw locally, you can control it by visiting **[offic
 Alternatively, you can run TinyOffice locally:
 
 ```bash
-tinyclaw office  # Builds and starts on http://localhost:3000
+tinyagi office  # Builds and starts on http://localhost:3000
 ```
 
 <details>
@@ -171,10 +166,10 @@ tinyclaw office  # Builds and starts on http://localhost:3000
 Start TinyClaw first (API default: `http://localhost:3777`), then:
 
 ```bash
-tinyclaw office
+tinyagi office
 ```
 
-This auto-detects when dependencies or builds are needed (e.g. after `tinyclaw update`) and starts the production server on `http://localhost:3000`.
+This auto-detects when dependencies or builds are needed (e.g. after `tinyagi update`) and starts the production server on `http://localhost:3000`.
 
 For development with hot-reload:
 
@@ -195,50 +190,50 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:3777' > .env.local
 
 ## 📋 Commands
 
-Commands work with `tinyclaw` (if CLI installed) or `./tinyclaw.sh` (direct script).
+Commands work with `tinyagi` (primary CLI) or `tinyclaw` (backward compatible alias).
 
 ### Core Commands
 
 | Command       | Description                                               | Example               |
 | ------------- | --------------------------------------------------------- | --------------------- |
-| `start [--skip-setup]` | Start TinyClaw daemon (--skip-setup: API only, setup via web) | `tinyclaw start` |
-| `stop`        | Stop all processes                                        | `tinyclaw stop`       |
-| `restart`     | Restart TinyClaw                                          | `tinyclaw restart`    |
-| `status`      | Show current status and activity                          | `tinyclaw status`     |
-| `setup`       | Run setup wizard (reconfigure)                            | `tinyclaw setup`      |
-| `logs [type]` | View logs (discord/telegram/whatsapp/queue/heartbeat/all) | `tinyclaw logs queue` |
-| `attach`      | Attach to tmux session                                    | `tinyclaw attach`     |
+| `start [--skip-setup]` | Start TinyClaw daemon (--skip-setup: API only, setup via web) | `tinyagi start` |
+| `stop`        | Stop all processes                                        | `tinyagi stop`       |
+| `restart`     | Restart TinyClaw                                          | `tinyagi restart`    |
+| `status`      | Show current status and activity                          | `tinyagi status`     |
+| `setup`       | Run setup wizard (reconfigure)                            | `tinyagi setup`      |
+| `logs [type]` | View logs (discord/telegram/whatsapp/queue/heartbeat/all) | `tinyagi logs queue` |
+| `attach`      | Attach to tmux session                                    | `tinyagi attach`     |
 
 ### Agent Commands
 
 | Command                               | Description                     | Example                                                      |
 | ------------------------------------- | ------------------------------- | ------------------------------------------------------------ |
-| `agent list`                          | List all configured agents      | `tinyclaw agent list`                                        |
-| `agent add`                           | Add new agent (interactive)     | `tinyclaw agent add`                                         |
-| `agent show <id>`                     | Show agent configuration        | `tinyclaw agent show coder`                                  |
-| `agent remove <id>`                   | Remove an agent                 | `tinyclaw agent remove coder`                                |
-| `agent reset <id>`                    | Reset agent conversation        | `tinyclaw agent reset coder`                                 |
-| `agent provider <id> [provider]`      | Show or set agent's AI provider | `tinyclaw agent provider coder anthropic`                    |
-| `agent provider <id> <p> --model <m>` | Set agent's provider and model  | `tinyclaw agent provider coder openai --model gpt-5.3-codex` |
+| `agent list`                          | List all configured agents      | `tinyagi agent list`                                        |
+| `agent add`                           | Add new agent (interactive)     | `tinyagi agent add`                                         |
+| `agent show <id>`                     | Show agent configuration        | `tinyagi agent show coder`                                  |
+| `agent remove <id>`                   | Remove an agent                 | `tinyagi agent remove coder`                                |
+| `agent reset <id>`                    | Reset agent conversation        | `tinyagi agent reset coder`                                 |
+| `agent provider <id> [provider]`      | Show or set agent's AI provider | `tinyagi agent provider coder anthropic`                    |
+| `agent provider <id> <p> --model <m>` | Set agent's provider and model  | `tinyagi agent provider coder openai --model gpt-5.3-codex` |
 
 ### Team Commands
 
 | Command                     | Description                        | Example                                   |
 | --------------------------- | ---------------------------------- | ----------------------------------------- |
-| `team list`                 | List all configured teams          | `tinyclaw team list`                      |
-| `team add`                  | Add new team (interactive)         | `tinyclaw team add`                       |
-| `team show <id>`            | Show team configuration            | `tinyclaw team show dev`                  |
-| `team remove <id>`          | Remove a team                      | `tinyclaw team remove dev`                |
-| `team add-agent <t> <a>`    | Add an existing agent to a team    | `tinyclaw team add-agent dev reviewer`    |
-| `team remove-agent <t> <a>` | Remove an agent from a team        | `tinyclaw team remove-agent dev reviewer` |
-| `team visualize [id]`       | Live TUI dashboard for team chains | `tinyclaw team visualize dev`             |
+| `team list`                 | List all configured teams          | `tinyagi team list`                      |
+| `team add`                  | Add new team (interactive)         | `tinyagi team add`                       |
+| `team show <id>`            | Show team configuration            | `tinyagi team show dev`                  |
+| `team remove <id>`          | Remove a team                      | `tinyagi team remove dev`                |
+| `team add-agent <t> <a>`    | Add an existing agent to a team    | `tinyagi team add-agent dev reviewer`    |
+| `team remove-agent <t> <a>` | Remove an agent from a team        | `tinyagi team remove-agent dev reviewer` |
+| `team visualize [id]`       | Live TUI dashboard for team chains | `tinyagi team visualize dev`             |
 
 ### Chatroom Commands
 
 | Command             | Description                                   | Example                    |
 | ------------------- | --------------------------------------------- | -------------------------- |
-| `chatroom <team>`   | Real-time TUI viewer with type-to-send        | `tinyclaw chatroom dev`    |
-| `office`            | Start TinyOffice web portal on port 3000      | `tinyclaw office`          |
+| `chatroom <team>`   | Real-time TUI viewer with type-to-send        | `tinyagi chatroom dev`    |
+| `office`            | Start TinyOffice web portal on port 3000      | `tinyagi office`          |
 
 Every team has a persistent chat room. Agents post to it using `[#team_id: message]` tags, and messages are broadcast to all teammates. The chatroom viewer polls for new messages in real time — type a message and press Enter to post, or press `q`/Esc to quit.
 
@@ -253,13 +248,13 @@ POST /api/chatroom/:teamId          # Post a message (body: { "message": "..." }
 
 | Command                                       | Description                                              | Example                                          |
 | --------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------ |
-| `provider [name]`                             | Show or switch global AI provider                        | `tinyclaw provider anthropic`                    |
-| `provider <name> --model <model>`             | Switch provider and model; propagates to matching agents | `tinyclaw provider openai --model gpt-5.3-codex` |
-| `provider <name> --auth-token <key>`          | Store API key for a built-in provider                    | `tinyclaw provider anthropic --auth-token sk-...` |
-| `provider list`                               | List all custom providers                                | `tinyclaw provider list`                         |
-| `provider add`                                | Add a new custom provider (interactive)                  | `tinyclaw provider add`                          |
-| `provider remove <id>`                        | Remove a custom provider                                 | `tinyclaw provider remove proxy`                 |
-| `model [name]`                                | Show or switch AI model                                  | `tinyclaw model opus`                            |
+| `provider [name]`                             | Show or switch global AI provider                        | `tinyagi provider anthropic`                    |
+| `provider <name> --model <model>`             | Switch provider and model; propagates to matching agents | `tinyagi provider openai --model gpt-5.3-codex` |
+| `provider <name> --auth-token <key>`          | Store API key for a built-in provider                    | `tinyagi provider anthropic --auth-token sk-...` |
+| `provider list`                               | List all custom providers                                | `tinyagi provider list`                         |
+| `provider add`                                | Add a new custom provider (interactive)                  | `tinyagi provider add`                          |
+| `provider remove <id>`                        | Remove a custom provider                                 | `tinyagi provider remove proxy`                 |
+| `model [name]`                                | Show or switch AI model                                  | `tinyagi model opus`                            |
 
 <details>
 <summary><b>Custom provider details</b></summary>
@@ -293,15 +288,15 @@ Custom providers let you use any OpenAI or Anthropic-compatible API endpoint (e.
 **Assign a custom provider to an agent:**
 
 ```bash
-tinyclaw agent provider coder custom:my-proxy
-tinyclaw agent provider coder custom:my-proxy --model gpt-4o
+tinyagi agent provider coder custom:my-proxy
+tinyagi agent provider coder custom:my-proxy --model gpt-4o
 ```
 
 **Auth token storage** — store API keys for built-in providers so you don't need separate CLI auth:
 
 ```bash
-tinyclaw provider anthropic --auth-token sk-ant-...
-tinyclaw provider openai --auth-token sk-...
+tinyagi provider anthropic --auth-token sk-ant-...
+tinyagi provider openai --auth-token sk-...
 ```
 
 Tokens are saved in `settings.json` under `models.<provider>.auth_token` and automatically exported as `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` when invoking CLIs.
@@ -325,11 +320,11 @@ Use sender pairing to control who can message your agents.
 
 | Command                                | Description                                        | Example                                    |
 | -------------------------------------- | -------------------------------------------------- | ------------------------------------------ |
-| `pairing pending`                      | Show pending sender approvals (with pairing codes) | `tinyclaw pairing pending`                 |
-| `pairing approved`                     | Show approved senders                              | `tinyclaw pairing approved`                |
-| `pairing list`                         | Show both pending and approved senders             | `tinyclaw pairing list`                    |
-| `pairing approve <code>`               | Move a sender from pending to approved by code     | `tinyclaw pairing approve ABCD1234`        |
-| `pairing unpair <channel> <sender_id>` | Remove an approved sender from the allowlist       | `tinyclaw pairing unpair telegram 1234567` |
+| `pairing pending`                      | Show pending sender approvals (with pairing codes) | `tinyagi pairing pending`                 |
+| `pairing approved`                     | Show approved senders                              | `tinyagi pairing approved`                |
+| `pairing list`                         | Show both pending and approved senders             | `tinyagi pairing list`                    |
+| `pairing approve <code>`               | Move a sender from pending to approved by code     | `tinyagi pairing approve ABCD1234`        |
+| `pairing unpair <channel> <sender_id>` | Remove an approved sender from the allowlist       | `tinyagi pairing unpair telegram 1234567` |
 
 Pairing behavior:
 
@@ -344,8 +339,8 @@ Pairing behavior:
 
 | Command          | Description                 | Example                          |
 | ---------------- | --------------------------- | -------------------------------- |
-| `send <message>` | Send message to AI manually | `tinyclaw send "Hello!"`         |
-| `send <message>` | Route to specific agent     | `tinyclaw send "@coder fix bug"` |
+| `send <message>` | Send message to AI manually | `tinyagi send "Hello!"`         |
+| `send <message>` | Route to specific agent     | `tinyagi send "@coder fix bug"` |
 
 These commands work in Discord, Telegram, and WhatsApp:
 
@@ -371,12 +366,12 @@ These commands work in Discord, Telegram, and WhatsApp:
 
 | Command  | Description                       | Example           |
 | -------- | --------------------------------- | ----------------- |
-| `update` | Update TinyClaw to latest version | `tinyclaw update` |
+| `update` | Update TinyClaw to latest version | `tinyagi update` |
 
 > **Note:** If you are on v0.0.1 or v0.0.2, the update script was broken. Please re-install instead:
 >
 > ```bash
-> curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
+> npx tinyagi install
 > ```
 >
 > Your settings and user data will be preserved.
@@ -396,8 +391,8 @@ export TINYCLAW_SKIP_UPDATE_CHECK=1
 
 | Command                  | Description                  | Example                          |
 | ------------------------ | ---------------------------- | -------------------------------- |
-| `reset`                  | Reset all conversations      | `tinyclaw reset`                 |
-| `channels reset <chan>`  | Reset channel authentication | `tinyclaw channels reset whatsapp` |
+| `reset`                  | Reset all conversations      | `tinyagi reset`                 |
+| `channels reset <chan>`  | Reset channel authentication | `tinyagi channels reset whatsapp` |
 
 </details>
 
@@ -667,28 +662,28 @@ Teams support sequential chains (single handoff) and parallel fan-out (multiple 
 
 ```bash
 # Reset everything (preserves settings)
-tinyclaw stop && rm -rf .tinyclaw/queue/* && tinyclaw start
+tinyagi stop && rm -rf .tinyclaw/queue/* && tinyagi start
 
 # Reset WhatsApp
-tinyclaw channels reset whatsapp
+tinyagi channels reset whatsapp
 
 # Check status
-tinyclaw status
+tinyagi status
 
 # View logs
-tinyclaw logs all
+tinyagi logs all
 ```
 
 **Common issues:**
 
-- WhatsApp not connecting → Reset auth: `tinyclaw channels reset whatsapp`
+- WhatsApp not connecting → Reset auth: `tinyagi channels reset whatsapp`
 - Messages stuck → Clear queue: `rm -rf .tinyclaw/queue/processing/*`
-- Agent not found → Check: `tinyclaw agent list`
+- Agent not found → Check: `tinyagi agent list`
 - Corrupted settings.json → TinyClaw auto-repairs invalid JSON (trailing commas, comments, BOM) and creates a `.bak` backup
 
 </details>
 
-**Need help?** [GitHub Issues](https://github.com/TinyAGI/tinyclaw/issues) · `tinyclaw logs all`
+**Need help?** [GitHub Issues](https://github.com/TinyAGI/tinyclaw/issues) · `tinyagi logs all`
 
 ## 🙏 Credits
 

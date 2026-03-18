@@ -60,7 +60,7 @@ function isInstalled() {
 }
 
 async function install() {
-    log(BLUE, 'Installing TinyClaw...');
+    log(BLUE, 'Installing TinyAGI...');
     console.log(`  Directory: ${INSTALL_DIR}`);
     console.log('');
 
@@ -114,15 +114,75 @@ async function install() {
         exec(`cd "${INSTALL_DIR}" && npm prune --omit=dev --silent`);
     }
 
-    // Make scripts executable and install CLI symlink
-    exec(`chmod +x "${INSTALL_DIR}/bin/tinyclaw" "${INSTALL_DIR}/tinyclaw.sh" "${INSTALL_DIR}/scripts/install.sh" "${INSTALL_DIR}/lib/heartbeat-cron.sh"`);
-    exec(`"${INSTALL_DIR}/scripts/install.sh" || true`);
+    // Make scripts executable
+    exec(`chmod +x "${INSTALL_DIR}/bin/tinyagi" "${INSTALL_DIR}/bin/tinyclaw" "${INSTALL_DIR}/tinyclaw.sh" "${INSTALL_DIR}/lib/heartbeat-cron.sh" "${INSTALL_DIR}/packages/tinyagi/bin/tinyagi.mjs"`);
 
-    log(GREEN, '✓ TinyClaw installed');
+    // Install CLI symlink (tinyagi command)
+    installCli();
+
+    log(GREEN, '✓ TinyAGI installed');
     console.log('');
 }
 
-// ── Run ──────────────────────────────────────────────────────────────────────
+// ── CLI Symlink Installation ─────────────────────────────────────────────────
+
+function installCli() {
+    // Determine installation directory for the symlink
+    const tinyagiSrc = path.join(INSTALL_DIR, 'packages/tinyagi/bin/tinyagi.mjs');
+    let installDir = '';
+
+    try {
+        fs.accessSync('/usr/local/bin', fs.constants.W_OK);
+        installDir = '/usr/local/bin';
+    } catch {
+        installDir = path.join(os.homedir(), '.local/bin');
+        fs.mkdirSync(installDir, { recursive: true });
+    }
+
+    const symlinkPath = path.join(installDir, 'tinyagi');
+
+    // Remove existing symlink/file
+    try {
+        const stat = fs.lstatSync(symlinkPath);
+        if (stat.isSymbolicLink() || stat.isFile()) {
+            fs.unlinkSync(symlinkPath);
+        }
+    } catch {
+        // Doesn't exist, that's fine
+    }
+
+    // Create symlink
+    fs.symlinkSync(tinyagiSrc, symlinkPath);
+    log(GREEN, `✓ 'tinyagi' command installed at ${symlinkPath}`);
+
+    // Add to PATH if needed
+    if (installDir.includes('.local/bin') && !process.env.PATH?.includes('.local/bin')) {
+        const shellName = path.basename(process.env.SHELL || 'bash');
+        let shellProfile = '';
+        if (shellName === 'zsh') {
+            shellProfile = path.join(os.homedir(), '.zshrc');
+        } else if (fs.existsSync(path.join(os.homedir(), '.bash_profile'))) {
+            shellProfile = path.join(os.homedir(), '.bash_profile');
+        } else {
+            shellProfile = path.join(os.homedir(), '.bashrc');
+        }
+
+        const pathLine = 'export PATH="$HOME/.local/bin:$PATH"';
+        try {
+            const content = fs.readFileSync(shellProfile, 'utf8');
+            if (!content.includes('.local/bin')) {
+                fs.appendFileSync(shellProfile, `\n# Added by TinyAGI installer\n${pathLine}\n`);
+                log(GREEN, `✓ Added ~/.local/bin to PATH in ${shellProfile.replace(os.homedir(), '~')}`);
+            }
+        } catch {
+            // Profile doesn't exist or can't be read
+        }
+
+        log(YELLOW, `⚠ Restart your terminal or run: source ${shellProfile.replace(os.homedir(), '~')}`);
+    }
+}
+
+// ── Run (first-time onboarding) ──────────────────────────────────────────────
 
 async function run() {
     console.log('');
@@ -138,7 +198,7 @@ async function run() {
     if (!isInstalled()) {
         await install();
     } else {
-        log(GREEN, '✓ TinyClaw already installed');
+        log(GREEN, '✓ TinyAGI already installed');
         console.log('');
     }
 
@@ -152,18 +212,17 @@ async function run() {
     }
 
     // 4. Start with --skip-setup
-    const tinyclawSh = path.join(INSTALL_DIR, 'tinyclaw.sh');
-    log(BLUE, 'Starting TinyClaw...');
+    log(BLUE, 'Starting TinyAGI...');
     try {
-        exec(`"${tinyclawSh}" start --skip-setup`);
+        delegateToBash(['start', '--skip-setup'], { sync: true });
     } catch {
         // May already be running
-        log(YELLOW, 'TinyClaw may already be running (use tinyclaw status to check)');
+        log(YELLOW, 'TinyAGI may already be running (use tinyagi status to check)');
     }
 
     // 5. Open web portal
     console.log('');
-    log(GREEN, '✓ Opening TinyOffice setup portal...');
+    log(GREEN, '✓ Opening TinyAGI setup portal...');
     console.log(`  ${BLUE}${PORTAL_URL}${NC}`);
     console.log('');
 
@@ -178,59 +237,117 @@ async function run() {
     console.log('');
     log(GREEN, 'Next steps:');
     console.log('  1. Complete setup in the web portal');
-    console.log('  2. Once configured, restart to enable channels:');
-    console.log(`     ${BLUE}tinyclaw restart${NC}`);
+    console.log('  2. Once configured, channels will start automatically');
     console.log('');
     console.log('Useful commands:');
-    console.log(`  ${BLUE}tinyclaw status${NC}    Check status`);
-    console.log(`  ${BLUE}tinyclaw stop${NC}      Stop all processes`);
-    console.log(`  ${BLUE}tinyclaw restart${NC}   Restart with new settings`);
-    console.log(`  ${BLUE}tinyclaw office${NC}    Start local web portal`);
+    console.log(`  ${BLUE}tinyagi status${NC}    Check status`);
+    console.log(`  ${BLUE}tinyagi stop${NC}      Stop all processes`);
+    console.log(`  ${BLUE}tinyagi restart${NC}   Restart with new settings`);
+    console.log(`  ${BLUE}tinyagi office${NC}    Start local web portal`);
     console.log('');
+}
+
+// ── Delegate to bash (tinyclaw.sh) ───────────────────────────────────────────
+
+function delegateToBash(args, opts = {}) {
+    const tinyclawSh = path.join(INSTALL_DIR, 'tinyclaw.sh');
+    if (!fs.existsSync(tinyclawSh)) {
+        log(RED, 'TinyAGI is not installed. Run "tinyagi" or "npx tinyagi" first.');
+        process.exit(1);
+    }
+
+    if (opts.sync) {
+        execSync(`"${tinyclawSh}" ${args.map(a => `"${a}"`).join(' ')}`, { stdio: 'inherit' });
+    } else {
+        const child = spawn(tinyclawSh, args, { stdio: 'inherit' });
+        child.on('exit', (code) => process.exit(code || 0));
+    }
 }
 
 // ── CLI Dispatch ─────────────────────────────────────────────────────────────
 
 const command = process.argv[2] || 'run';
+const restArgs = process.argv.slice(3);
 
+// Commands that tinyagi handles directly
 switch (command) {
     case 'run':
-    case 'start':
         run();
         break;
+
     case 'install':
         checkPrerequisites();
         if (isInstalled()) {
-            log(GREEN, '✓ TinyClaw already installed');
+            log(GREEN, '✓ TinyAGI already installed');
         } else {
             install();
         }
         break;
+
     case '--help':
     case '-h':
     case 'help':
         console.log('');
-        console.log('Usage: npx tinyagi [command]');
+        console.log('Usage: tinyagi [command]');
         console.log('');
-        console.log('Commands:');
-        console.log('  run        Install, configure defaults, start, and open portal (default)');
-        console.log('  install    Install TinyClaw only');
-        console.log('  help       Show this help');
+        console.log('Quick Start:');
+        console.log('  run                      Install, configure defaults, start, and open portal (default)');
+        console.log('  install                  Install TinyAGI only');
         console.log('');
-        console.log('After first run, use the tinyclaw CLI directly:');
-        console.log('  tinyclaw start | stop | restart | status | setup | ...');
+        console.log('Daemon:');
+        console.log('  start [--skip-setup]     Start TinyAGI (--skip-setup: API only, setup via browser)');
+        console.log('  stop                     Stop all processes');
+        console.log('  restart                  Restart TinyAGI');
+        console.log('  status                   Show current status');
+        console.log('  attach                   Attach to tmux session');
+        console.log('');
+        console.log('Setup & Config:');
+        console.log('  setup                    Run setup wizard');
+        console.log('  office                   Start TinyOffice web portal (http://localhost:3000)');
+        console.log('');
+        console.log('Messaging:');
+        console.log('  send <msg>               Send message to AI');
+        console.log('  logs [type]              View logs (discord|whatsapp|telegram|heartbeat|daemon|queue|all)');
+        console.log('');
+        console.log('Channels & Services:');
+        console.log('  channel start <ch>       Start a channel in the running session');
+        console.log('  channel stop <ch>        Stop a channel');
+        console.log('  channel reset <ch>       Reset channel auth');
+        console.log('  heartbeat start|stop     Start or stop the heartbeat process');
+        console.log('');
+        console.log('Agents:');
+        console.log('  agent list               List all configured agents');
+        console.log('  agent add                Add a new agent interactively');
+        console.log('  agent remove <id>        Remove an agent');
+        console.log('  agent show <id>          Show agent configuration');
+        console.log('  agent reset <id> [...]   Reset agent conversation(s)');
+        console.log('  agent provider <id> ...  Show or set agent provider and model');
+        console.log('');
+        console.log('Teams:');
+        console.log('  team list                List all configured teams');
+        console.log('  team add                 Add a new team');
+        console.log('  team remove <id>         Remove a team');
+        console.log('  team show <id>           Show team configuration');
+        console.log('  team add-agent <t> <a>   Add an agent to a team');
+        console.log('  team remove-agent <t> <a> Remove an agent from a team');
+        console.log('  team visualize [id]      Live TUI dashboard');
+        console.log('  chatroom <team_id>       Live chat room viewer');
+        console.log('');
+        console.log('Providers:');
+        console.log('  provider [name] [--model model]  Show or switch AI provider');
+        console.log('  provider list|add|remove         Manage custom providers');
+        console.log('  model [name]                     Show or switch AI model');
+        console.log('');
+        console.log('Other:');
+        console.log('  reset <id> [...]         Reset specific agent conversation(s)');
+        console.log('  pairing                  Manage sender approvals');
+        console.log('  update                   Update TinyAGI to latest version');
+        console.log('  version                  Show current version');
         console.log('');
         break;
+
+    // All other commands delegate to tinyclaw.sh
     default:
-        // Pass through to tinyclaw CLI if installed
-        if (isInstalled()) {
-            const tinyclawSh = path.join(INSTALL_DIR, 'tinyclaw.sh');
-            const child = spawn(tinyclawSh, process.argv.slice(2), { stdio: 'inherit' });
-            child.on('exit', (code) => process.exit(code || 0));
-        } else {
-            log(RED, `Unknown command: ${command}`);
-            log(YELLOW, 'Run "npx tinyagi" first to install TinyClaw');
-            process.exit(1);
-        }
+        delegateToBash([command, ...restArgs]);
         break;
 }

@@ -1,0 +1,26 @@
+#!/bin/bash
+# TinyAGI CLI Wrapper
+# This wrapper allows tinyagi to be run from any directory
+
+# Resolve the real installation directory (follow symlinks)
+TINYAGI_BIN="$0"
+
+# Follow symlinks to find the real script location
+while [ -L "$TINYAGI_BIN" ]; do
+    TINYAGI_DIR="$(cd "$(dirname "$TINYAGI_BIN")" && pwd)"
+    TINYAGI_BIN="$(readlink "$TINYAGI_BIN")"
+    # Handle relative symlinks
+    [[ "$TINYAGI_BIN" != /* ]] && TINYAGI_BIN="$TINYAGI_DIR/$TINYAGI_BIN"
+done
+
+# Get the directory where this wrapper is located
+TINYAGI_DIR="$(cd "$(dirname "$TINYAGI_BIN")" && pwd)"
+
+# The actual installation is one directory up from bin/
+REPO_ROOT="$(dirname "$TINYAGI_DIR")"
+
+# Installed CLI always uses ~/.tinyclaw for data
+export TINYCLAW_HOME="$HOME/.tinyclaw"
+
+# Execute tinyagi.mjs with all arguments
+exec node "$REPO_ROOT/packages/tinyagi/bin/tinyagi.mjs" "$@"
