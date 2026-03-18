@@ -101,6 +101,7 @@ async function processMessage(dbMsg: any): Promise<void> {
     let response: string;
     try {
         response = await invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams, (text) => {
+            log('INFO', `Agent ${agentId}: ${text}`);
             emitEvent('agent_progress', { agentId, agentName: agent.name, text, messageId });
         });
     } catch (error) {
