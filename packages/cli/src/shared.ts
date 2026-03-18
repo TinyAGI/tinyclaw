@@ -121,11 +121,11 @@ export function openaiModelOptions(): ProviderOption[] {
 
 export function opencodeModelOptions(): ProviderOption[] {
     return [
-        { value: 'opencode/claude-sonnet-4-5', label: 'opencode/claude-sonnet-4-5', hint: 'recommended' },
+        { value: 'opencode/claude-sonnet-4-6', label: 'opencode/claude-sonnet-4-6', hint: 'recommended' },
         { value: 'opencode/claude-opus-4-6', label: 'opencode/claude-opus-4-6' },
         { value: 'opencode/gemini-3-flash', label: 'opencode/gemini-3-flash' },
         { value: 'opencode/gemini-3-pro', label: 'opencode/gemini-3-pro' },
-        { value: 'anthropic/claude-sonnet-4-5', label: 'anthropic/claude-sonnet-4-5' },
+        { value: 'anthropic/claude-sonnet-4-6', label: 'anthropic/claude-sonnet-4-6' },
         { value: 'anthropic/claude-opus-4-6', label: 'anthropic/claude-opus-4-6' },
         { value: 'openai/gpt-5.3-codex', label: 'openai/gpt-5.3-codex' },
         { value: '__custom__', label: 'Custom', hint: 'enter model name' },

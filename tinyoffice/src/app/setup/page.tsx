@@ -37,7 +37,7 @@ const MODELS: Record<string, { value: string; label: string }[]> = {
     { value: "gpt-5.2", label: "GPT-5.2" },
   ],
   opencode: [
-    { value: "opencode/claude-sonnet-4-5", label: "opencode/claude-sonnet-4-5" },
+    { value: "opencode/claude-sonnet-4-6", label: "opencode/claude-sonnet-4-6" },
     { value: "opencode/claude-opus-4-6", label: "opencode/claude-opus-4-6" },
     { value: "opencode/gemini-3-flash", label: "opencode/gemini-3-flash" },
     { value: "opencode/gemini-3-pro", label: "opencode/gemini-3-pro" },

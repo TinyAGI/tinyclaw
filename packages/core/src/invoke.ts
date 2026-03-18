@@ -163,7 +163,7 @@ export async function invokeAgent(
     } else if (provider === 'opencode') {
         // OpenCode CLI — non-interactive mode via `opencode run`.
         // Outputs JSONL with --format json; extract "text" type events for the response.
-        // Model passed via --model in provider/model format (e.g. opencode/claude-sonnet-4-5).
+        // Model passed via --model in provider/model format (e.g. opencode/claude-sonnet-4-6).
         // Supports -c flag for conversation continuation (resumes last session).
         const modelId = resolveOpenCodeModel(effectiveModel);
         log('DEBUG', `Using OpenCode CLI (agent: ${agentId}, model: ${modelId})`);

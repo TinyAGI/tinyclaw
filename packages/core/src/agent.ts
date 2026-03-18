@@ -1,14 +1,27 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { AgentConfig, TeamConfig } from './types';
 import { SCRIPT_DIR } from './config';
 import { loadMemoryIndex } from './memory';
+import { log } from './logging';
 
 /**
  * Built-in agent instructions read from the AGENTS.md template at SCRIPT_DIR.
  * Teammate markers are replaced at runtime by buildSystemPrompt().
  */
 export const BUILTIN_AGENT_INSTRUCTIONS = fs.readFileSync(path.join(SCRIPT_DIR, 'AGENTS.md'), 'utf8');
+const BUILTIN_AGENT_INSTRUCTIONS_HASH = crypto
+    .createHash('sha256')
+    .update(BUILTIN_AGENT_INSTRUCTIONS)
+    .digest('hex');
+
+type PromptCacheEntry = { hash: string; prompt: string };
+const systemPromptCache = new Map<string, PromptCacheEntry>();
+
+function hashString(value: string): string {
+    return crypto.createHash('sha256').update(value).digest('hex');
+}
 
 /**
  * Recursively copy directory
@@ -175,17 +188,19 @@ export function buildSystemPrompt(
 
     // Append user's custom AGENTS.md from agent workspace (if non-empty)
     const userAgentsMd = path.join(agentDir, 'AGENTS.md');
+    let userContent = '';
     if (fs.existsSync(userAgentsMd)) {
-        const userContent = fs.readFileSync(userAgentsMd, 'utf8').trim();
+        userContent = fs.readFileSync(userAgentsMd, 'utf8').trim();
         if (userContent) {
             prompt += '\n\n' + userContent;
         }
     }
 
     // Append config system prompt (from settings.json)
+    let promptFileContent = '';
     if (configPromptFile) {
         try {
-            const promptFileContent = fs.readFileSync(configPromptFile, 'utf8').trim();
+            promptFileContent = fs.readFileSync(configPromptFile, 'utf8').trim();
             if (promptFileContent) {
                 prompt += '\n\n' + promptFileContent;
             }
@@ -196,6 +211,23 @@ export function buildSystemPrompt(
         prompt += '\n\n' + configSystemPrompt;
     }
 
+    const cacheInput = JSON.stringify({
+        agentId,
+        builtin: BUILTIN_AGENT_INSTRUCTIONS_HASH,
+        teammateBlock: block,
+        memoryTree,
+        userContent,
+        promptFileContent,
+        configSystemPrompt: configSystemPrompt || '',
+    });
+    const cacheHash = hashString(cacheInput);
+    const cached = systemPromptCache.get(agentId);
+    if (!cached || cached.hash !== cacheHash) {
+        log('DEBUG', `System prompt cache updated for agent: ${agentId}`);
+        systemPromptCache.set(agentId, { hash: cacheHash, prompt });
+    } else {
+        return cached.prompt;
+    }
+
     return prompt;
 }
-

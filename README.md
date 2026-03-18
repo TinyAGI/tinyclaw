@@ -265,7 +265,7 @@ Custom providers let you use any OpenAI or Anthropic-compatible API endpoint (e.
       "harness": "claude",
       "base_url": "https://proxy.example.com/v1",
       "api_key": "sk-...",
-      "model": "claude-sonnet-4-5"
+      "model": "claude-sonnet-4-6"
     }
   }
 }
@@ -524,7 +524,7 @@ Located at `.tinyclaw/settings.json`:
       "harness": "claude",
       "base_url": "https://proxy.example.com/v1",
       "api_key": "sk-...",
-      "model": "claude-sonnet-4-5"
+      "model": "claude-sonnet-4-6"
     }
   },
   "models": {

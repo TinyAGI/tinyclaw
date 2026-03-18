@@ -203,7 +203,7 @@ async function customProviderAdd() {
     }));
 
     const modelName = unwrap(await p.text({
-        message: "Default model name (e.g. 'claude-sonnet-4-5', optional)",
+        message: "Default model name (e.g. 'claude-sonnet-4-6', optional)",
         placeholder: 'optional',
     }));
 

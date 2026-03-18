@@ -177,7 +177,7 @@ The queue processor calls the appropriate CLI based on provider:
 ```bash
 cd "$agent_working_directory"  # e.g., ~/tinyclaw-workspace/coder/
 claude --dangerously-skip-permissions \
-  --model claude-sonnet-4-5 \
+  --model claude-sonnet-4-6 \
   --system-prompt "Your custom prompt..." \
   -c \  # Continue conversation
   -p "User message here"
@@ -427,7 +427,7 @@ Use different AI providers for different tasks:
     },
     "proxy-agent": {
       "provider": "custom:openrouter",
-      "model": "claude-sonnet-4-5",
+      "model": "claude-sonnet-4-6",
       "system_prompt": "Uses a custom API endpoint."
     }
   }
@@ -621,7 +621,7 @@ Custom providers are defined in `.tinyclaw/settings.json`:
       "harness": "claude",
       "base_url": "https://proxy.example.com/v1",
       "api_key": "sk-...",
-      "model": "claude-sonnet-4-5"
+      "model": "claude-sonnet-4-6"
     }
   }
 }
@@ -654,7 +654,7 @@ curl http://localhost:3777/api/custom-providers
 # Create/update
 curl -X PUT http://localhost:3777/api/custom-providers/my-proxy \
   -H 'Content-Type: application/json' \
-  -d '{"name":"My Proxy","harness":"claude","base_url":"https://proxy.example.com/v1","api_key":"sk-...","model":"claude-sonnet-4-5"}'
+  -d '{"name":"My Proxy","harness":"claude","base_url":"https://proxy.example.com/v1","api_key":"sk-...","model":"claude-sonnet-4-6"}'
 
 # Delete
 curl -X DELETE http://localhost:3777/api/custom-providers/my-proxy
@@ -681,7 +681,7 @@ Or edit settings.json directly:
     "coder": {
       "name": "Code Assistant",
       "provider": "custom:my-proxy",
-      "model": "claude-sonnet-4-5",
+      "model": "claude-sonnet-4-6",
       "working_directory": "/Users/me/workspace/coder"
     }
   }
