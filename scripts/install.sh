@@ -31,6 +31,17 @@ echo -e "${BLUE}TinyAGI CLI Installer${NC}"
 echo "====================="
 echo ""
 
+# Migrate from ~/.tinyclaw if needed
+if [ -d "$HOME/.tinyclaw" ] && [ ! -d "$INSTALL_HOME" ]; then
+    echo -e "Migrating ${YELLOW}~/.tinyclaw${NC} → ${GREEN}~/.tinyagi${NC}"
+    mv "$HOME/.tinyclaw" "$INSTALL_HOME"
+    # Rename database files
+    [ -f "$INSTALL_HOME/tinyclaw.db" ] && mv "$INSTALL_HOME/tinyclaw.db" "$INSTALL_HOME/tinyagi.db"
+    [ -f "$INSTALL_HOME/tinyclaw.db-wal" ] && mv "$INSTALL_HOME/tinyclaw.db-wal" "$INSTALL_HOME/tinyagi.db-wal"
+    [ -f "$INSTALL_HOME/tinyclaw.db-shm" ] && mv "$INSTALL_HOME/tinyclaw.db-shm" "$INSTALL_HOME/tinyagi.db-shm"
+    echo -e "  ${GREEN}✓${NC} Migrated from ~/.tinyclaw"
+fi
+
 # Copy project files to ~/.tinyagi (permanent location)
 if [ "$PROJECT_ROOT" != "$INSTALL_HOME" ]; then
     echo -e "Installing to: ${GREEN}~/.tinyagi${NC}"
