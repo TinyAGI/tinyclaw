@@ -124,14 +124,24 @@ export function openaiModelOptions(): ProviderOption[] {
 
 export function opencodeModelOptions(): ProviderOption[] {
     return [
+        // Anthropic
         { value: 'opencode/claude-sonnet-4-6', label: 'opencode/claude-sonnet-4-6', hint: 'recommended' },
         { value: 'opencode/claude-opus-4-6', label: 'opencode/claude-opus-4-6' },
         { value: 'anthropic/claude-sonnet-4-6', label: 'anthropic/claude-sonnet-4-6' },
         { value: 'anthropic/claude-opus-4-6', label: 'anthropic/claude-opus-4-6' },
+        // OpenAI
         { value: 'openai/gpt-5.4-codex', label: 'openai/gpt-5.4-codex' },
         { value: 'openai/gpt-5.3-codex', label: 'openai/gpt-5.3-codex' },
+        { value: 'openai/gpt-5.3-codex-spark', label: 'openai/gpt-5.3-codex-spark' },
+        // Google
         { value: 'opencode/gemini-3-flash', label: 'opencode/gemini-3-flash' },
         { value: 'opencode/gemini-3-pro', label: 'opencode/gemini-3-pro' },
+        // Chinese models
+        { value: 'opencode/glm-5', label: 'opencode/glm-5' },
+        { value: 'opencode/kimi-k2.5', label: 'opencode/kimi-k2.5' },
+        { value: 'opencode/kimi-k2.5-free', label: 'opencode/kimi-k2.5-free' },
+        { value: 'opencode/minimax-m2.5', label: 'opencode/minimax-m2.5' },
+        { value: 'opencode/minimax-m2.5-free', label: 'opencode/minimax-m2.5-free' },
         { value: '__custom__', label: 'Custom', hint: 'enter model name' },
     ];
 }
