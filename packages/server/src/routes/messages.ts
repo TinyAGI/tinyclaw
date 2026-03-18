@@ -19,13 +19,11 @@ app.post('/api/message', async (c) => {
     const resolvedSender = sender || 'API';
     const messageId = clientMessageId || genId('api');
 
-    const fullMessage = (channel && sender) ? `${message}\n\n— ${sender} via ${channel}` : message;
-
     const rowId = enqueueMessage({
         channel: resolvedChannel,
         sender: resolvedSender,
         senderId: senderId || undefined,
-        message: fullMessage,
+        message,
         messageId,
         agent: agent || undefined,
     });

@@ -112,10 +112,11 @@ async function processMessage(dbMsg: any): Promise<void> {
     emitEvent('chain_step_done', { agentId, agentName: agent.name, responseLength: response.length, responseText: response });
 
     // ── Persist & emit simplified agent_message event ────────────────────
+    const msgSender = isInternal ? data.fromAgent! : sender;
     if (!isInternal) {
-        insertAgentMessage({ agentId, role: 'user', channel, sender, messageId, content: rawMessage });
+        insertAgentMessage({ agentId, role: 'user', channel, sender: msgSender, messageId, content: rawMessage });
     }
-    insertAgentMessage({ agentId, role: 'assistant', channel, sender, messageId, content: response });
+    insertAgentMessage({ agentId, role: 'assistant', channel, sender: msgSender, messageId, content: response });
     emitEvent('agent_message', {
         agentId, agentName: agent.name, role: 'assistant',
         channel, sender, messageId,
