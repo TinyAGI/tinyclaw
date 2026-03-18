@@ -8,6 +8,8 @@ LOG_FILE="$TINYCLAW_HOME/logs/heartbeat.log"
 SETTINGS_FILE="$TINYCLAW_HOME/settings.json"
 API_PORT="${TINYCLAW_API_PORT:-3777}"
 API_URL="http://localhost:${API_PORT}"
+MEMORY_MAINTENANCE_PROMPT_FILE="$PROJECT_ROOT/memory-maintenance-heartbeat.md"
+MEMORY_MAINTENANCE_INTERVAL=$((7 * 24 * 60 * 60))
 
 # Read interval from settings.json, default to 3600
 if [ -f "$SETTINGS_FILE" ]; then
@@ -18,6 +20,8 @@ fi
 INTERVAL=${INTERVAL:-3600}
 
 declare -A LAST_SENT
+declare -A PENDING_MAINTENANCE_DIR
+declare -A PENDING_MAINTENANCE_BY_AGENT
 
 get_override_enabled() {
     local agent_id="$1"
@@ -43,6 +47,44 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+needs_memory_maintenance() {
+    local agent_dir="$1"
+    local now="$2"
+    local stamp_file="$agent_dir/.tinyclaw/last-memory-maintenance"
+
+    if [ ! -f "$stamp_file" ]; then
+        return 0
+    fi
+
+    local last_run
+    last_run=$(tr -cd '0-9' < "$stamp_file")
+    if [ -z "$last_run" ]; then
+        return 0
+    fi
+
+    if [ $((now - last_run)) -ge "$MEMORY_MAINTENANCE_INTERVAL" ]; then
+        return 0
+    fi
+
+    return 1
+}
+
+mark_memory_maintenance_sent() {
+    local agent_dir="$1"
+    local now="$2"
+    mkdir -p "$agent_dir/.tinyclaw"
+    printf '%s\n' "$now" > "$agent_dir/.tinyclaw/last-memory-maintenance"
+}
+
+get_memory_maintenance_prompt() {
+    if [ -f "$MEMORY_MAINTENANCE_PROMPT_FILE" ]; then
+        cat "$MEMORY_MAINTENANCE_PROMPT_FILE"
+        return
+    fi
+
+    return 1
 }
 
 MIN_OVERRIDE_INTERVAL=$(get_min_override_interval)
@@ -126,6 +168,21 @@ while true; do
             log "  → Agent @$AGENT_ID: using default prompt"
         fi
 
+        SHOULD_RUN_MEMORY_MAINTENANCE=0
+        if [ -n "${PENDING_MAINTENANCE_BY_AGENT["$AGENT_ID"]}" ]; then
+            log "  → Agent @$AGENT_ID: memory maintenance already pending"
+        elif needs_memory_maintenance "$AGENT_DIR" "$NOW"; then
+            if MEMORY_MAINTENANCE_PROMPT=$(get_memory_maintenance_prompt); then
+                SHOULD_RUN_MEMORY_MAINTENANCE=1
+                PROMPT="${MEMORY_MAINTENANCE_PROMPT}
+
+${PROMPT}"
+                log "  → Agent @$AGENT_ID: memory maintenance due"
+            else
+                log "  → Agent @$AGENT_ID: memory maintenance prompt file missing, skipping"
+            fi
+        fi
+
         # Enqueue via API server
         RESPONSE=$(curl -s -X POST "${API_URL}/api/message" \
             -H "Content-Type: application/json" \
@@ -141,6 +198,10 @@ while true; do
             MESSAGE_ID=$(echo "$RESPONSE" | jq -r '.messageId')
             log "  ✓ Queued for @$AGENT_ID: $MESSAGE_ID"
             LAST_SENT["$AGENT_ID"]="$NOW"
+            if [ "$SHOULD_RUN_MEMORY_MAINTENANCE" -eq 1 ]; then
+                PENDING_MAINTENANCE_DIR["$MESSAGE_ID"]="$AGENT_DIR"
+                PENDING_MAINTENANCE_BY_AGENT["$AGENT_ID"]="$MESSAGE_ID"
+            fi
         else
             log "  ✗ Failed to queue for @$AGENT_ID: $RESPONSE"
         fi
@@ -154,6 +215,19 @@ while true; do
     # Check recent responses for heartbeat messages
     RESPONSES=$(curl -s "${API_URL}/api/responses?limit=20" 2>&1)
     if echo "$RESPONSES" | jq -e '.' &>/dev/null; then
+        for MESSAGE_ID in "${!PENDING_MAINTENANCE_DIR[@]}"; do
+            if echo "$RESPONSES" | jq -e --arg mid "$MESSAGE_ID" '.[] | select(.channel == "heartbeat" and .messageId == $mid)' >/dev/null 2>&1; then
+                AGENT_DIR="${PENDING_MAINTENANCE_DIR["$MESSAGE_ID"]}"
+                AGENT_ID=$(echo "$RESPONSES" | jq -r --arg mid "$MESSAGE_ID" '.[] | select(.channel == "heartbeat" and .messageId == $mid) | .agent' 2>/dev/null | head -1)
+                mark_memory_maintenance_sent "$AGENT_DIR" "$(date +%s)"
+                unset 'PENDING_MAINTENANCE_DIR[$MESSAGE_ID]'
+                if [ -n "$AGENT_ID" ]; then
+                    unset 'PENDING_MAINTENANCE_BY_AGENT[$AGENT_ID]'
+                    log "  ↺ @$AGENT_ID: memory maintenance completed"
+                fi
+            fi
+        done
+
         for AGENT_ID in $AGENT_IDS; do
             RESP=$(echo "$RESPONSES" | jq -r \
                 --arg ch "heartbeat" \
