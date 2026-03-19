@@ -5,7 +5,7 @@ description: "Send a proactive message to a paired user via their channel (Disco
 
 # Send User Message
 
-Send a message to a paired user via the TinyClaw API server (`POST /api/responses`). The message is delivered by the channel client (Discord, Telegram, or WhatsApp) that polls the API for pending responses.
+Send a message to a paired user via the TinyAGI API server (`POST /api/responses`). The message is delivered by the channel client (Discord, Telegram, or WhatsApp) that polls the API for pending responses.
 
 ## When to use
 
@@ -45,7 +45,7 @@ With file attachments:
   --sender-id 123456 \
   --sender "Alice" \
   --message "Here's the report you requested." \
-  --files "/Users/you/.tinyclaw/files/report.pdf,/Users/you/.tinyclaw/files/chart.png"
+  --files "/Users/you/.tinyagi/files/report.pdf,/Users/you/.tinyagi/files/chart.png"
 ```
 
 Parameters:
@@ -68,6 +68,6 @@ When there are multiple approved pairings and you need to decide who to message:
 
 ## Notes
 
-- The script POSTs to the API server (default `http://localhost:3777`), configurable via `TINYCLAW_API_PORT` env var
+- The script POSTs to the API server (default `http://localhost:3777`), configurable via `TINYAGI_API_PORT` env var
 - Messages include a `senderId` field so channel clients can route agent-initiated messages to the correct user
 - For heartbeat-context messages, set `--agent` to identify which agent is sending

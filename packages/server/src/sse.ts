@@ -1,5 +1,5 @@
 import http from 'http';
-import { onEvent } from '@tinyclaw/core';
+import { onEvent } from '@tinyagi/core';
 
 const sseClients = new Set<http.ServerResponse>();
 

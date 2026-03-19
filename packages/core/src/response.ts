@@ -88,6 +88,6 @@ export async function streamResponse(response: string, options: {
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     });
 
-    log('INFO', `Response ready [${options.channel}] ${options.sender} via agent:${options.agentId} (${finalResponse.length} chars)`);
+    log('INFO', `@${options.agentId} responded:\n${finalResponse}`);
     emitEvent('response_ready', { channel: options.channel, sender: options.sender, agentId: options.agentId, responseLength: finalResponse.length, responseText: finalResponse, messageId: options.messageId });
 }

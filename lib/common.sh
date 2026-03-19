@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Common utilities and configuration for TinyClaw
-# Sourced by main tinyclaw.sh script
+# Common utilities and configuration for TinyAGI
+# Sourced by main tinyagi.sh script
 # Compatible with bash 3.2+ (no associative arrays)
 
 # Colors
@@ -9,6 +9,13 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
+
+# --- ASCII Banner ---
+show_banner() {
+    echo '  ▀█▀ █ █▄ █ █▄█ █▀█ █▀▀ █'
+    echo '   █  █ █ ▀█  █  █▀█ █▄█ █'
+    echo ""
+}
 
 # --- Channel registry ---
 # Single source of truth. Add new channels here and everything else adapts.
@@ -114,7 +121,7 @@ load_settings() {
     WORKSPACE_PATH=$(jq -r '.workspace.path // empty' "$SETTINGS_FILE" 2>/dev/null)
     if [ -z "$WORKSPACE_PATH" ]; then
         # Fallback for old configs without workspace
-        WORKSPACE_PATH="$HOME/tinyclaw-workspace"
+        WORKSPACE_PATH="$HOME/tinyagi-workspace"
     fi
 
     # Read enabled channels array

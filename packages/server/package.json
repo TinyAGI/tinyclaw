@@ -1,5 +1,5 @@
 {
-  "name": "@tinyclaw/server",
+  "name": "@tinyagi/server",
   "version": "0.0.10",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,8 +9,8 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@tinyclaw/core": "*",
-    "@tinyclaw/teams": "*",
+    "@tinyagi/core": "*",
+    "@tinyagi/teams": "*",
     "@hono/node-server": "^1.19.9",
     "hono": "^4.12.1"
   }

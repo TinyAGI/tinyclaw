@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# TinyClaw Bundle Creator
+# TinyAGI Bundle Creator
 # Creates a distributable tarball with all dependencies pre-installed
 
 set -e
@@ -15,7 +15,7 @@ NC='\033[0m'
 
 echo ""
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     TinyClaw Bundle Creator           ║${NC}"
+echo -e "${BLUE}║     TinyAGI Bundle Creator            ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -32,9 +32,9 @@ if [ -n "$GIT_TAG" ]; then
     VERSION="$GIT_TAG"
 fi
 
-BUNDLE_NAME="tinyclaw-bundle-${VERSION}.tar.gz"
+BUNDLE_NAME="tinyagi-bundle-${VERSION}.tar.gz"
 TEMP_DIR=$(mktemp -d)
-BUNDLE_DIR="$TEMP_DIR/tinyclaw"
+BUNDLE_DIR="$TEMP_DIR/tinyagi"
 
 echo -e "${BLUE}Version: ${GREEN}$VERSION${NC}"
 echo -e "${BLUE}Output: ${GREEN}$BUNDLE_NAME${NC}"
@@ -44,7 +44,7 @@ echo ""
 echo -e "${BLUE}[1/5] Cleaning workspace...${NC}"
 for pkg in packages/*/; do rm -rf "${pkg}dist/"; done
 rm -rf node_modules/
-rm -rf .tinyclaw/
+rm -rf .tinyagi/
 rm -rf .wwebjs_cache/
 echo -e "${GREEN}✓ Cleaned${NC}"
 echo ""
@@ -81,7 +81,6 @@ cp -r docs "$BUNDLE_DIR/" 2>/dev/null || true
 cp -r .agents "$BUNDLE_DIR/" 2>/dev/null || true
 cp -r tinyoffice/ "$BUNDLE_DIR/"
 
-cp tinyclaw.sh "$BUNDLE_DIR/"
 cp package.json "$BUNDLE_DIR/"
 cp package-lock.json "$BUNDLE_DIR/"
 cp tsconfig.json "$BUNDLE_DIR/"
@@ -96,12 +95,11 @@ cp .gitignore "$BUNDLE_DIR/"
 [ -f "LICENSE" ] && cp LICENSE "$BUNDLE_DIR/"
 
 # Make scripts executable
+chmod +x "$BUNDLE_DIR/bin/tinyagi"
 chmod +x "$BUNDLE_DIR/bin/tinyclaw"
-chmod +x "$BUNDLE_DIR/tinyclaw.sh"
 chmod +x "$BUNDLE_DIR/scripts/install.sh"
-chmod +x "$BUNDLE_DIR/scripts/uninstall.sh"
 chmod +x "$BUNDLE_DIR/scripts/bundle.sh"
-chmod +x "$BUNDLE_DIR/scripts/remote-install.sh"
+chmod +x "$BUNDLE_DIR/lib/tinyagi.sh"
 chmod +x "$BUNDLE_DIR/lib/heartbeat-cron.sh"
 chmod +x "$BUNDLE_DIR/lib/update.sh"
 
@@ -111,7 +109,7 @@ echo ""
 # Step 5: Create tarball
 echo -e "${BLUE}[5/5] Creating tarball...${NC}"
 cd "$TEMP_DIR"
-tar -czf "$SCRIPT_DIR/$BUNDLE_NAME" tinyclaw/
+tar -czf "$SCRIPT_DIR/$BUNDLE_NAME" tinyagi/
 
 cd "$SCRIPT_DIR"
 rm -rf "$TEMP_DIR"
@@ -128,7 +126,7 @@ echo "Bundle location: $SCRIPT_DIR/$BUNDLE_NAME"
 echo "Bundle size: $BUNDLE_SIZE"
 echo ""
 echo "Upload to GitHub Release:"
-echo "  1. Create a new release: https://github.com/TinyAGI/tinyclaw/releases/new"
+echo "  1. Create a new release: https://github.com/TinyAGI/tinyagi/releases/new"
 echo "  2. Upload: $BUNDLE_NAME"
 echo "  3. Remote install will automatically use it!"
 echo ""

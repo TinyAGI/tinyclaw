@@ -1,6 +1,39 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3777";
+const DEFAULT_API_BASE = "http://localhost:3777";
+const STORAGE_KEY = "tinyagi_api_base";
+
+/** Resolve the API base URL. Priority: env > localStorage > default. */
+export function getApiBase(): string {
+  // Env var always wins (set at build time via NEXT_PUBLIC_*)
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) return stored;
+  }
+  return DEFAULT_API_BASE;
+}
+
+/** Persist a custom API base URL in localStorage. Pass null to reset to default. */
+export function setApiBase(url: string | null): void {
+  if (url) {
+    localStorage.setItem(STORAGE_KEY, url);
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+}
+
+/** Check if the TinyAGI API is reachable at the given (or current) base URL. */
+export async function checkConnection(baseUrl?: string): Promise<boolean> {
+  const base = baseUrl ?? getApiBase();
+  try {
+    const res = await fetch(`${base}/api/settings`, { signal: AbortSignal.timeout(3000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const API_BASE = getApiBase();
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -127,6 +160,10 @@ export async function runSetup(settings: Settings): Promise<{ ok: boolean; setti
   return apiFetch("/api/setup", { method: "POST", body: JSON.stringify(settings) });
 }
 
+export async function applyServices(): Promise<{ ok: boolean; started: string[]; heartbeat: boolean; errors?: string[] }> {
+  return apiFetch("/api/services/apply", { method: "POST" });
+}
+
 export async function getQueueStatus(): Promise<QueueStatus> {
   return apiFetch("/api/queue/status");
 }
@@ -141,7 +178,7 @@ export async function getLogs(limit = 100): Promise<{ lines: string[] }> {
 
 export async function saveAgent(
   id: string,
-  agent: AgentConfig
+  agent: Partial<AgentConfig> & Pick<AgentConfig, "name" | "provider" | "model">
 ): Promise<{ ok: boolean; agent: AgentConfig }> {
   return apiFetch(`/api/agents/${encodeURIComponent(id)}`, {
     method: "PUT",
@@ -215,14 +252,14 @@ export async function getAgentMemory(agentId: string): Promise<{ index: string; 
   return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/memory`);
 }
 
-export async function getAgentHeartbeat(agentId: string): Promise<{ content: string; path: string }> {
+export async function getAgentHeartbeat(agentId: string): Promise<{ content: string; path: string; enabled: boolean; interval?: number }> {
   return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/heartbeat`);
 }
 
-export async function saveAgentHeartbeat(agentId: string, content: string): Promise<{ ok: boolean }> {
+export async function saveAgentHeartbeat(agentId: string, data: { content?: string; enabled?: boolean; interval?: number }): Promise<{ ok: boolean }> {
   return apiFetch(`/api/agents/${encodeURIComponent(agentId)}/heartbeat`, {
     method: "PUT",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(data),
   });
 }
 
@@ -325,6 +362,52 @@ export async function deleteProject(id: string): Promise<{ ok: boolean }> {
   return apiFetch(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+// ── Schedules ─────────────────────────────────────────────────────────────
+
+export interface Schedule {
+  id: string;
+  label: string;
+  cron: string;
+  agentId: string;
+  message: string;
+  channel: string;
+  sender: string;
+  enabled: boolean;
+  createdAt: number;
+  runAt?: string;
+}
+
+export async function getSchedules(agentId?: string): Promise<Schedule[]> {
+  const params = agentId ? `?agent=${encodeURIComponent(agentId)}` : "";
+  return apiFetch(`/api/schedules${params}`);
+}
+
+export async function createSchedule(data: {
+  cron?: string;
+  runAt?: string;
+  agentId: string;
+  message: string;
+  label?: string;
+  channel?: string;
+  sender?: string;
+}): Promise<{ ok: boolean; schedule: Schedule }> {
+  return apiFetch("/api/schedules", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateSchedule(
+  id: string,
+  data: Partial<Omit<Schedule, "id" | "createdAt">>
+): Promise<{ ok: boolean; schedule: Schedule }> {
+  return apiFetch(`/api/schedules/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSchedule(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/schedules/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 // ── SSE ───────────────────────────────────────────────────────────────────
 
 export function subscribeToEvents(
@@ -332,7 +415,7 @@ export function subscribeToEvents(
   onError?: (err: Event) => void,
   eventTypes?: string[]
 ): () => void {
-  const es = new EventSource(`${API_BASE}/api/events/stream`);
+  const es = new EventSource(`${getApiBase()}/api/events/stream`);
 
   const handler = (e: MessageEvent) => {
     try { onEvent(JSON.parse(e.data)); } catch { /* ignore parse errors */ }

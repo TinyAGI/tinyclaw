@@ -1,6 +1,6 @@
 # Agents
 
-TinyClaw supports running multiple AI agents simultaneously, each with its own isolated workspace, configuration, and conversation state. This allows you to have specialized agents for different tasks while maintaining complete isolation.
+TinyAGI supports running multiple AI agents simultaneously, each with its own isolated workspace, configuration, and conversation state. This allows you to have specialized agents for different tasks while maintaining complete isolation.
 
 ## Overview
 
@@ -52,7 +52,7 @@ The agent management feature enables you to:
 │  │ AGENTS.md    │  │ AGENTS.md    │  │ AGENTS.md    │     │
 │  └──────────────┘  └──────────────┘  └──────────────┘     │
 │                                                              │
-│  Shared: ~/.tinyclaw/ (channels, files, logs, tinyclaw.db) │
+│  Shared: ~/.tinyagi/ (channels, files, logs, tinyagi.db) │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -77,40 +77,40 @@ const routing = parseAgentRouting(rawMessage, agents);
 
 ### 2. Agent Configuration
 
-Each agent has its own configuration in `.tinyclaw/settings.json`:
+Each agent has its own configuration in `.tinyagi/settings.json`:
 
 ```json
 {
   "workspace": {
-    "path": "/Users/me/tinyclaw-workspace",
-    "name": "tinyclaw-workspace"
+    "path": "/Users/me/tinyagi-workspace",
+    "name": "tinyagi-workspace"
   },
   "agents": {
     "coder": {
       "name": "Code Assistant",
       "provider": "anthropic",
       "model": "sonnet",
-      "working_directory": "/Users/me/tinyclaw-workspace/coder",
+      "working_directory": "/Users/me/tinyagi-workspace/coder",
       "system_prompt": "You are a senior software engineer..."
     },
     "writer": {
       "name": "Technical Writer",
       "provider": "openai",
       "model": "gpt-5.3-codex",
-      "working_directory": "/Users/me/tinyclaw-workspace/writer",
+      "working_directory": "/Users/me/tinyagi-workspace/writer",
       "prompt_file": "/path/to/writer-prompt.md"
     },
     "assistant": {
       "name": "Assistant",
       "provider": "anthropic",
       "model": "opus",
-      "working_directory": "/Users/me/tinyclaw-workspace/assistant"
+      "working_directory": "/Users/me/tinyagi-workspace/assistant"
     }
   }
 }
 ```
 
-**Note:** The `working_directory` is automatically set to `<workspace>/<agent_id>/` when creating agents via `tinyclaw agent add`.
+**Note:** The `working_directory` is automatically set to `<workspace>/<agent_id>/` when creating agents via `tinyagi agent add`.
 
 ### 3. Agent Isolation
 
@@ -119,7 +119,7 @@ Each agent has its own isolated workspace directory with complete copies of conf
 **Agent Workspaces:**
 
 ```text
-~/tinyclaw-workspace/          # Or custom workspace name
+~/tinyagi-workspace/          # Or custom workspace name
 ├── coder/
 │   ├── .claude/               # Agent's own Claude config
 │   │   ├── settings.json
@@ -144,17 +144,17 @@ Each agent has its own isolated workspace directory with complete copies of conf
 
 **Templates & Shared Resources:**
 
-Templates and shared resources are stored in `~/.tinyclaw/`:
+Templates and shared resources are stored in `~/.tinyagi/`:
 
 ```text
-~/.tinyclaw/
+~/.tinyagi/
 ├── .claude/           # Template: Copied to each new agent
 ├── heartbeat.md       # Template: Copied to each new agent
 ├── AGENTS.md          # Template: Copied to each new agent
 ├── channels/          # SHARED: Channel state (QR codes, ready flags)
 ├── files/             # SHARED: Uploaded files from all channels
 ├── logs/              # SHARED: Log files for all agents and channels
-└── tinyclaw.db        # SHARED: SQLite message queue
+└── tinyagi.db        # SHARED: SQLite message queue
 ```
 
 **How it works:**
@@ -165,7 +165,7 @@ Templates and shared resources are stored in `~/.tinyclaw/`:
 - Conversation history is isolated per agent (managed by Claude/Codex CLI)
 - Reset flags allow resetting individual agent conversations
 - File operations happen in the agent's directory
-- Templates stored in `~/.tinyclaw/` are copied when creating new agents
+- Templates stored in `~/.tinyagi/` are copied when creating new agents
 - Uploaded files, the SQLite queue, and logs are shared (common dependencies)
 
 ### 4. Provider Execution
@@ -175,9 +175,9 @@ The queue processor calls the appropriate CLI based on provider:
 **Anthropic (Claude):**
 
 ```bash
-cd "$agent_working_directory"  # e.g., ~/tinyclaw-workspace/coder/
+cd "$agent_working_directory"  # e.g., ~/tinyagi-workspace/coder/
 claude --dangerously-skip-permissions \
-  --model claude-sonnet-4-5 \
+  --model claude-sonnet-4-6 \
   --system-prompt "Your custom prompt..." \
   -c \  # Continue conversation
   -p "User message here"
@@ -186,7 +186,7 @@ claude --dangerously-skip-permissions \
 **OpenAI (Codex):**
 
 ```bash
-cd "$agent_working_directory"  # e.g., ~/tinyclaw-workspace/coder/
+cd "$agent_working_directory"  # e.g., ~/tinyagi-workspace/coder/
 codex exec resume --last \
   --model gpt-5.3-codex \
   --skip-git-repo-check \
@@ -199,11 +199,11 @@ codex exec resume --last \
 
 ### Initial Setup
 
-During first-time setup (`tinyclaw setup`), you'll be prompted for:
+During first-time setup (`tinyagi setup`), you'll be prompted for:
 
 1. **Workspace name** - Where to store agent directories
-   - Default: `tinyclaw-workspace`
-   - Creates: `~/tinyclaw-workspace/`
+   - Default: `tinyagi-workspace`
+   - Creates: `~/tinyagi-workspace/`
 
 2. **Default agent name** - Name for your main assistant
    - Default: `assistant`
@@ -214,7 +214,7 @@ During first-time setup (`tinyclaw setup`), you'll be prompted for:
 **Interactive CLI:**
 
 ```bash
-tinyclaw agent add
+tinyagi agent add
 ```
 
 This walks you through:
@@ -229,20 +229,20 @@ This walks you through:
 
 **Manual Configuration:**
 
-Edit `.tinyclaw/settings.json`:
+Edit `.tinyagi/settings.json`:
 
 ```json
 {
   "workspace": {
-    "path": "/Users/me/tinyclaw-workspace",
-    "name": "tinyclaw-workspace"
+    "path": "/Users/me/tinyagi-workspace",
+    "name": "tinyagi-workspace"
   },
   "agents": {
     "researcher": {
       "name": "Research Assistant",
       "provider": "anthropic",
       "model": "opus",
-      "working_directory": "/Users/me/tinyclaw-workspace/researcher",
+      "working_directory": "/Users/me/tinyagi-workspace/researcher",
       "system_prompt": "You are a research assistant specialized in academic literature review and data analysis."
     }
   }
@@ -264,7 +264,7 @@ Edit `.tinyclaw/settings.json`:
 
 - If both `prompt_file` and `system_prompt` are provided, `prompt_file` takes precedence
 - The `working_directory` is automatically set to `<workspace>/<agent_id>/` when creating agents
-- Each agent gets its own isolated directory with copies of templates from `~/.tinyclaw/`
+- Each agent gets its own isolated directory with copies of templates from `~/.tinyagi/`
 
 ## Usage
 
@@ -293,7 +293,7 @@ help me with this (goes to default agent - "assistant" by default)
 **From CLI:**
 
 ```bash
-tinyclaw agent list
+tinyagi agent list
 ```
 
 **Output:**
@@ -304,16 +304,16 @@ Configured Agents
 
   @coder - Code Assistant
     Provider:  anthropic/sonnet
-    Directory: /Users/me/tinyclaw-workspace/coder
+    Directory: /Users/me/tinyagi-workspace/coder
 
   @writer - Technical Writer
     Provider:  openai/gpt-5.3-codex
-    Directory: /Users/me/tinyclaw-workspace/writer
+    Directory: /Users/me/tinyagi-workspace/writer
     Prompt:    /path/to/writer-prompt.md
 
   @assistant - Assistant
     Provider:  anthropic/opus
-    Directory: /Users/me/tinyclaw-workspace/assistant
+    Directory: /Users/me/tinyagi-workspace/assistant
 ```
 
 ### Managing Agents
@@ -321,13 +321,13 @@ Configured Agents
 **Show agent details:**
 
 ```bash
-tinyclaw agent show coder
+tinyagi agent show coder
 ```
 
 **Reset agent conversation:**
 
 ```bash
-tinyclaw agent reset coder
+tinyagi agent reset coder
 ```
 
 From chat:
@@ -339,7 +339,7 @@ From chat:
 **Remove agent:**
 
 ```bash
-tinyclaw agent remove coder
+tinyagi agent remove coder
 ```
 
 ## Use Cases
@@ -427,7 +427,7 @@ Use different AI providers for different tasks:
     },
     "proxy-agent": {
       "provider": "custom:openrouter",
-      "model": "claude-sonnet-4-5",
+      "model": "claude-sonnet-4-6",
       "system_prompt": "Uses a custom API endpoint."
     }
   }
@@ -452,7 +452,7 @@ const queueData: QueueData = {
 
 ### Fallback Behavior
 
-If no agents are configured, TinyClaw automatically creates a default agent using the legacy `models` section:
+If no agents are configured, TinyAGI automatically creates a default agent using the legacy `models` section:
 
 ```json
 {
@@ -469,20 +469,20 @@ This ensures backward compatibility with older configurations.
 
 ### Global Model & Provider Commands
 
-The `tinyclaw model` and `tinyclaw provider --model` commands update both the global default **and** propagate to all matching agents:
+The `tinyagi model` and `tinyagi provider --model` commands update both the global default **and** propagate to all matching agents:
 
-- `tinyclaw model sonnet` — updates `.models.anthropic.model` and sets `model = "sonnet"` on every agent with `provider == "anthropic"`.
-- `tinyclaw model gpt-5.3-codex` — updates `.models.openai.model` and sets `model = "gpt-5.3-codex"` on every agent with `provider == "openai"`.
-- `tinyclaw provider openai --model gpt-5.3-codex` — switches the global provider, and updates all agents that were on the **old** provider to the new provider and model.
-- `tinyclaw provider anthropic` (no `--model`) — only switches the global default; agents are **not** changed.
+- `tinyagi model sonnet` — updates `.models.anthropic.model` and sets `model = "sonnet"` on every agent with `provider == "anthropic"`.
+- `tinyagi model gpt-5.3-codex` — updates `.models.openai.model` and sets `model = "gpt-5.3-codex"` on every agent with `provider == "openai"`.
+- `tinyagi provider openai --model gpt-5.3-codex` — switches the global provider, and updates all agents that were on the **old** provider to the new provider and model.
+- `tinyagi provider anthropic` (no `--model`) — only switches the global default; agents are **not** changed.
 
 To change a **single** agent's provider/model without affecting others, use:
 
 ```bash
-tinyclaw agent provider <agent_id> <provider> --model <model>
+tinyagi agent provider <agent_id> <provider> --model <model>
 ```
 
-Running `tinyclaw model` or `tinyclaw provider` with no arguments shows the global default followed by a per-agent breakdown.
+Running `tinyagi model` or `tinyagi provider` with no arguments shows the global default followed by a per-agent breakdown.
 
 ### Reset Flags
 
@@ -493,8 +493,8 @@ Reset flags are automatically cleaned up after use.
 Reset one or more agents:
 
 ```bash
-tinyclaw reset coder
-tinyclaw reset coder researcher
+tinyagi reset coder
+tinyagi reset coder researcher
 ```
 
 ### Custom Workspaces
@@ -515,8 +515,8 @@ Or even use cloud-synced directories:
 ```json
 {
   "workspace": {
-    "path": "/Users/me/Dropbox/tinyclaw-workspace",
-    "name": "tinyclaw-workspace"
+    "path": "/Users/me/Dropbox/tinyagi-workspace",
+    "name": "tinyagi-workspace"
   }
 }
 ```
@@ -527,7 +527,7 @@ Files uploaded through messaging channels are automatically available to all age
 
 ```text
 User uploads image.png via Telegram
-→ Saved to ~/.tinyclaw/files/telegram_123456_image.png
+→ Saved to ~/.tinyagi/files/telegram_123456_image.png
 → Message includes: [file: /path/to/image.png]
 → Routed to agent
 → Agent can read/process the file
@@ -547,12 +547,12 @@ For detailed troubleshooting of agent-related issues, see [TROUBLESHOOTING.md](T
 
 **Quick reference:**
 
-- **Agent not found** → Check: `tinyclaw agent list`
+- **Agent not found** → Check: `tinyagi agent list`
 - **Wrong agent responding** → Verify routing: `@agent_id message` (with space)
-- **Conversation not resetting** → Send message after: `tinyclaw agent reset <id>`
+- **Conversation not resetting** → Send message after: `tinyagi agent reset <id>`
 - **CLI not found** → Install Claude Code or Codex CLI
-- **Workspace issues** → Check: `cat .tinyclaw/settings.json | jq '.workspace'`
-- **Templates not copying** → Run: `tinyclaw setup`
+- **Workspace issues** → Check: `cat .tinyagi/settings.json | jq '.workspace'`
+- **Templates not copying** → Run: `tinyagi setup`
 
 ## Implementation Details
 
@@ -586,7 +586,7 @@ interface ResponseData {
 **Templates:**
 
 ```text
-~/.tinyclaw/
+~/.tinyagi/
 ├── .claude/           # Copied to new agents
 ├── heartbeat.md       # Copied to new agents
 └── AGENTS.md          # Copied to new agents
@@ -611,7 +611,7 @@ Custom providers let you use any OpenAI or Anthropic-compatible API endpoint (e.
 
 ### Configuration
 
-Custom providers are defined in `.tinyclaw/settings.json`:
+Custom providers are defined in `.tinyagi/settings.json`:
 
 ```json
 {
@@ -621,7 +621,7 @@ Custom providers are defined in `.tinyclaw/settings.json`:
       "harness": "claude",
       "base_url": "https://proxy.example.com/v1",
       "api_key": "sk-...",
-      "model": "claude-sonnet-4-5"
+      "model": "claude-sonnet-4-6"
     }
   }
 }
@@ -640,9 +640,9 @@ Custom providers are defined in `.tinyclaw/settings.json`:
 **CLI:**
 
 ```bash
-tinyclaw provider list                 # List custom providers
-tinyclaw provider add                  # Add interactively
-tinyclaw provider remove my-proxy      # Remove a custom provider
+tinyagi provider list                 # List custom providers
+tinyagi provider add                  # Add interactively
+tinyagi provider remove my-proxy      # Remove a custom provider
 ```
 
 **API:**
@@ -654,7 +654,7 @@ curl http://localhost:3777/api/custom-providers
 # Create/update
 curl -X PUT http://localhost:3777/api/custom-providers/my-proxy \
   -H 'Content-Type: application/json' \
-  -d '{"name":"My Proxy","harness":"claude","base_url":"https://proxy.example.com/v1","api_key":"sk-...","model":"claude-sonnet-4-5"}'
+  -d '{"name":"My Proxy","harness":"claude","base_url":"https://proxy.example.com/v1","api_key":"sk-...","model":"claude-sonnet-4-6"}'
 
 # Delete
 curl -X DELETE http://localhost:3777/api/custom-providers/my-proxy
@@ -666,11 +666,11 @@ Use the `custom:<provider_id>` prefix as the agent's provider:
 
 ```bash
 # When adding a new agent (option 4 in provider selection)
-tinyclaw agent add
+tinyagi agent add
 
 # Switch an existing agent
-tinyclaw agent provider coder custom:my-proxy
-tinyclaw agent provider coder custom:my-proxy --model gpt-4o
+tinyagi agent provider coder custom:my-proxy
+tinyagi agent provider coder custom:my-proxy --model gpt-4o
 ```
 
 Or edit settings.json directly:
@@ -681,7 +681,7 @@ Or edit settings.json directly:
     "coder": {
       "name": "Code Assistant",
       "provider": "custom:my-proxy",
-      "model": "claude-sonnet-4-5",
+      "model": "claude-sonnet-4-6",
       "working_directory": "/Users/me/workspace/coder"
     }
   }
@@ -717,7 +717,7 @@ The chain ends naturally when an agent responds without mentioning a teammate.
 
 ### Team Configuration
 
-Teams are stored in `~/.tinyclaw/settings.json`:
+Teams are stored in `~/.tinyagi/settings.json`:
 
 ```json
 {
@@ -744,12 +744,12 @@ Team IDs share the `@` routing namespace with agents, so no collisions are allow
 **CLI Commands:**
 
 ```bash
-tinyclaw team list                # List all teams
-tinyclaw team add                 # Add a new team (interactive)
-tinyclaw team show dev            # Show team configuration
-tinyclaw team remove dev          # Remove a team
-tinyclaw team add-agent dev reviewer     # Add an existing agent to a team
-tinyclaw team remove-agent dev reviewer  # Remove an agent from a team
+tinyagi team list                # List all teams
+tinyagi team add                 # Add a new team (interactive)
+tinyagi team show dev            # Show team configuration
+tinyagi team remove dev          # Remove a team
+tinyagi team add-agent dev reviewer     # Add an existing agent to a team
+tinyagi team remove-agent dev reviewer  # Remove an agent from a team
 ```
 
 **In-chat Commands:**
@@ -782,5 +782,5 @@ Potential features for agent management:
 ## See Also
 
 - [README.md](../README.md) - Main project documentation
-- Setup wizard: `tinyclaw setup`
-- Agent CLI: `tinyclaw agent --help`
+- Setup wizard: `tinyagi setup`
+- Agent CLI: `tinyagi agent --help`

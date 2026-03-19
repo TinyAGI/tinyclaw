@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1091
-# TinyClaw - Main daemon using tmux + claude -c -p + messaging channels
+# TinyAGI - Main daemon using tmux + claude -c -p + messaging channels
 #
 # To add a new channel:
 #   1. Create src/channels/<channel>-client.ts
@@ -9,15 +9,15 @@
 #   4. Run setup wizard to enable it
 
 # SCRIPT_DIR = repo root (where bash scripts live)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# TINYCLAW_HOME = data directory (settings, queue, logs, etc.)
-# Always defaults to ~/.tinyclaw; override via TINYCLAW_HOME env var.
-TINYCLAW_HOME="${TINYCLAW_HOME:-$HOME/.tinyclaw}"
+# TINYAGI_HOME = data directory (settings, queue, logs, etc.)
+# Always defaults to ~/.tinyagi; override via TINYAGI_HOME env var.
+TINYAGI_HOME="${TINYAGI_HOME:-$HOME/.tinyagi}"
 
-TMUX_SESSION="tinyclaw"
-LOG_DIR="$TINYCLAW_HOME/logs"
-SETTINGS_FILE="$TINYCLAW_HOME/settings.json"
+TMUX_SESSION="tinyagi"
+LOG_DIR="$TINYAGI_HOME/logs"
+SETTINGS_FILE="$TINYAGI_HOME/settings.json"
 
 mkdir -p "$LOG_DIR"
 
@@ -32,7 +32,8 @@ CLI="$SCRIPT_DIR/packages/cli/dist"
 
 case "${1:-}" in
     start)
-        start_daemon
+        shift  # remove 'start'
+        start_daemon "$@"
         ;;
     stop)
         stop_daemon
@@ -72,14 +73,45 @@ case "${1:-}" in
         shift  # remove 'reset'
         node "$CLI/agent.js" reset "$@"
         ;;
-    channels)
-        if [ "$2" = "reset" ] && [ -n "$3" ]; then
-            node "$CLI/messaging.js" channels-reset "$3"
-        else
-            local_names=$(IFS='|'; echo "${ALL_CHANNELS[*]}")
-            echo "Usage: $0 channels reset {$local_names}"
-            exit 1
-        fi
+    channels|channel)
+        case "${2:-}" in
+            start)
+                if [ -z "$3" ]; then
+                    echo "Usage: $0 channel start <channel_id>"
+                    exit 1
+                fi
+                start_channel "$3"
+                ;;
+            stop)
+                if [ -z "$3" ]; then
+                    echo "Usage: $0 channel stop <channel_id>"
+                    exit 1
+                fi
+                stop_channel "$3"
+                ;;
+            reset)
+                if [ -z "$3" ]; then
+                    echo "Usage: $0 channel reset <channel_id>"
+                    exit 1
+                fi
+                node "$CLI/messaging.js" channels-reset "$3"
+                ;;
+            *)
+                local_names=$(IFS='|'; echo "${ALL_CHANNELS[*]}")
+                echo "Usage: $0 channel {start|stop|reset} {$local_names}"
+                exit 1
+                ;;
+        esac
+        ;;
+    heartbeat)
+        case "${2:-}" in
+            start)  start_heartbeat ;;
+            stop)   stop_heartbeat ;;
+            *)
+                echo "Usage: $0 heartbeat {start|stop}"
+                exit 1
+                ;;
+        esac
         ;;
     provider)
         case "${2:-}" in
@@ -206,7 +238,7 @@ case "${1:-}" in
                 if [ ! -f "$SCRIPT_DIR/packages/visualizer/dist/team-visualizer.js" ] || \
                    [ "$SCRIPT_DIR/packages/visualizer/src/team-visualizer.tsx" -nt "$SCRIPT_DIR/packages/visualizer/dist/team-visualizer.js" ]; then
                     echo -e "${BLUE}Building team visualizer...${NC}"
-                    if ! (cd "$SCRIPT_DIR" && npm run build -w @tinyclaw/visualizer 2>/dev/null); then
+                    if ! (cd "$SCRIPT_DIR" && npm run build -w @tinyagi/visualizer 2>/dev/null); then
                         echo -e "${RED}Failed to build visualizer.${NC}"
                         exit 1
                     fi
@@ -244,7 +276,7 @@ case "${1:-}" in
         if [ ! -f "$SCRIPT_DIR/packages/visualizer/dist/chatroom-viewer.js" ] || \
            [ "$SCRIPT_DIR/packages/visualizer/src/chatroom-viewer.tsx" -nt "$SCRIPT_DIR/packages/visualizer/dist/chatroom-viewer.js" ]; then
             echo -e "${BLUE}Building chatroom viewer...${NC}"
-            if ! (cd "$SCRIPT_DIR" && npm run build -w @tinyclaw/visualizer 2>/dev/null); then
+            if ! (cd "$SCRIPT_DIR" && npm run build -w @tinyagi/visualizer 2>/dev/null); then
                 echo -e "${RED}Failed to build chatroom viewer.${NC}"
                 exit 1
             fi
@@ -282,24 +314,26 @@ case "${1:-}" in
         node "$CLI/update.js"
         ;;
     version|--version|-v|-V)
-        echo "tinyclaw v$(get_current_version)"
+        echo "tinyagi v$(get_current_version)"
         ;;
     *)
         local_names=$(IFS='|'; echo "${ALL_CHANNELS[*]}")
-        echo -e "${BLUE}TinyClaw - Claude Code + Messaging Channels${NC}"
-        echo ""
-        echo "Usage: $0 {start|stop|restart|status|setup|send|logs|reset <agent_id>|channels|provider|model|agent|team|chatroom|office|pairing|update|version|attach}"
+        show_banner
+        echo "Usage: $0 {start|stop|restart|status|setup|send|logs|reset <agent_id>|channel|heartbeat|provider|model|agent|team|chatroom|office|pairing|update|version|attach}"
         echo ""
         echo "Commands:"
-        echo "  start                    Start TinyClaw"
+        echo "  start [--skip-setup]      Start TinyAGI (--skip-setup: API only, complete setup in browser)"
         echo "  stop                     Stop all processes"
-        echo "  restart                  Restart TinyClaw"
+        echo "  restart                  Restart TinyAGI"
         echo "  status                   Show current status"
         echo "  setup                    Run setup wizard (change channels/provider/model/heartbeat)"
         echo "  send <msg>               Send message to AI manually"
         echo "  logs [type]              View logs ($local_names|heartbeat|daemon|queue|all)"
         echo "  reset <id> [id2 ...]     Reset specific agent conversation(s)"
-        echo "  channels reset <channel> Reset channel auth ($local_names)"
+        echo "  channel start <ch>       Start a channel in the running session"
+        echo "  channel stop <ch>        Stop a channel"
+        echo "  channel reset <ch>       Reset channel auth ($local_names)"
+        echo "  heartbeat start|stop     Start or stop the heartbeat process"
         echo "  provider [name] [--model model]  Show or switch AI provider"
         echo "  provider {list|add|remove}       Manage custom providers"
         echo "  model [name]             Show or switch AI model"
@@ -308,7 +342,7 @@ case "${1:-}" in
         echo "  chatroom <team_id>       Live chat room viewer for a team"
         echo "  office                   Start TinyOffice web portal (http://localhost:3000)"
         echo "  pairing {pending|approved|list|approve <code>|unpair <channel> <sender_id>}  Manage sender approvals"
-        echo "  update                   Update TinyClaw to latest version"
+        echo "  update                   Update TinyAGI to latest version"
         echo "  version                  Show current version"
         echo "  attach                   Attach to tmux session"
         echo ""

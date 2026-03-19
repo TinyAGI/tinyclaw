@@ -21,9 +21,9 @@ import { fileURLToPath } from 'url';
 // ─── Paths ──────────────────────────────────────────────────────────────────
 const __filename_ = fileURLToPath(import.meta.url);
 const __dirname_ = path.dirname(__filename_);
-const TINYCLAW_HOME = process.env.TINYCLAW_HOME
-    || path.join(os.homedir(), '.tinyclaw');
-const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
+const TINYAGI_HOME = process.env.TINYAGI_HOME
+    || path.join(os.homedir(), '.tinyagi');
+const SETTINGS_FILE = path.join(TINYAGI_HOME, 'settings.json');
 
 // ─── API helper ─────────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ interface AgentConfig {
     working_directory: string;
 }
 
-interface TinyClawEvent {
+interface TinyAGIEvent {
     type: string;
     timestamp: number;
     [key: string]: unknown;
@@ -145,7 +145,7 @@ function Header({ teamId, teamName, uptime }: { teamId: string | null; teamName:
         <Box flexDirection="column" marginBottom={1}>
             <Box>
                 <Text bold color="magenta">{'  \u2726 '}</Text>
-                <Text bold color="white">TinyClaw Team Visualizer</Text>
+                <Text bold color="white">TinyAGI Team Visualizer</Text>
                 <Text color="gray">{' \u2502 '}</Text>
                 {teamId ? (
                     <Text>
@@ -340,7 +340,7 @@ function App({ filterTeamId, apiPort }: { filterTeamId: string | null; apiPort: 
     }, []);
 
     // Process a single event
-    const handleEvent = useCallback((event: TinyClawEvent) => {
+    const handleEvent = useCallback((event: TinyAGIEvent) => {
         switch (event.type) {
             case 'processor_start':
                 setProcessorAlive(true);
@@ -477,7 +477,7 @@ function App({ filterTeamId, apiPort }: { filterTeamId: string | null; apiPort: 
                         }
                         if (data) {
                             try {
-                                const event: TinyClawEvent = JSON.parse(data);
+                                const event: TinyAGIEvent = JSON.parse(data);
                                 handleEvent(event);
                             } catch { /* skip malformed */ }
                         }
@@ -538,7 +538,7 @@ function App({ filterTeamId, apiPort }: { filterTeamId: string | null; apiPort: 
             {Object.keys(settings.teams).length === 0 ? (
                 <Box flexDirection="column" marginBottom={1}>
                     <Text color="yellow">No teams configured.</Text>
-                    <Text color="gray">Create a team with: tinyclaw team add</Text>
+                    <Text color="gray">Create a team with: tinyagi team add</Text>
                 </Box>
             ) : (
                 <>
@@ -586,7 +586,7 @@ function App({ filterTeamId, apiPort }: { filterTeamId: string | null; apiPort: 
 
 const args = process.argv.slice(2);
 let filterTeamId: string | null = null;
-let apiPort = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
+let apiPort = parseInt(process.env.TINYAGI_API_PORT || '3777', 10);
 
 for (let i = 0; i < args.length; i++) {
     if ((args[i] === '--team' || args[i] === '-t') && args[i + 1]) {

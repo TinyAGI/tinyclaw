@@ -25,11 +25,6 @@ export interface TeamConfig {
     leader_agent: string;
 }
 
-export interface ChainStep {
-    agentId: string;
-    response: string;
-}
-
 export interface Settings {
     workspace?: {
         path?: string;
@@ -72,29 +67,7 @@ export interface MessageData {
     timestamp: number;
     messageId: string;
     agent?: string; // optional: pre-routed agent id from channel client
-    files?: string[];
-    // Internal message fields (agent-to-agent)
-    conversationId?: string; // links to parent conversation
-    fromAgent?: string;      // which agent sent this internal message
-}
-
-export interface Conversation {
-    id: string;
-    channel: string;
-    sender: string;
-    originalMessage: string;
-    messageId: string;
-    pending: number;
-    responses: ChainStep[];
-    files: Set<string>;
-    totalMessages: number;
-    maxMessages: number;
-    teamContext: { teamId: string; team: TeamConfig };
-    startTime: number;
-    // Track how many mentions each agent sent out (for inbox draining)
-    outgoingMentions: Map<string, number>;
-    // Track agents that have been enqueued but haven't finished responding
-    pendingAgents: Set<string>;
+    fromAgent?: string; // which agent sent this internal message
 }
 
 export interface ResponseData {
@@ -109,40 +82,32 @@ export interface ResponseData {
     metadata?: Record<string, unknown>;
 }
 
-// Model name mapping
-export const CLAUDE_MODEL_IDS: Record<string, string> = {
-    'sonnet': 'claude-sonnet-4-5',
-    'opus': 'claude-opus-4-6',
-    'claude-sonnet-4-5': 'claude-sonnet-4-5',
-    'claude-opus-4-6': 'claude-opus-4-6'
+// Shorthand model aliases — everything else passes through as-is to the CLI.
+export const MODEL_ALIASES: Record<string, Record<string, string>> = {
+    anthropic: {
+        'sonnet': 'claude-sonnet-4-6',
+        'opus': 'claude-opus-4-6',
+    },
+    openai: {},
+    opencode: {
+        'sonnet': 'opencode/claude-sonnet-4-6',
+        'opus': 'opencode/claude-opus-4-6',
+    },
 };
 
-export const CODEX_MODEL_IDS: Record<string, string> = {
-    'gpt-5.2': 'gpt-5.2',
-    'gpt-5.3-codex': 'gpt-5.3-codex',
-};
-
-// OpenCode model IDs in provider/model format (passed via --model / -m flag).
-// Falls back to the raw model string from settings if no mapping is found.
-export const OPENCODE_MODEL_IDS: Record<string, string> = {
-    'opencode/claude-opus-4-6': 'opencode/claude-opus-4-6',
-    'opencode/claude-sonnet-4-5': 'opencode/claude-sonnet-4-5',
-    'opencode/gemini-3-flash': 'opencode/gemini-3-flash',
-    'opencode/gemini-3-pro': 'opencode/gemini-3-pro',
-    'opencode/glm-5': 'opencode/glm-5',
-    'opencode/kimi-k2.5': 'opencode/kimi-k2.5',
-    'opencode/kimi-k2.5-free': 'opencode/kimi-k2.5-free',
-    'opencode/minimax-m2.5': 'opencode/minimax-m2.5',
-    'opencode/minimax-m2.5-free': 'opencode/minimax-m2.5-free',
-    'anthropic/claude-opus-4-6': 'anthropic/claude-opus-4-6',
-    'anthropic/claude-sonnet-4-5': 'anthropic/claude-sonnet-4-5',
-    'openai/gpt-5.2': 'openai/gpt-5.2',
-    'openai/gpt-5.3-codex': 'openai/gpt-5.3-codex',
-    'openai/gpt-5.3-codex-spark': 'openai/gpt-5.3-codex-spark',
-    // Shorthand aliases
-    'sonnet': 'opencode/claude-sonnet-4-5',
-    'opus': 'opencode/claude-opus-4-6',
-};
+// Schedule types
+export interface Schedule {
+    id: string;
+    label: string;
+    cron: string;           // 5-field cron expression (empty for one-time)
+    agentId: string;
+    message: string;
+    channel: string;        // default "schedule"
+    sender: string;         // default "Scheduler"
+    enabled: boolean;
+    createdAt: number;      // epoch ms
+    runAt?: string;         // ISO date string for one-time schedules
+}
 
 // Queue job data types
 export interface MessageJobData {
@@ -152,8 +117,6 @@ export interface MessageJobData {
     message: string;
     messageId: string;
     agent?: string;
-    files?: string[];
-    conversationId?: string;
     fromAgent?: string;
 }
 

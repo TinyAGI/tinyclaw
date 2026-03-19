@@ -3,9 +3,9 @@ import * as p from '@clack/prompts';
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
-import { SCRIPT_DIR } from '@tinyclaw/core';
+import { SCRIPT_DIR } from '@tinyagi/core';
 
-const API_PORT = process.env.TINYCLAW_API_PORT || '3777';
+const API_PORT = process.env.TINYAGI_API_PORT || '3777';
 const API_URL = `http://localhost:${API_PORT}`;
 
 function sendMessage(message: string, source = 'cli') {
@@ -57,23 +57,23 @@ function channelsReset(channel: string) {
 
     if (channel === 'whatsapp') {
         const paths = [
-            path.join(SCRIPT_DIR, '.tinyclaw', 'whatsapp-session'),
-            path.join(SCRIPT_DIR, '.tinyclaw', 'channels', 'whatsapp_ready'),
-            path.join(SCRIPT_DIR, '.tinyclaw', 'channels', 'whatsapp_qr.txt'),
+            path.join(SCRIPT_DIR, '.tinyagi', 'whatsapp-session'),
+            path.join(SCRIPT_DIR, '.tinyagi', 'channels', 'whatsapp_ready'),
+            path.join(SCRIPT_DIR, '.tinyagi', 'channels', 'whatsapp_qr.txt'),
             path.join(SCRIPT_DIR, '.wwebjs_cache'),
         ];
         for (const p of paths) {
             fs.rmSync(p, { recursive: true, force: true });
         }
         p.log.success('WhatsApp session cleared');
-        p.log.message('Restart TinyClaw to re-authenticate: tinyclaw restart');
+        p.log.message('Restart TinyAGI to re-authenticate: tinyagi restart');
         return;
     }
 
     // Token-based channels
     p.log.message(`To reset ${channel}, run the setup wizard to update your bot token:`);
-    p.log.message('  tinyclaw setup');
-    p.log.message(`Or manually edit .tinyclaw/settings.json to change the ${channel} token.`);
+    p.log.message('  tinyagi setup');
+    p.log.message(`Or manually edit .tinyagi/settings.json to change the ${channel} token.`);
 }
 
 // --- CLI dispatch ---

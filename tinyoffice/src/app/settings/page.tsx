@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { getSettings, updateSettings, type Settings } from "@/lib/api";
+import { getSettings, updateSettings, checkConnection, getApiBase, setApiBase, type Settings } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,10 +15,12 @@ import {
   CheckCircle2,
   AlertCircle,
   Wifi,
+  WifiOff,
   MessageSquare,
   Cpu,
   FolderOpen,
   Wand2,
+  RotateCw,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -29,23 +32,62 @@ export default function SettingsPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [needsSetup, setNeedsSetup] = useState(false);
 
+  // Connection state
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [apiUrl, setApiUrl] = useState("");
+  const [checking, setChecking] = useState(false);
+
   useEffect(() => {
-    getSettings()
-      .then((s) => {
-        setSettings(s);
-        setRawJson(JSON.stringify(s, null, 2));
-        // Show setup wizard if settings are effectively empty
-        const isEmpty = !s || (Object.keys(s).length === 0) ||
-          (!s.channels?.enabled?.length && !s.agents && !s.models?.provider);
-        setNeedsSetup(isEmpty);
-      })
-      .catch((err) => {
-        setErrorMsg(err.message);
-        setStatus("error");
-        setNeedsSetup(true);
-      })
-      .finally(() => setLoading(false));
+    setApiUrl(getApiBase());
+    loadSettings();
   }, []);
+
+  async function loadSettings() {
+    setLoading(true);
+    const ok = await checkConnection();
+    setConnected(ok);
+
+    if (!ok) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const s = await getSettings();
+      setSettings(s);
+      setRawJson(JSON.stringify(s, null, 2));
+      const isEmpty = !s || (Object.keys(s).length === 0) ||
+        (!s.channels?.enabled?.length && !s.agents && !s.models?.provider);
+      setNeedsSetup(isEmpty);
+    } catch (err) {
+      setErrorMsg((err as Error).message);
+      setStatus("error");
+      setNeedsSetup(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCheckConnection(baseUrl?: string) {
+    const target = baseUrl ?? apiUrl;
+    setChecking(true);
+    const ok = await checkConnection(target);
+    setChecking(false);
+    setConnected(ok);
+    if (ok) {
+      if (!process.env.NEXT_PUBLIC_API_URL || target !== process.env.NEXT_PUBLIC_API_URL) {
+        setApiBase(target);
+      }
+      loadSettings();
+    }
+  }
+
+  function handleResetUrl() {
+    setApiBase(null);
+    const defaultUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3777";
+    setApiUrl(defaultUrl);
+    handleCheckConnection(defaultUrl);
+  }
 
   const handleSave = async () => {
     try {
@@ -76,32 +118,6 @@ export default function SettingsPage() {
     );
   }
 
-  if (needsSetup) {
-    return (
-      <div className="p-8 max-w-2xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Wand2 className="h-5 w-5 text-primary" />
-            Setup Required
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Run the setup wizard to create your initial configuration.
-          </p>
-        </div>
-        <Card>
-          <CardContent className="pt-6 space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Once setup is complete, you can return here to edit raw settings.
-            </p>
-            <Link href="/setup">
-              <Button>Run Setup</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="p-8 space-y-8">
       <div className="flex items-center justify-between">
@@ -111,108 +127,205 @@ export default function SettingsPage() {
             Settings
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            View and edit TinyClaw configuration
+            View and edit TinyAGI configuration
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {status === "saved" && (
-            <span className="flex items-center gap-1.5 text-sm text-emerald-500">
-              <CheckCircle2 className="h-4 w-4" />
-              Saved
-            </span>
-          )}
-          {status === "error" && (
-            <span className="flex items-center gap-1.5 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4" />
-              {errorMsg}
-            </span>
-          )}
-          <Link href="/setup" className="inline-flex items-center gap-2">
-            <Button variant="outline">
-              <Wand2 className="h-4 w-4" />
-              <span>Run Setup</span>
-            </Button>
-          </Link>
-          <Button onClick={handleSave} disabled={saving || loading}>
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
+        {connected && settings && !needsSetup && (
+          <div className="flex items-center gap-3">
+            {status === "saved" && (
+              <span className="flex items-center gap-1.5 text-sm text-emerald-500">
+                <CheckCircle2 className="h-4 w-4" />
+                Saved
+              </span>
             )}
-            Save Settings
-          </Button>
-        </div>
+            {status === "error" && (
+              <span className="flex items-center gap-1.5 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                {errorMsg}
+              </span>
+            )}
+            <Link href="/setup" className="inline-flex items-center gap-2">
+              <Button variant="outline">
+                <Wand2 className="h-4 w-4" />
+                <span>Run Setup</span>
+              </Button>
+            </Link>
+            <Button onClick={handleSave} disabled={saving || loading}>
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Save Settings
+            </Button>
+          </div>
+        )}
       </div>
 
-      {settings && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <OverviewCard
-            icon={<FolderOpen className="h-4 w-4 text-muted-foreground" />}
-            title="Workspace"
-            value={settings.workspace?.name || settings.workspace?.path || "Default"}
-          />
-          <OverviewCard
-            icon={<Cpu className="h-4 w-4 text-muted-foreground" />}
-            title="Default Provider"
-            value={settings.models?.provider || "anthropic"}
-          />
-          <OverviewCard
-            icon={<Wifi className="h-4 w-4 text-muted-foreground" />}
-            title="Channels"
-            value={settings.channels?.enabled?.join(", ") || "None"}
-          />
-          <OverviewCard
-            icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
-            title="Heartbeat"
-            value={settings.monitoring?.heartbeat_interval ? `${settings.monitoring.heartbeat_interval}s` : "Disabled"}
-          />
-        </div>
-      )}
-
+      {/* Connection card — always visible */}
       <Card>
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
-            Configuration (settings.json)
-            <Badge variant="outline" className="text-[10px]">JSON</Badge>
+            {connected ? (
+              <Wifi className="h-4 w-4 text-emerald-500" />
+            ) : (
+              <WifiOff className="h-4 w-4 text-destructive" />
+            )}
+            API Connection
           </CardTitle>
-          <CardDescription>
-            Edit the raw configuration. Changes take effect on next message processing cycle.
-          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Textarea
-            value={rawJson}
-            onChange={(e) => setRawJson(e.target.value)}
-            rows={30}
-            className="font-mono text-xs leading-relaxed"
-            spellCheck={false}
-          />
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              value={apiUrl}
+              onChange={(e) => setApiUrl(e.target.value)}
+              placeholder="http://localhost:3777"
+              onKeyDown={(e) => e.key === "Enter" && handleCheckConnection()}
+            />
+            <Button
+              variant="outline"
+              onClick={() => handleCheckConnection()}
+              disabled={checking || !apiUrl}
+            >
+              {checking ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCw className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              {connected
+                ? "Connected"
+                : "Not connected — make sure TinyAGI is running"}
+            </span>
+            {apiUrl !== (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3777") && (
+              <button
+                onClick={handleResetUrl}
+                className="text-xs text-muted-foreground hover:text-primary"
+              >
+                Reset to default
+              </button>
+            )}
+          </div>
+
+          {connected === false && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 text-sm space-y-2">
+              <p className="font-medium text-destructive">Cannot reach the API server</p>
+              <p className="text-muted-foreground">
+                Make sure TinyAGI is installed and running:
+              </p>
+              <pre className="bg-muted rounded px-2 py-1 text-xs overflow-x-auto">
+                npx tinyagi{"\n"}# or if already installed:{"\n"}tinyagi start --skip-setup
+              </pre>
+              <p className="text-muted-foreground text-xs">
+                <a
+                  href="https://github.com/TinyAGI/tinyagi#-quick-start"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Installation guide
+                </a>
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">API Endpoints</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-            <ApiEndpoint method="POST" path="/api/message" desc="Send a message to the queue" />
-            <ApiEndpoint method="GET" path="/api/agents" desc="List all agents" />
-            <ApiEndpoint method="GET" path="/api/teams" desc="List all teams" />
-            <ApiEndpoint method="GET" path="/api/settings" desc="Get current settings" />
-            <ApiEndpoint method="PUT" path="/api/settings" desc="Update settings" />
-            <ApiEndpoint method="GET" path="/api/queue/status" desc="Queue status" />
-            <ApiEndpoint method="GET" path="/api/responses" desc="Recent responses" />
-            <ApiEndpoint method="GET" path="/api/events/stream" desc="SSE event stream" />
-            <ApiEndpoint method="GET" path="/api/events" desc="Recent events (polling)" />
-            <ApiEndpoint method="GET" path="/api/logs" desc="Queue processor logs" />
-            <ApiEndpoint method="GET" path="/api/chats" desc="Chat histories" />
+      {/* Setup prompt — connected but no config */}
+      {connected && needsSetup && (
+        <Card>
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex items-center gap-2">
+              <Wand2 className="h-5 w-5 text-primary" />
+              <span className="font-medium">Setup Required</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Run the setup wizard to create your initial configuration.
+            </p>
+            <Link href="/setup">
+              <Button>Run Setup</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Full settings — connected and configured */}
+      {connected && settings && !needsSetup && (
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <OverviewCard
+              icon={<FolderOpen className="h-4 w-4 text-muted-foreground" />}
+              title="Workspace"
+              value={settings.workspace?.name || settings.workspace?.path || "Default"}
+            />
+            <OverviewCard
+              icon={<Cpu className="h-4 w-4 text-muted-foreground" />}
+              title="Default Provider"
+              value={settings.models?.provider || "anthropic"}
+            />
+            <OverviewCard
+              icon={<Wifi className="h-4 w-4 text-muted-foreground" />}
+              title="Channels"
+              value={settings.channels?.enabled?.join(", ") || "None"}
+            />
+            <OverviewCard
+              icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
+              title="Heartbeat"
+              value={settings.monitoring?.heartbeat_interval ? `${settings.monitoring.heartbeat_interval}s` : "Disabled"}
+            />
           </div>
-        </CardContent>
-      </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                Configuration (settings.json)
+                <Badge variant="outline" className="text-[10px]">JSON</Badge>
+              </CardTitle>
+              <CardDescription>
+                Edit the raw configuration. Changes take effect on next message processing cycle.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                value={rawJson}
+                onChange={(e) => setRawJson(e.target.value)}
+                rows={30}
+                className="font-mono text-xs leading-relaxed"
+                spellCheck={false}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">API Endpoints</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+                <ApiEndpoint method="POST" path="/api/message" desc="Send a message to the queue" />
+                <ApiEndpoint method="GET" path="/api/agents" desc="List all agents" />
+                <ApiEndpoint method="GET" path="/api/teams" desc="List all teams" />
+                <ApiEndpoint method="GET" path="/api/settings" desc="Get current settings" />
+                <ApiEndpoint method="PUT" path="/api/settings" desc="Update settings" />
+                <ApiEndpoint method="GET" path="/api/queue/status" desc="Queue status" />
+                <ApiEndpoint method="GET" path="/api/responses" desc="Recent responses" />
+                <ApiEndpoint method="GET" path="/api/events/stream" desc="SSE event stream" />
+                <ApiEndpoint method="GET" path="/api/events" desc="Recent events (polling)" />
+                <ApiEndpoint method="GET" path="/api/logs" desc="Queue processor logs" />
+                <ApiEndpoint method="GET" path="/api/chats" desc="Chat histories" />
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
+
+
 
 function OverviewCard({ icon, title, value }: { icon: React.ReactNode; title: string; value: string }) {
   return (
@@ -229,15 +342,14 @@ function OverviewCard({ icon, title, value }: { icon: React.ReactNode; title: st
 }
 
 function ApiEndpoint({ method, path, desc }: { method: string; path: string; desc: string }) {
-  const methodColor = method === "POST" ? "bg-blue-500/10 text-blue-500" :
-    method === "PUT" ? "bg-orange-500/10 text-orange-500" :
-    "bg-green-500/10 text-green-500";
-
   return (
-    <div className="flex items-center gap-3 border p-3">
-      <Badge className={`${methodColor} text-[10px] font-mono`}>{method}</Badge>
-      <code className="text-xs font-mono flex-1">{path}</code>
-      <span className="text-xs text-muted-foreground hidden lg:inline">{desc}</span>
+    <div className="flex items-start gap-2">
+      <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs font-semibold">{method}</span>
+      <div>
+        <code className="text-xs">{path}</code>
+        <p className="text-xs text-muted-foreground">{desc}</p>
+      </div>
     </div>
   );
 }
+

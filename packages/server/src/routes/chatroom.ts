@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { getSettings, getTeams, getChatMessages } from '@tinyclaw/core';
-import { postToChatRoom } from '@tinyclaw/teams';
+import { getSettings, getTeams, getChatMessages, genId } from '@tinyagi/core';
+import { postToChatRoom } from '@tinyagi/teams';
 
 const app = new Hono();
 
@@ -13,8 +13,7 @@ app.get('/api/chatroom/:teamId', (c) => {
     }
 
     const limit = parseInt(c.req.query('limit') || '100', 10);
-    const sinceId = parseInt(c.req.query('since_id') || '0', 10);
-    const messages = getChatMessages(teamId, limit, sinceId);
+    const messages = getChatMessages(teamId, limit);
     return c.json(messages);
 });
 
@@ -35,7 +34,7 @@ app.post('/api/chatroom/:teamId', async (c) => {
     const id = postToChatRoom(teamId, 'user', body.message.trim(), team.agents, {
         channel: 'chatroom',
         sender: 'user',
-        messageId: `chatroom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        messageId: genId('chatroom'),
     });
 
     return c.json({ ok: true, id });

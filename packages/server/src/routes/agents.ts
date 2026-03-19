@@ -3,9 +3,9 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { Hono } from 'hono';
-import { AgentConfig, CustomProvider } from '@tinyclaw/core';
-import { getSettings, getAgents, ensureAgentDirectory } from '@tinyclaw/core';
-import { log } from '@tinyclaw/core';
+import { AgentConfig, CustomProvider } from '@tinyagi/core';
+import { getSettings, getAgents, ensureAgentDirectory } from '@tinyagi/core';
+import { log } from '@tinyagi/core';
 import { mutateSettings } from './settings';
 
 const app = new Hono();
@@ -50,7 +50,7 @@ app.put('/api/agents/:id', async (c) => {
     const isNew = !currentSettings.agents?.[agentId];
 
     const workspacePath = currentSettings.workspace?.path
-        || path.join(require('os').homedir(), 'tinyclaw-workspace');
+        || path.join(require('os').homedir(), 'tinyagi-workspace');
     const workingDir = body.working_directory || path.join(workspacePath, agentId);
 
     const settings = mutateSettings(s => {
@@ -60,7 +60,6 @@ app.put('/api/agents/:id', async (c) => {
             provider: body.provider!,
             model: body.model!,
             working_directory: workingDir,
-            ...(body.system_prompt ? { system_prompt: body.system_prompt } : {}),
             ...(body.prompt_file ? { prompt_file: body.prompt_file } : {}),
         };
     });
@@ -72,6 +71,10 @@ app.put('/api/agents/:id', async (c) => {
         } catch (err) {
             log('ERROR', `[API] Agent '${agentId}' provisioning failed: ${(err as Error).message}`);
         }
+    }
+
+    if (body.system_prompt != null) {
+        fs.writeFileSync(path.join(workingDir, 'AGENTS.md'), body.system_prompt, 'utf8');
     }
 
     log('INFO', `[API] Agent '${agentId}' saved`);
@@ -239,7 +242,7 @@ app.get('/api/agents/:id/memory', (c) => {
     const agent = settings.agents?.[agentId];
     if (!agent) return c.json({ error: `agent '${agentId}' not found` }, 404);
 
-    const { loadMemoryIndex } = require('@tinyclaw/core');
+    const { loadMemoryIndex } = require('@tinyagi/core');
     const index = loadMemoryIndex(agent.working_directory);
     const memoryDir = path.join(agent.working_directory, 'memory');
     const files: { name: string; path: string }[] = [];
@@ -262,7 +265,7 @@ app.get('/api/agents/:id/memory', (c) => {
     return c.json({ index, files, memoryDir });
 });
 
-// GET /api/agents/:id/heartbeat — read heartbeat.md from workspace
+// GET /api/agents/:id/heartbeat — read heartbeat.md and settings from workspace
 app.get('/api/agents/:id/heartbeat', (c) => {
     const agentId = c.req.param('id');
     const settings = getSettings();
@@ -274,19 +277,39 @@ app.get('/api/agents/:id/heartbeat', (c) => {
     if (fs.existsSync(heartbeatMd)) {
         try { content = fs.readFileSync(heartbeatMd, 'utf8'); } catch { /* skip */ }
     }
-    return c.json({ content, path: heartbeatMd });
+    return c.json({
+        content,
+        path: heartbeatMd,
+        enabled: agent.heartbeat?.enabled ?? true,
+        interval: agent.heartbeat?.interval,
+    });
 });
 
-// PUT /api/agents/:id/heartbeat — write heartbeat.md to workspace
+// PUT /api/agents/:id/heartbeat — write heartbeat.md and settings to workspace
 app.put('/api/agents/:id/heartbeat', async (c) => {
     const agentId = c.req.param('id');
     const settings = getSettings();
     const agent = settings.agents?.[agentId];
     if (!agent) return c.json({ error: `agent '${agentId}' not found` }, 404);
 
-    const body = await c.req.json() as { content: string };
-    const heartbeatMd = path.join(agent.working_directory, 'heartbeat.md');
-    fs.writeFileSync(heartbeatMd, body.content || '', 'utf8');
+    const body = await c.req.json() as { content?: string; enabled?: boolean; interval?: number };
+
+    // Write heartbeat.md if content provided
+    if (body.content != null) {
+        const heartbeatMd = path.join(agent.working_directory, 'heartbeat.md');
+        fs.writeFileSync(heartbeatMd, body.content || '', 'utf8');
+    }
+
+    // Persist heartbeat overrides to settings.json
+    if (body.enabled != null || body.interval != null) {
+        mutateSettings(s => {
+            if (!s.agents?.[agentId]) return;
+            if (!s.agents[agentId].heartbeat) s.agents[agentId].heartbeat = {};
+            if (body.enabled != null) s.agents[agentId].heartbeat!.enabled = body.enabled;
+            if (body.interval != null) s.agents[agentId].heartbeat!.interval = body.interval;
+        });
+    }
+
     return c.json({ ok: true });
 });
 

@@ -1,5 +1,5 @@
 {
-  "name": "@tinyclaw/core",
+  "name": "@tinyagi/core",
   "version": "0.0.10",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,8 +9,10 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
+    "croner": "^10.0.1",
     "dotenv": "^16.4.0",
-    "jsonrepair": "^3.13.2"
+    "jsonrepair": "^3.13.2",
+    "nanoid": "^5.1.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13"

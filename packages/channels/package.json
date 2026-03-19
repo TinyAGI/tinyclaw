@@ -1,5 +1,5 @@
 {
-  "name": "@tinyclaw/channels",
+  "name": "@tinyagi/channels",
   "version": "0.0.10",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -14,7 +14,7 @@
     "whatsapp": "node dist/whatsapp.js"
   },
   "dependencies": {
-    "@tinyclaw/core": "*",
+    "@tinyagi/core": "*",
     "discord.js": "^14.16.0",
     "node-telegram-bot-api": "^0.67.0",
     "qrcode-terminal": "^0.12.0",

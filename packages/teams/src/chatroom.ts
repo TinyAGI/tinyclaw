@@ -1,3 +1,5 @@
+import { genId, log } from '@tinyagi/core';
+
 export type GroupedChatroomResult = {
     messages: any[];
     messageIds: number[][];
@@ -36,6 +38,6 @@ function buildCombinedMessage(messages: any[]): any {
     return {
         ...first,
         message: combinedMessage,
-        message_id: `chatroom_batch_${first.message_id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        message_id: genId('chatroom_batch'),
     };
 }

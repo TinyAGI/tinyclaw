@@ -1,10 +1,22 @@
 import * as p from '@clack/prompts';
 import fs from 'fs';
 import path from 'path';
-import { Settings, SETTINGS_FILE, TINYCLAW_HOME, SCRIPT_DIR } from '@tinyclaw/core';
+import { Settings, SETTINGS_FILE, TINYAGI_HOME, SCRIPT_DIR } from '@tinyagi/core';
 
 // Re-export for convenience
-export { SETTINGS_FILE, TINYCLAW_HOME, SCRIPT_DIR };
+export { SETTINGS_FILE, TINYAGI_HOME, SCRIPT_DIR };
+
+const BANNER = `
+  ▀█▀ █ █▄ █ █▄█ █▀█ █▀▀ █
+   █  █ █ ▀█  █  █▀█ █▄█ █
+`;
+
+/**
+ * Print the TinyAGI ASCII banner.
+ */
+export function printBanner(): void {
+    console.log(BANNER);
+}
 
 /**
  * Unwrap a clack prompt result: exit on cancel, return typed value.
@@ -101,21 +113,35 @@ export function anthropicModelOptions(): ProviderOption[] {
 
 export function openaiModelOptions(): ProviderOption[] {
     return [
-        { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex', hint: 'recommended' },
-        { value: 'gpt-5.2', label: 'GPT-5.2' },
+        { value: 'gpt-5.4-codex', label: 'GPT-5.4 Codex', hint: 'recommended' },
+        { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+        { value: 'gpt-5.4', label: 'GPT-5.4' },
+        { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+        { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
         { value: '__custom__', label: 'Custom', hint: 'enter model name' },
     ];
 }
 
 export function opencodeModelOptions(): ProviderOption[] {
     return [
-        { value: 'opencode/claude-sonnet-4-5', label: 'opencode/claude-sonnet-4-5', hint: 'recommended' },
+        // Anthropic
+        { value: 'opencode/claude-sonnet-4-6', label: 'opencode/claude-sonnet-4-6', hint: 'recommended' },
         { value: 'opencode/claude-opus-4-6', label: 'opencode/claude-opus-4-6' },
+        { value: 'anthropic/claude-sonnet-4-6', label: 'anthropic/claude-sonnet-4-6' },
+        { value: 'anthropic/claude-opus-4-6', label: 'anthropic/claude-opus-4-6' },
+        // OpenAI
+        { value: 'openai/gpt-5.4-codex', label: 'openai/gpt-5.4-codex' },
+        { value: 'openai/gpt-5.3-codex', label: 'openai/gpt-5.3-codex' },
+        { value: 'openai/gpt-5.3-codex-spark', label: 'openai/gpt-5.3-codex-spark' },
+        // Google
         { value: 'opencode/gemini-3-flash', label: 'opencode/gemini-3-flash' },
         { value: 'opencode/gemini-3-pro', label: 'opencode/gemini-3-pro' },
-        { value: 'anthropic/claude-sonnet-4-5', label: 'anthropic/claude-sonnet-4-5' },
-        { value: 'anthropic/claude-opus-4-6', label: 'anthropic/claude-opus-4-6' },
-        { value: 'openai/gpt-5.3-codex', label: 'openai/gpt-5.3-codex' },
+        // Chinese models
+        { value: 'opencode/glm-5', label: 'opencode/glm-5' },
+        { value: 'opencode/kimi-k2.5', label: 'opencode/kimi-k2.5' },
+        { value: 'opencode/kimi-k2.5-free', label: 'opencode/kimi-k2.5-free' },
+        { value: 'opencode/minimax-m2.5', label: 'opencode/minimax-m2.5' },
+        { value: 'opencode/minimax-m2.5-free', label: 'opencode/minimax-m2.5-free' },
         { value: '__custom__', label: 'Custom', hint: 'enter model name' },
     ];
 }

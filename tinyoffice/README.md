@@ -1,6 +1,6 @@
 # TinyOffice
 
-Web portal for TinyClaw. TinyOffice provides a browser UI for monitoring and operating your agent system.
+Web portal for TinyAGI. TinyOffice provides a browser UI for monitoring and operating your agent system.
 
 ## Features
 
@@ -10,13 +10,13 @@ Web portal for TinyClaw. TinyOffice provides a browser UI for monitoring and ope
 - Team management (members + leader)
 - Task board (kanban + drag/drop + assign to agents/teams)
 - Logs and live events view
-- Settings editor for `.tinyclaw/settings.json`
+- Settings editor for `.tinyagi/settings.json`
 - Office simulation view of agent/team interactions
 
 ## Requirements
 
 - Node.js 18+
-- Running TinyClaw backend/API (default: `http://localhost:3777`)
+- Running TinyAGI backend/API (default: `http://localhost:3777`)
 
 ## Setup
 
@@ -65,7 +65,7 @@ npm run start
 
 ## API Endpoints Used
 
-TinyOffice calls TinyClaw API endpoints such as:
+TinyOffice calls TinyAGI API endpoints such as:
 
 - `POST /api/message`
 - `GET /api/agents`
@@ -88,5 +88,5 @@ TinyOffice calls TinyClaw API endpoints such as:
 
 ## Notes
 
-- TinyOffice is UI-only; it does not replace TinyClaw daemon processes.
-- Start TinyClaw first so queue processor, channels, and API are available.
+- TinyOffice is UI-only; it does not replace TinyAGI daemon processes.
+- Start TinyAGI first so queue processor, channels, and API are available.

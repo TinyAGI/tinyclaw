@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# TinyClaw CLI Installation Script
+# TinyAGI CLI Installation Script
+# Installs TinyAGI to ~/.tinyagi and creates global symlinks.
+#
+# Supports: curl -fsSL <url>/install.sh | bash
+# When piped, downloads the release tarball, extracts it, and installs.
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-WRAPPER="$PROJECT_ROOT/bin/tinyclaw"
+INSTALL_HOME="$HOME/.tinyagi"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -13,9 +15,46 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}TinyClaw CLI Installer${NC}"
-echo "======================"
+# If piped (no BASH_SOURCE path), download and extract first
+if [ -z "${BASH_SOURCE[0]}" ] || [ "${BASH_SOURCE[0]}" = "bash" ]; then
+    INSTALL_TMPDIR="$(mktemp -d)"
+    TARBALL_URL="https://github.com/TinyAGI/tinyagi/releases/latest/download/tinyagi-bundle.tar.gz"
+    echo "Downloading TinyAGI..."
+    curl -fsSL "$TARBALL_URL" | tar -xz -C "$INSTALL_TMPDIR"
+    exec bash "$INSTALL_TMPDIR/tinyagi/scripts/install.sh"
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+echo -e "${BLUE}TinyAGI CLI Installer${NC}"
+echo "====================="
 echo ""
+
+# Migrate from ~/.tinyclaw if needed
+if [ -d "$HOME/.tinyclaw" ] && [ ! -d "$INSTALL_HOME" ]; then
+    echo -e "Migrating ${YELLOW}~/.tinyclaw${NC} → ${GREEN}~/.tinyagi${NC}"
+    mv "$HOME/.tinyclaw" "$INSTALL_HOME"
+    # Rename database files
+    [ -f "$INSTALL_HOME/tinyclaw.db" ] && mv "$INSTALL_HOME/tinyclaw.db" "$INSTALL_HOME/tinyagi.db"
+    [ -f "$INSTALL_HOME/tinyclaw.db-wal" ] && mv "$INSTALL_HOME/tinyclaw.db-wal" "$INSTALL_HOME/tinyagi.db-wal"
+    [ -f "$INSTALL_HOME/tinyclaw.db-shm" ] && mv "$INSTALL_HOME/tinyclaw.db-shm" "$INSTALL_HOME/tinyagi.db-shm"
+    echo -e "  ${GREEN}✓${NC} Migrated from ~/.tinyclaw"
+fi
+
+# Copy project files to ~/.tinyagi (permanent location)
+if [ "$PROJECT_ROOT" != "$INSTALL_HOME" ]; then
+    echo -e "Installing to: ${GREEN}~/.tinyagi${NC}"
+    mkdir -p "$INSTALL_HOME"
+    # Copy everything from the extracted/source bundle
+    cp -a "$PROJECT_ROOT/." "$INSTALL_HOME/"
+    PROJECT_ROOT="$INSTALL_HOME"
+    echo -e "  ${GREEN}✓${NC} Files installed to ~/.tinyagi"
+else
+    echo -e "Updating in: ${GREEN}~/.tinyagi${NC}"
+fi
+
+WRAPPER="$PROJECT_ROOT/bin/tinyagi"
 
 # Check if wrapper exists
 if [ ! -f "$WRAPPER" ]; then
@@ -23,77 +62,68 @@ if [ ! -f "$WRAPPER" ]; then
     exit 1
 fi
 
-# Determine installation directory
+chmod +x "$WRAPPER"
+chmod +x "$PROJECT_ROOT/bin/tinyclaw" 2>/dev/null || true
+chmod +x "$PROJECT_ROOT/lib/tinyagi.sh" 2>/dev/null || true
+
+# Rebuild native modules for this platform (bundle was built on Linux)
+if command -v npm &> /dev/null; then
+    echo -e "Rebuilding native modules..."
+    cd "$PROJECT_ROOT" && npm rebuild better-sqlite3 --silent 2>/dev/null || true
+    echo -e "  ${GREEN}✓${NC} Native modules rebuilt"
+fi
+
+# Determine symlink directory
 INSTALL_DIR=""
 
 if [ -w "/usr/local/bin" ]; then
     INSTALL_DIR="/usr/local/bin"
-    echo -e "Installing to: ${GREEN}/usr/local/bin${NC} (system-wide)"
+    echo -e "Symlinks in: ${GREEN}/usr/local/bin${NC} (system-wide)"
 elif [ -d "$HOME/.local/bin" ]; then
     INSTALL_DIR="$HOME/.local/bin"
-    echo -e "Installing to: ${GREEN}~/.local/bin${NC} (user)"
+    echo -e "Symlinks in: ${GREEN}~/.local/bin${NC} (user)"
 else
-    # Create ~/.local/bin if it doesn't exist
     mkdir -p "$HOME/.local/bin"
     INSTALL_DIR="$HOME/.local/bin"
-    echo -e "Installing to: ${GREEN}~/.local/bin${NC} (user, created)"
+    echo -e "Symlinks in: ${GREEN}~/.local/bin${NC} (user, created)"
 fi
 
-# Check if already installed
-if [ -L "$INSTALL_DIR/tinyclaw" ]; then
-    EXISTING_TARGET="$(readlink "$INSTALL_DIR/tinyclaw")"
-    if [ "$EXISTING_TARGET" = "$WRAPPER" ]; then
-        echo -e "${YELLOW}TinyClaw is already installed at $INSTALL_DIR/tinyclaw${NC}"
-        echo ""
-        if [ -t 0 ]; then
-            read -p "Reinstall? (y/N) " -n 1 -r
-            echo ""
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                echo "Installation cancelled."
-                exit 0
-            fi
-        fi
-        rm "$INSTALL_DIR/tinyclaw"
-    else
-        echo -e "${RED}Warning: $INSTALL_DIR/tinyclaw exists but points to a different location${NC}"
-        echo "  Current: $EXISTING_TARGET"
-        echo "  New:     $WRAPPER"
-        echo ""
-        if [ -t 0 ]; then
-            read -p "Replace it? (y/N) " -n 1 -r
-            echo ""
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                echo "Installation cancelled."
-                exit 0
-            fi
-        fi
-        rm "$INSTALL_DIR/tinyclaw"
+# Install a symlink (removes existing if present)
+install_symlink() {
+    local name="$1"
+    local target="$2"
+
+    if [ -L "$INSTALL_DIR/$name" ]; then
+        rm "$INSTALL_DIR/$name"
+    elif [ -e "$INSTALL_DIR/$name" ]; then
+        echo -e "${RED}Error: $INSTALL_DIR/$name exists but is not a symlink${NC}"
+        echo "Please remove it manually and try again."
+        return 1
     fi
-elif [ -e "$INSTALL_DIR/tinyclaw" ]; then
-    echo -e "${RED}Error: $INSTALL_DIR/tinyclaw exists but is not a symlink${NC}"
-    echo "Please remove it manually and try again."
-    exit 1
-fi
 
-# Create symlink
-echo ""
-echo "Creating symlink..."
-ln -s "$WRAPPER" "$INSTALL_DIR/tinyclaw"
+    ln -s "$target" "$INSTALL_DIR/$name"
+    echo -e "  ${GREEN}✓${NC} $name → $target"
+}
 
-echo -e "${GREEN}✓ TinyClaw CLI installed successfully!${NC}"
 echo ""
-echo "You can now run 'tinyclaw' from any directory:"
+echo "Creating symlinks..."
+install_symlink "tinyagi" "$WRAPPER"
+install_symlink "tinyclaw" "$WRAPPER"  # backward compat
+
 echo ""
-echo -e "  ${GREEN}tinyclaw start${NC}     - Start TinyClaw"
-echo -e "  ${GREEN}tinyclaw status${NC}    - Check status"
-echo -e "  ${GREEN}tinyclaw --help${NC}    - Show all commands"
+echo -e "${GREEN}✓ TinyAGI CLI installed successfully!${NC}"
+echo ""
+echo "You can now run 'tinyagi' from any directory:"
+echo ""
+echo -e "  ${GREEN}tinyagi start${NC}     - Start TinyAGI"
+echo -e "  ${GREEN}tinyagi status${NC}    - Check status"
+echo -e "  ${GREEN}tinyagi --help${NC}    - Show all commands"
 echo ""
 
 # Verify it works — if not in PATH, add it to the shell profile
-if command -v tinyclaw &> /dev/null; then
-    echo -e "${GREEN}✓ 'tinyclaw' command is available${NC}"
+if command -v tinyagi &> /dev/null; then
+    echo -e "${GREEN}✓ 'tinyagi' command is available${NC}"
 elif [ "$INSTALL_DIR" = "$HOME/.local/bin" ]; then
-    # Determine the user's shell profile
     SHELL_NAME="$(basename "$SHELL")"
     SHELL_PROFILE=""
     case "$SHELL_NAME" in
@@ -110,24 +140,20 @@ elif [ "$INSTALL_DIR" = "$HOME/.local/bin" ]; then
 
     PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
 
-    # Only add if not already present
     if [ -n "$SHELL_PROFILE" ] && ! grep -qF '.local/bin' "$SHELL_PROFILE" 2>/dev/null; then
         echo "" >> "$SHELL_PROFILE"
-        echo "# Added by TinyClaw installer" >> "$SHELL_PROFILE"
+        echo "# Added by TinyAGI installer" >> "$SHELL_PROFILE"
         echo "$PATH_LINE" >> "$SHELL_PROFILE"
         echo -e "${GREEN}✓ Added ~/.local/bin to PATH in ${SHELL_PROFILE/#$HOME/\~}${NC}"
     fi
 
-    # Also export for the current session
     export PATH="$HOME/.local/bin:$PATH"
-
     echo -e "${YELLOW}⚠ Restart your terminal or run:  source ${SHELL_PROFILE/#$HOME/\~}${NC}"
 else
-    echo -e "${YELLOW}⚠ 'tinyclaw' command not found in PATH${NC}"
+    echo -e "${YELLOW}⚠ 'tinyagi' command not found in PATH${NC}"
     echo "  Add $INSTALL_DIR to your PATH."
 fi
 
 echo ""
-echo "To uninstall, run:"
-echo -e "  ${GREEN}./uninstall.sh${NC}"
+echo "To uninstall: rm -rf ~/.tinyagi && rm $INSTALL_DIR/tinyagi $INSTALL_DIR/tinyclaw"
 echo ""

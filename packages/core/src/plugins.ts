@@ -1,13 +1,13 @@
 /**
- * Plugin System for TinyClaw
+ * Plugin System for TinyAGI
  *
- * Plugins auto-discover from .tinyclaw/plugins/ folder.
+ * Plugins auto-discover from .tinyagi/plugins/ folder.
  * Each plugin exports an activate() function and/or a hooks object from index.ts.
  */
 
 import fs from 'fs';
 import path from 'path';
-import { TINYCLAW_HOME } from './config';
+import { TINYAGI_HOME } from './config';
 import { log, onEvent } from './logging';
 
 // Types
@@ -42,7 +42,7 @@ export interface Hooks {
 export interface PluginContext {
     on(eventType: string | '*', handler: (event: PluginEvent) => void): void;
     log(level: string, message: string): void;
-    getTinyClawHome(): string;
+    getTinyAGIHome(): string;
 }
 
 interface LoadedPlugin {
@@ -67,20 +67,20 @@ function createPluginContext(pluginName: string): PluginContext {
         log(level: string, message: string): void {
             log(level, `[plugin:${pluginName}] ${message}`);
         },
-        getTinyClawHome(): string {
-            return TINYCLAW_HOME;
+        getTinyAGIHome(): string {
+            return TINYAGI_HOME;
         },
     };
 }
 
 /**
- * Load all plugins from .tinyclaw/plugins/.
+ * Load all plugins from .tinyagi/plugins/.
  * Each plugin directory should have an index.ts/index.js that exports:
  *   - activate(ctx: PluginContext): void  (optional)
  *   - hooks: Hooks                        (optional)
  */
 export async function loadPlugins(): Promise<void> {
-    const pluginsDir = path.join(TINYCLAW_HOME, 'plugins');
+    const pluginsDir = path.join(TINYAGI_HOME, 'plugins');
 
     if (!fs.existsSync(pluginsDir)) {
         log('DEBUG', 'No plugins directory found');

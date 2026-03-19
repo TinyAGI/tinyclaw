@@ -1,4 +1,4 @@
-import { AgentConfig, TeamConfig, log } from '@tinyclaw/core';
+import { AgentConfig, TeamConfig, log } from '@tinyagi/core';
 
 // ── Bracket-depth tag parser ────────────────────────────────────────────────
 

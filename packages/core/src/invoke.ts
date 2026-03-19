@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { AgentConfig, CustomProvider, TeamConfig } from './types';
-import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel, getSettings } from './config';
+import { SCRIPT_DIR, resolveModel, getSettings } from './config';
 import { log } from './logging';
 import { ensureAgentDirectory, buildSystemPrompt } from './agent';
 
@@ -48,8 +48,114 @@ export async function runCommand(command: string, args: string[], cwd?: string, 
 }
 
 /**
+ * Spawn a command and process stdout line-by-line as they arrive.
+ * Calls `onLine` for each complete line. Returns the full stdout when done.
+ */
+export async function runCommandStreaming(
+    command: string,
+    args: string[],
+    onLine: (line: string) => void,
+    cwd?: string,
+    envOverrides?: Record<string, string>,
+): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const env = { ...process.env, ...envOverrides };
+        delete env.CLAUDECODE;
+
+        const child = spawn(command, args, {
+            cwd: cwd || SCRIPT_DIR,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env,
+        });
+
+        let stdout = '';
+        let stderr = '';
+        let lineBuffer = '';
+
+        child.stdout.setEncoding('utf8');
+        child.stderr.setEncoding('utf8');
+
+        child.stdout.on('data', (chunk: string) => {
+            stdout += chunk;
+            lineBuffer += chunk;
+            const lines = lineBuffer.split('\n');
+            // Keep the last incomplete line in the buffer
+            lineBuffer = lines.pop()!;
+            for (const line of lines) {
+                if (line.trim()) onLine(line);
+            }
+        });
+
+        child.stderr.on('data', (chunk: string) => {
+            stderr += chunk;
+        });
+
+        child.on('error', (error) => {
+            reject(error);
+        });
+
+        child.on('close', (code) => {
+            // Flush remaining buffer
+            if (lineBuffer.trim()) onLine(lineBuffer);
+
+            if (code === 0) {
+                resolve(stdout);
+                return;
+            }
+
+            const errorMessage = stderr.trim() || `Command exited with code ${code}`;
+            reject(new Error(errorMessage));
+        });
+    });
+}
+
+/**
+ * Extract displayable text from a Claude stream-json event.
+ * Returns text content from assistant messages and tool use summaries.
+ * Skips 'result' events — those duplicate the final assistant message
+ * which is already delivered through the normal response pipeline.
+ */
+function extractClaudeEventText(json: any): string | null {
+    if (json.type === 'assistant' && json.message?.content) {
+        const parts: string[] = [];
+        for (const block of json.message.content) {
+            if (block.type === 'text' && block.text) {
+                parts.push(block.text);
+            } else if (block.type === 'tool_use' && block.name) {
+                parts.push(`[tool: ${block.name}]`);
+            }
+        }
+        return parts.length > 0 ? parts.join('\n') : null;
+    }
+    return null;
+}
+
+/**
+ * Extract displayable text from a Codex JSONL event.
+ */
+function extractCodexEventText(json: any): string | null {
+    if (json.type === 'item.completed' && json.item?.type === 'agent_message') {
+        return json.item.text || null;
+    }
+    return null;
+}
+
+/**
+ * Extract displayable text from an OpenCode JSONL event.
+ */
+function extractOpenCodeEventText(json: any): string | null {
+    if (json.type === 'text' && json.part?.text) {
+        return json.part.text;
+    }
+    return null;
+}
+
+/**
  * Invoke a single agent with a message. Contains all Claude/Codex invocation logic.
  * Returns the raw response text.
+ *
+ * When `onEvent` is provided, streams intermediate text events as they arrive
+ * from the CLI subprocess (verbose/streaming mode).
  */
 export async function invokeAgent(
     agent: AgentConfig,
@@ -58,7 +164,8 @@ export async function invokeAgent(
     workspacePath: string,
     shouldReset: boolean,
     agents: Record<string, AgentConfig> = {},
-    teams: Record<string, TeamConfig> = {}
+    teams: Record<string, TeamConfig> = {},
+    onEvent?: (text: string) => void,
 ): Promise<string> {
     // Ensure agent directory exists with config files
     const agentDir = path.join(workspacePath, agentId);
@@ -84,7 +191,7 @@ export async function invokeAgent(
     let provider = rawProvider;
     let customProvider: CustomProvider | undefined;
     let envOverrides: Record<string, string> = {
-        TINYCLAW_AGENT_ID: agentId,
+        TINYAGI_AGENT_ID: agentId,
     };
 
     if (rawProvider.startsWith('custom:')) {
@@ -122,7 +229,7 @@ export async function invokeAgent(
     const effectiveModel = agent.model || customProvider?.model || '';
 
     if (provider === 'openai') {
-        log('INFO', `Using Codex CLI (agent: ${agentId})`);
+        log('DEBUG', `Using Codex CLI (agent: ${agentId})`);
 
         const shouldResume = !shouldReset;
 
@@ -130,7 +237,7 @@ export async function invokeAgent(
             log('INFO', `Resetting Codex conversation for agent: ${agentId}`);
         }
 
-        const modelId = customProvider ? effectiveModel : resolveCodexModel(effectiveModel);
+        const modelId = customProvider ? effectiveModel : resolveModel(effectiveModel, 'openai');
         const codexArgs = ['exec'];
         if (shouldResume) {
             codexArgs.push('resume', '--last');
@@ -143,19 +250,33 @@ export async function invokeAgent(
         }
         codexArgs.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json', message);
 
-        const codexOutput = await runCommand('codex', codexArgs, workingDir, envOverrides);
-
-        // Parse JSONL output and extract final agent_message
         let response = '';
-        const lines = codexOutput.trim().split('\n');
-        for (const line of lines) {
-            try {
-                const json = JSON.parse(line);
-                if (json.type === 'item.completed' && json.item?.type === 'agent_message') {
-                    response = json.item.text;
+
+        if (onEvent) {
+            await runCommandStreaming('codex', codexArgs, (line) => {
+                try {
+                    const json = JSON.parse(line);
+                    const text = extractCodexEventText(json);
+                    if (text) {
+                        response = text;
+                        onEvent(text);
+                    }
+                } catch (e) {
+                    // Ignore lines that aren't valid JSON
                 }
-            } catch (e) {
-                // Ignore lines that aren't valid JSON
+            }, workingDir, envOverrides);
+        } else {
+            const codexOutput = await runCommand('codex', codexArgs, workingDir, envOverrides);
+            const lines = codexOutput.trim().split('\n');
+            for (const line of lines) {
+                try {
+                    const json = JSON.parse(line);
+                    if (json.type === 'item.completed' && json.item?.type === 'agent_message') {
+                        response = json.item.text;
+                    }
+                } catch (e) {
+                    // Ignore lines that aren't valid JSON
+                }
             }
         }
 
@@ -163,10 +284,10 @@ export async function invokeAgent(
     } else if (provider === 'opencode') {
         // OpenCode CLI — non-interactive mode via `opencode run`.
         // Outputs JSONL with --format json; extract "text" type events for the response.
-        // Model passed via --model in provider/model format (e.g. opencode/claude-sonnet-4-5).
+        // Model passed via --model in provider/model format (e.g. opencode/claude-sonnet-4-6).
         // Supports -c flag for conversation continuation (resumes last session).
-        const modelId = resolveOpenCodeModel(effectiveModel);
-        log('INFO', `Using OpenCode CLI (agent: ${agentId}, model: ${modelId})`);
+        const modelId = resolveModel(effectiveModel, 'opencode');
+        log('DEBUG', `Using OpenCode CLI (agent: ${agentId}, model: ${modelId})`);
 
         const continueConversation = !shouldReset;
 
@@ -198,26 +319,40 @@ export async function invokeAgent(
         }
         opencodeArgs.push(message);
 
-        const opencodeOutput = await runCommand('opencode', opencodeArgs, workingDir, envOverrides);
-
-        // Parse JSONL output and collect all text parts
         let response = '';
-        const lines = opencodeOutput.trim().split('\n');
-        for (const line of lines) {
-            try {
-                const json = JSON.parse(line);
-                if (json.type === 'text' && json.part?.text) {
-                    response = json.part.text;
+
+        if (onEvent) {
+            await runCommandStreaming('opencode', opencodeArgs, (line) => {
+                try {
+                    const json = JSON.parse(line);
+                    const text = extractOpenCodeEventText(json);
+                    if (text) {
+                        response = text;
+                        onEvent(text);
+                    }
+                } catch (e) {
+                    // Ignore lines that aren't valid JSON
                 }
-            } catch (e) {
-                // Ignore lines that aren't valid JSON
+            }, workingDir, envOverrides);
+        } else {
+            const opencodeOutput = await runCommand('opencode', opencodeArgs, workingDir, envOverrides);
+            const lines = opencodeOutput.trim().split('\n');
+            for (const line of lines) {
+                try {
+                    const json = JSON.parse(line);
+                    if (json.type === 'text' && json.part?.text) {
+                        response = json.part.text;
+                    }
+                } catch (e) {
+                    // Ignore lines that aren't valid JSON
+                }
             }
         }
 
         return response || 'Sorry, I could not generate a response from OpenCode.';
     } else {
         // Default to Claude (Anthropic)
-        log('INFO', `Using Claude provider (agent: ${agentId})`);
+        log('DEBUG', `Using Claude provider (agent: ${agentId})`);
 
         const continueConversation = !shouldReset;
 
@@ -225,7 +360,7 @@ export async function invokeAgent(
             log('INFO', `Resetting conversation for agent: ${agentId}`);
         }
 
-        const modelId = customProvider ? effectiveModel : resolveClaudeModel(effectiveModel);
+        const modelId = customProvider ? effectiveModel : resolveModel(effectiveModel, 'anthropic');
         const claudeArgs = ['--dangerously-skip-permissions'];
         if (modelId) {
             claudeArgs.push('--model', modelId);
@@ -236,8 +371,37 @@ export async function invokeAgent(
         if (continueConversation) {
             claudeArgs.push('-c');
         }
-        claudeArgs.push('-p', message);
 
+        if (onEvent) {
+            claudeArgs.push('--output-format', 'stream-json', '--verbose');
+            claudeArgs.push('-p', message);
+
+            let response = '';
+            await runCommandStreaming('claude', claudeArgs, (line) => {
+                try {
+                    const json = JSON.parse(line);
+                    // Use result event for the return value (not emitted as progress)
+                    if (json.type === 'result') {
+                        if (json.result) response = json.result;
+                        // Log raw usage stats from the result event
+                        if (json.usage) log('INFO', `Claude usage (${agentId}): ${JSON.stringify(json.usage)}`);
+                        if (json.modelUsage) log('INFO', `Claude model usage (${agentId}): ${JSON.stringify(json.modelUsage)}`);
+                        return;
+                    }
+                    const text = extractClaudeEventText(json);
+                    if (text) {
+                        response = text;
+                        onEvent(text);
+                    }
+                } catch (e) {
+                    // Ignore lines that aren't valid JSON
+                }
+            }, workingDir, envOverrides);
+
+            return response || 'Sorry, I could not generate a response from Claude.';
+        }
+
+        claudeArgs.push('-p', message);
         return await runCommand('claude', claudeArgs, workingDir, envOverrides);
     }
 }

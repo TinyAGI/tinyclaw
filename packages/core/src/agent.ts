@@ -1,14 +1,27 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { AgentConfig, TeamConfig } from './types';
 import { SCRIPT_DIR } from './config';
 import { loadMemoryIndex } from './memory';
+import { log } from './logging';
 
 /**
  * Built-in agent instructions read from the AGENTS.md template at SCRIPT_DIR.
  * Teammate markers are replaced at runtime by buildSystemPrompt().
  */
 export const BUILTIN_AGENT_INSTRUCTIONS = fs.readFileSync(path.join(SCRIPT_DIR, 'AGENTS.md'), 'utf8');
+const BUILTIN_AGENT_INSTRUCTIONS_HASH = crypto
+    .createHash('sha256')
+    .update(BUILTIN_AGENT_INSTRUCTIONS)
+    .digest('hex');
+
+type PromptCacheEntry = { hash: string; prompt: string };
+const systemPromptCache = new Map<string, PromptCacheEntry>();
+
+function hashString(value: string): string {
+    return crypto.createHash('sha256').update(value).digest('hex');
+}
 
 /**
  * Recursively copy directory
@@ -90,12 +103,12 @@ export function ensureAgentDirectory(agentDir: string): void {
         // Create empty AGENTS.md for user customization
         fs.writeFileSync(path.join(agentDir, 'AGENTS.md'), '');
 
-        // Create .tinyclaw directory and copy SOUL.md
-        const targetTinyclaw = path.join(agentDir, '.tinyclaw');
-        fs.mkdirSync(targetTinyclaw, { recursive: true });
+        // Create .tinyagi directory and copy SOUL.md
+        const targetTinyagi = path.join(agentDir, '.tinyagi');
+        fs.mkdirSync(targetTinyagi, { recursive: true });
         const sourceSoul = path.join(SCRIPT_DIR, 'SOUL.md');
         if (fs.existsSync(sourceSoul)) {
-            fs.copyFileSync(sourceSoul, path.join(targetTinyclaw, 'SOUL.md'));
+            fs.copyFileSync(sourceSoul, path.join(targetTinyagi, 'SOUL.md'));
         }
     }
 
@@ -124,27 +137,35 @@ export function buildSystemPrompt(
     const startMarker = '<!-- TEAMMATES_START -->';
     const endMarker = '<!-- TEAMMATES_END -->';
 
-    const teammates: { id: string; name: string; model: string }[] = [];
-    for (const team of Object.values(teams)) {
+    // Collect teams this agent belongs to
+    const agentTeams: { teamId: string; teamName: string; leaderId: string; members: { id: string; name: string; model: string }[] }[] = [];
+    for (const [teamId, team] of Object.entries(teams)) {
         if (!team.agents.includes(agentId)) continue;
+        const members: { id: string; name: string; model: string }[] = [];
         for (const tid of team.agents) {
             if (tid === agentId) continue;
             const agent = agents[tid];
-            if (agent && !teammates.some(t => t.id === tid)) {
-                teammates.push({ id: tid, name: agent.name, model: agent.model });
+            if (agent) {
+                members.push({ id: tid, name: agent.name, model: agent.model });
             }
         }
+        agentTeams.push({ teamId, teamName: team.name, leaderId: team.leader_agent, members });
     }
 
     let block = '';
     const self = agents[agentId];
+    const isLeaderOfAny = agentTeams.some(t => t.leaderId === agentId);
     if (self) {
-        block += `\n### You\n\n- \`@${agentId}\` — **${self.name}** (${self.model})\n`;
+        const leaderTag = isLeaderOfAny ? ' *(team leader)*' : '';
+        block += `\n### You\n\n- \`@${agentId}\` — **${self.name}** (${self.model})${leaderTag}\n`;
     }
-    if (teammates.length > 0) {
-        block += '\n### Your Teammates\n\n';
-        for (const t of teammates) {
-            block += `- \`@${t.id}\` — **${t.name}** (${t.model})\n`;
+    if (agentTeams.length > 0) {
+        for (const team of agentTeams) {
+            block += `\n### Team \`#${team.teamId}\` — ${team.teamName}\n\n`;
+            for (const t of team.members) {
+                const leaderTag = t.id === team.leaderId ? ' *(team leader)*' : '';
+                block += `- \`@${t.id}\` — **${t.name}** (${t.model})${leaderTag}\n`;
+            }
         }
     }
 
@@ -175,17 +196,19 @@ export function buildSystemPrompt(
 
     // Append user's custom AGENTS.md from agent workspace (if non-empty)
     const userAgentsMd = path.join(agentDir, 'AGENTS.md');
+    let userContent = '';
     if (fs.existsSync(userAgentsMd)) {
-        const userContent = fs.readFileSync(userAgentsMd, 'utf8').trim();
+        userContent = fs.readFileSync(userAgentsMd, 'utf8').trim();
         if (userContent) {
             prompt += '\n\n' + userContent;
         }
     }
 
     // Append config system prompt (from settings.json)
+    let promptFileContent = '';
     if (configPromptFile) {
         try {
-            const promptFileContent = fs.readFileSync(configPromptFile, 'utf8').trim();
+            promptFileContent = fs.readFileSync(configPromptFile, 'utf8').trim();
             if (promptFileContent) {
                 prompt += '\n\n' + promptFileContent;
             }
@@ -196,6 +219,23 @@ export function buildSystemPrompt(
         prompt += '\n\n' + configSystemPrompt;
     }
 
+    const cacheInput = JSON.stringify({
+        agentId,
+        builtin: BUILTIN_AGENT_INSTRUCTIONS_HASH,
+        teammateBlock: block,
+        memoryTree,
+        userContent,
+        promptFileContent,
+        configSystemPrompt: configSystemPrompt || '',
+    });
+    const cacheHash = hashString(cacheInput);
+    const cached = systemPromptCache.get(agentId);
+    if (!cached || cached.hash !== cacheHash) {
+        log('DEBUG', `System prompt cache updated for agent: ${agentId}`);
+        systemPromptCache.set(agentId, { hash: cacheHash, prompt });
+    } else {
+        return cached.prompt;
+    }
+
     return prompt;
 }
-

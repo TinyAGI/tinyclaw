@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
-import { TINYCLAW_HOME } from '@tinyclaw/core';
-import { log } from '@tinyclaw/core';
+import { TINYAGI_HOME } from '@tinyagi/core';
+import { log } from '@tinyagi/core';
 
 type ProjectStatus = 'active' | 'archived';
 
@@ -15,7 +15,7 @@ interface Project {
     updatedAt: number;
 }
 
-const PROJECTS_FILE = path.join(TINYCLAW_HOME, 'projects.json');
+const PROJECTS_FILE = path.join(TINYAGI_HOME, 'projects.json');
 
 function readProjects(): Project[] {
     try {

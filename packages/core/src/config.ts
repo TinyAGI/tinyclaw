@@ -1,15 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import { jsonrepair } from 'jsonrepair';
-import { Settings, AgentConfig, TeamConfig, CLAUDE_MODEL_IDS, CODEX_MODEL_IDS, OPENCODE_MODEL_IDS } from './types';
+import { Settings, AgentConfig, TeamConfig, MODEL_ALIASES } from './types';
 
 export const SCRIPT_DIR = path.resolve(__dirname, '../../..');
-export const TINYCLAW_HOME = process.env.TINYCLAW_HOME
-    || path.join(require('os').homedir(), '.tinyclaw');
-export const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/queue.log');
-export const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
-export const CHATS_DIR = path.join(TINYCLAW_HOME, 'chats');
-export const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
+export const TINYAGI_HOME = process.env.TINYAGI_HOME
+    || path.join(require('os').homedir(), '.tinyagi');
+export const LOG_FILE = path.join(TINYAGI_HOME, 'logs/queue.log');
+export const SETTINGS_FILE = path.join(TINYAGI_HOME, 'settings.json');
+export const CHATS_DIR = path.join(TINYAGI_HOME, 'chats');
+export const FILES_DIR = path.join(TINYAGI_HOME, 'files');
 
 export function getSettings(): Settings {
     try {
@@ -73,7 +73,7 @@ export function getDefaultAgentFromModels(settings: Settings): AgentConfig {
     }
 
     // Get workspace path from settings or use default
-    const workspacePath = settings?.workspace?.path || path.join(require('os').homedir(), 'tinyclaw-workspace');
+    const workspacePath = settings?.workspace?.path || path.join(require('os').homedir(), 'tinyagi-workspace');
     const defaultAgentDir = path.join(workspacePath, 'default');
 
     return {
@@ -104,23 +104,9 @@ export function getTeams(settings: Settings): Record<string, TeamConfig> {
 }
 
 /**
- * Resolve the model ID for Claude (Anthropic).
+ * Resolve shorthand model aliases (e.g. 'sonnet' → 'claude-sonnet-4-6').
+ * Unknown models pass through as-is to the CLI.
  */
-export function resolveClaudeModel(model: string): string {
-    return CLAUDE_MODEL_IDS[model] || model || '';
-}
-
-/**
- * Resolve the model ID for Codex (OpenAI).
- */
-export function resolveCodexModel(model: string): string {
-    return CODEX_MODEL_IDS[model] || model || '';
-}
-
-/**
- * Resolve the model ID for OpenCode (passed via --model flag).
- * Falls back to the raw model string from settings if no mapping is found.
- */
-export function resolveOpenCodeModel(model: string): string {
-    return OPENCODE_MODEL_IDS[model] || model || '';
+export function resolveModel(model: string, provider: string): string {
+    return MODEL_ALIASES[provider]?.[model] || model || '';
 }

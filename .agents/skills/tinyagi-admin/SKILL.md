@@ -1,35 +1,35 @@
 ---
-name: tinyclaw-admin
-description: "Manage and operate the TinyClaw system itself — agents, teams, settings, queue, tasks, daemon lifecycle, and source code. Use when the agent needs to: list/add/remove/update agents or teams, check queue status, view logs, start/stop/restart TinyClaw, change settings (provider, model, channels), send messages to the queue, manage tasks, retry dead-letter messages, view recent responses, modify TinyClaw source code or configuration, or perform any administrative operation on the TinyClaw platform. Triggers: 'manage tinyclaw', 'add an agent', 'remove a team', 'check queue', 'view logs', 'restart tinyclaw', 'change provider', 'update settings', 'create a task', 'modify tinyclaw code'."
+name: tinyagi-admin
+description: "Manage and operate the TinyAGI system itself — agents, teams, settings, queue, tasks, daemon lifecycle, and source code. Use when the agent needs to: list/add/remove/update agents or teams, check queue status, view logs, start/stop/restart TinyAGI, change settings (provider, model, channels), send messages to the queue, manage tasks, retry dead-letter messages, view recent responses, modify TinyAGI source code or configuration, or perform any administrative operation on the TinyAGI platform. Triggers: 'manage tinyagi', 'add an agent', 'remove a team', 'check queue', 'view logs', 'restart tinyagi', 'change provider', 'update settings', 'create a task', 'modify tinyagi code'."
 ---
 
-# TinyClaw Admin
+# TinyAGI Admin
 
-Operate and manage the TinyClaw multi-agent system. This skill covers both runtime administration (via the REST API) and source code modification.
+Operate and manage the TinyAGI multi-agent system. This skill covers both runtime administration (via the REST API) and source code modification.
 
 ## Important paths
 
-- **TinyClaw home (runtime data):** `~/.tinyclaw/`
+- **TinyAGI home (runtime data):** `~/.tinyagi/`
   - `settings.json` — all configuration (agents, teams, channels, models, workspace)
-  - `tinyclaw.db` — SQLite queue database
+  - `tinyagi.db` — SQLite queue database
   - `tasks.json` — Kanban tasks
   - `pairing.json` — sender allowlist
   - `logs/` — queue, daemon, and channel logs
   - `chats/` — team chain chat history
   - `events/` — real-time event files
   - `plugins/` — plugin directory
-- **TinyClaw source code:** the repo where this skill is installed (check `git rev-parse --show-toplevel` or look for `tinyclaw.sh` in parent dirs)
-- **Agent workspaces:** configured in `settings.json` under `workspace.path` (default: `~/tinyclaw-workspace/{agent_id}/`)
+- **TinyAGI source code:** the repo where this skill is installed (check `git rev-parse --show-toplevel` or look for `tinyagi.sh` in parent dirs)
+- **Agent workspaces:** configured in `settings.json` under `workspace.path` (default: `~/tinyagi-workspace/{agent_id}/`)
 
 ## Interactivity warning
 
-Many `tinyclaw` CLI commands are **interactive** (prompt for user input). Do NOT run these directly:
-- `tinyclaw setup` — fully interactive wizard
-- `tinyclaw agent add` — prompts for all fields
-- `tinyclaw team add` — prompts for all fields
-- `tinyclaw agent remove <id>` — prompts `[y/N]`
-- `tinyclaw team remove <id>` — prompts `[y/N]`
-- `tinyclaw team remove-agent <t> <a>` — may prompt for new leader + `[y/N]`
+Many `tinyagi` CLI commands are **interactive** (prompt for user input). Do NOT run these directly:
+- `tinyagi setup` — fully interactive wizard
+- `tinyagi agent add` — prompts for all fields
+- `tinyagi team add` — prompts for all fields
+- `tinyagi agent remove <id>` — prompts `[y/N]`
+- `tinyagi team remove <id>` — prompts `[y/N]`
+- `tinyagi team remove-agent <t> <a>` — may prompt for new leader + `[y/N]`
 
 **Instead, use the REST API or direct `settings.json` edits** (see below).
 
@@ -38,35 +38,35 @@ Many `tinyclaw` CLI commands are **interactive** (prompt for user input). Do NOT
 These CLI commands accept all parameters as arguments and do not prompt:
 
 ```bash
-tinyclaw start                              # Start daemon
-tinyclaw stop                               # Stop all processes
-tinyclaw restart                            # Restart daemon
-tinyclaw status                             # Show status
-tinyclaw logs [queue|discord|telegram|whatsapp|heartbeat|daemon|all]
-tinyclaw send "<message>"                   # Send message to default agent
-tinyclaw send "@agent_id <message>"         # Send to specific agent
-tinyclaw reset <agent_id> [agent_id...]     # Reset agent conversations
-tinyclaw provider anthropic                 # Switch global provider
-tinyclaw provider openai --model gpt-5.3-codex
-tinyclaw model sonnet                       # Switch global model
-tinyclaw agent list                         # List agents
-tinyclaw agent show <id>                    # Show agent config
-tinyclaw agent provider <id> <provider>     # Set agent provider
-tinyclaw agent provider <id> <provider> --model <model>
-tinyclaw team list                          # List teams
-tinyclaw team show <id>                     # Show team config
-tinyclaw team add-agent <team_id> <agent_id>  # Add agent to team (no prompts)
-tinyclaw channels reset <channel>           # Reset channel auth
-tinyclaw pairing list                       # Show all pairings
-tinyclaw pairing pending                    # Show pending
-tinyclaw pairing approved                   # Show approved
-tinyclaw pairing approve <code>             # Approve a sender
-tinyclaw pairing unpair <channel> <sender_id>
+tinyagi start                              # Start daemon
+tinyagi stop                               # Stop all processes
+tinyagi restart                            # Restart daemon
+tinyagi status                             # Show status
+tinyagi logs [queue|discord|telegram|whatsapp|heartbeat|daemon|all]
+tinyagi send "<message>"                   # Send message to default agent
+tinyagi send "@agent_id <message>"         # Send to specific agent
+tinyagi reset <agent_id> [agent_id...]     # Reset agent conversations
+tinyagi provider anthropic                 # Switch global provider
+tinyagi provider openai --model gpt-5.3-codex
+tinyagi model sonnet                       # Switch global model
+tinyagi agent list                         # List agents
+tinyagi agent show <id>                    # Show agent config
+tinyagi agent provider <id> <provider>     # Set agent provider
+tinyagi agent provider <id> <provider> --model <model>
+tinyagi team list                          # List teams
+tinyagi team show <id>                     # Show team config
+tinyagi team add-agent <team_id> <agent_id>  # Add agent to team (no prompts)
+tinyagi channels reset <channel>           # Reset channel auth
+tinyagi pairing list                       # Show all pairings
+tinyagi pairing pending                    # Show pending
+tinyagi pairing approved                   # Show approved
+tinyagi pairing approve <code>             # Approve a sender
+tinyagi pairing unpair <channel> <sender_id>
 ```
 
 ## REST API (preferred for programmatic operations)
 
-The API server runs on `http://localhost:3777` (configurable via `TINYCLAW_API_PORT`). The API server is available when TinyClaw is running.
+The API server runs on `http://localhost:3777` (configurable via `TINYAGI_API_PORT`). The API server is available when TinyAGI is running.
 
 ### Agents
 
@@ -78,6 +78,11 @@ curl -s http://localhost:3777/api/agents | jq
 curl -s -X PUT http://localhost:3777/api/agents/coder \
   -H 'Content-Type: application/json' \
   -d '{"name":"Coder","provider":"anthropic","model":"sonnet"}'
+
+# Create agent with a system prompt (written to AGENTS.md in workspace on provisioning)
+curl -s -X PUT http://localhost:3777/api/agents/coder \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Coder","provider":"anthropic","model":"sonnet","system_prompt":"You are a senior engineer. Always write tests."}'
 
 # Optional fields: working_directory, system_prompt, prompt_file
 
@@ -169,13 +174,13 @@ curl -s http://localhost:3777/api/logs?limit=50 | jq
 
 ## Direct settings.json editing
 
-When the API server is not running, edit `~/.tinyclaw/settings.json` directly. Use `jq` for safe atomic edits:
+When the API server is not running, edit `~/.tinyagi/settings.json` directly. Use `jq` for safe atomic edits:
 
 ```bash
-SETTINGS="$HOME/.tinyclaw/settings.json"
+SETTINGS="$HOME/.tinyagi/settings.json"
 
 # Add an agent
-jq --arg id "analyst" --argjson agent '{"name":"Analyst","provider":"anthropic","model":"sonnet","working_directory":"'$HOME'/tinyclaw-workspace/analyst"}' \
+jq --arg id "analyst" --argjson agent '{"name":"Analyst","provider":"anthropic","model":"sonnet","working_directory":"'$HOME'/tinyagi-workspace/analyst"}' \
   '.agents[$id] = $agent' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
 
 # Remove an agent
@@ -186,18 +191,18 @@ jq --arg id "research" --argjson team '{"name":"Research Team","agents":["analys
   '.teams //= {} | .teams[$id] = $team' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
 ```
 
-After editing `settings.json`, run `tinyclaw restart` to pick up changes.
+After editing `settings.json`, run `tinyagi restart` to pick up changes.
 
-## Modifying TinyClaw source code
+## Modifying TinyAGI source code
 
-When modifying TinyClaw's own code (features, bug fixes, new routes, etc.):
+When modifying TinyAGI's own code (features, bug fixes, new routes, etc.):
 
 - **Source code:** `src/` directory (TypeScript)
   - `src/server/` — API server (Hono framework)
   - `src/server/routes/` — route handlers (agents, teams, settings, queue, tasks, messages, logs, chats)
   - `src/lib/` — shared utilities (config, db, logging, types, plugins)
 - **Shell scripts:** `lib/` — bash libraries (agents.sh, teams.sh, daemon.sh, messaging.sh, etc.)
-- **Main CLI:** `tinyclaw.sh` — command dispatcher
+- **Main CLI:** `tinyagi.sh` — command dispatcher
 - **Compiled output:** `dist/` — run `npm run build` after TypeScript changes
 - **Skills:** `.agents/skills/` — skill definitions (copied to agent workspaces on provision)
 - **Web portal:** `tinyoffice/` — Next.js app
@@ -205,13 +210,13 @@ When modifying TinyClaw's own code (features, bug fixes, new routes, etc.):
 After modifying TypeScript source, rebuild:
 
 ```bash
-cd <tinyclaw-repo> && npm run build
+cd <tinyagi-repo> && npm run build
 ```
 
 Then restart the daemon to load changes:
 
 ```bash
-tinyclaw restart
+tinyagi restart
 ```
 
 ## Workflow examples
@@ -225,16 +230,16 @@ curl -s -X PUT http://localhost:3777/api/agents/reviewer \
   -d '{"name":"Code Reviewer","provider":"anthropic","model":"sonnet"}'
 
 # 2. Add to existing team (non-interactive CLI)
-tinyclaw team add-agent dev reviewer
+tinyagi team add-agent dev reviewer
 ```
 
 ### Check system health
 
 ```bash
-tinyclaw status
+tinyagi status
 curl -s http://localhost:3777/api/queue/status | jq
 curl -s http://localhost:3777/api/queue/dead | jq
-tinyclaw logs queue
+tinyagi logs queue
 ```
 
 ### Create a task and assign to agent

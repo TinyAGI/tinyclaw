@@ -3,12 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { runSetup, type Settings, type AgentConfig } from "@/lib/api";
+import { runSetup, applyServices, type Settings, type AgentConfig } from "@/lib/api";
 import { Card, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   Wand2,
@@ -37,7 +37,7 @@ const MODELS: Record<string, { value: string; label: string }[]> = {
     { value: "gpt-5.2", label: "GPT-5.2" },
   ],
   opencode: [
-    { value: "opencode/claude-sonnet-4-5", label: "opencode/claude-sonnet-4-5" },
+    { value: "opencode/claude-sonnet-4-6", label: "opencode/claude-sonnet-4-6" },
     { value: "opencode/claude-opus-4-6", label: "opencode/claude-opus-4-6" },
     { value: "opencode/gemini-3-flash", label: "opencode/gemini-3-flash" },
     { value: "opencode/gemini-3-pro", label: "opencode/gemini-3-pro" },
@@ -78,6 +78,9 @@ export default function SetupPage() {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const [appliedChannels, setAppliedChannels] = useState<string[]>([]);
+  const [appliedHeartbeat, setAppliedHeartbeat] = useState(false);
 
   // Form state
   const [enabledChannels, setEnabledChannels] = useState<string[]>([]);
@@ -85,7 +88,7 @@ export default function SetupPage() {
   const [provider, setProvider] = useState("anthropic");
   const [model, setModel] = useState("sonnet");
   const [heartbeat, setHeartbeat] = useState("3600");
-  const [workspaceName, setWorkspaceName] = useState("tinyclaw-workspace");
+  const [workspaceName, setWorkspaceName] = useState("tinyagi-workspace");
   const [agents, setAgents] = useState<SetupAgent[]>([
     { id: "assistant", name: "Assistant", provider: "anthropic", model: "sonnet" },
   ]);
@@ -100,7 +103,7 @@ export default function SetupPage() {
   const canNext = (): boolean => {
     switch (step) {
       case 0:
-        return enabledChannels.length > 0 && missingTokenChannels.length === 0;
+        return missingTokenChannels.length === 0;
       case 1:
         return !!provider && !!model;
       case 2:
@@ -189,13 +192,71 @@ export default function SetupPage() {
       setError("");
       const settings = buildSettings();
       await runSetup(settings);
-      router.push("/");
+
+      // Apply services (start channels + heartbeat) without requiring restart
+      try {
+        const result = await applyServices();
+        setAppliedChannels(result.started || []);
+        setAppliedHeartbeat(result.heartbeat || false);
+      } catch {
+        // Non-fatal — services can be started manually
+      }
+
+      setDone(true);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSaving(false);
     }
   };
+
+  if (done) {
+    return (
+      <div className="p-8 max-w-2xl mx-auto space-y-6">
+        <div className="text-center space-y-4 py-8">
+          <CheckCircle2 className="h-12 w-12 text-emerald-500 mx-auto" />
+          <h1 className="text-2xl font-bold tracking-tight">Setup Complete</h1>
+          <p className="text-muted-foreground">
+            Your configuration has been saved.
+          </p>
+          {appliedChannels.length > 0 || appliedHeartbeat ? (
+            <div className="bg-muted rounded-md p-4 text-sm space-y-2 text-left max-w-sm mx-auto">
+              <p className="font-medium">Services started:</p>
+              {appliedChannels.map((ch) => (
+                <div key={ch} className="flex items-center gap-2">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="capitalize">{ch}</span>
+                </div>
+              ))}
+              {appliedHeartbeat && (
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  <span>Heartbeat</span>
+                </div>
+              )}
+            </div>
+          ) : enabledChannels.length > 0 ? (
+            <div className="bg-muted rounded-md p-4 text-sm space-y-2 text-left max-w-sm mx-auto">
+              <p className="font-medium">Restart to enable channels:</p>
+              <pre className="bg-background rounded px-2 py-1 text-xs">tinyagi restart</pre>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No channels configured. You can add channels later from Settings.
+            </p>
+          )}
+          <div className="flex items-center justify-center gap-3 pt-4">
+            <Link href="/settings">
+              <Button variant="outline">Settings</Button>
+            </Link>
+            <Link href="/">
+              <Button>Go to Dashboard</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-2xl mx-auto space-y-6">
@@ -205,7 +266,7 @@ export default function SetupPage() {
           Setup
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure TinyClaw in a few steps
+          Configure TinyAGI in a few steps
         </p>
       </div>
 
@@ -234,7 +295,7 @@ export default function SetupPage() {
           {step === 0 && (
             <>
               <CardTitle className="text-sm">Messaging Channels</CardTitle>
-              <CardDescription>Select which channels to enable.</CardDescription>
+              <CardDescription>Select which channels to enable. You can skip this and add channels later.</CardDescription>
               <div className="space-y-3 pt-2">
                 {CHANNELS.map((ch) => (
                   <div key={ch.id} className="space-y-2">
@@ -277,18 +338,28 @@ export default function SetupPage() {
               <div className="space-y-3 pt-2">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Provider</label>
-                  <Select value={provider} onChange={(e) => handleProviderChange(e.target.value)} className="mt-1">
-                    {PROVIDERS.map((p) => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
-                    ))}
+                  <Select value={provider} onValueChange={handleProviderChange}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROVIDERS.map((p) => (
+                        <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Model</label>
-                  <Select value={model} onChange={(e) => setModel(e.target.value)} className="mt-1">
-                    {(MODELS[provider] || []).map((m) => (
-                      <option key={m.value} value={m.value}>{m.label}</option>
-                    ))}
+                  <Select value={model} onValueChange={setModel}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(MODELS[provider] || []).map((m) => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 </div>
                 <div>
@@ -314,7 +385,7 @@ export default function SetupPage() {
                 <Input
                   value={workspaceName}
                   onChange={(e) => setWorkspaceName(e.target.value)}
-                  placeholder="tinyclaw-workspace"
+                  placeholder="tinyagi-workspace"
                   className="mt-1"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
@@ -367,28 +438,35 @@ export default function SetupPage() {
                         <label className="text-[10px] text-muted-foreground uppercase">Provider</label>
                         <Select
                           value={agent.provider}
-                          onChange={(e) => {
-                            const p = e.target.value;
+                          onValueChange={(p) => {
                             const m = MODELS[p]?.[0]?.value || "";
                             updateAgent(idx, { provider: p, model: m });
                           }}
-                          className="text-xs"
                         >
-                          {PROVIDERS.map((p) => (
-                            <option key={p.value} value={p.value}>{p.label}</option>
-                          ))}
+                          <SelectTrigger className="text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PROVIDERS.map((p) => (
+                              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                            ))}
+                          </SelectContent>
                         </Select>
                       </div>
                       <div>
                         <label className="text-[10px] text-muted-foreground uppercase">Model</label>
                         <Select
                           value={agent.model}
-                          onChange={(e) => updateAgent(idx, { model: e.target.value })}
-                          className="text-xs"
+                          onValueChange={(v) => updateAgent(idx, { model: v })}
                         >
-                          {(MODELS[agent.provider] || []).map((m) => (
-                            <option key={m.value} value={m.value}>{m.label}</option>
-                          ))}
+                          <SelectTrigger className="text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(MODELS[agent.provider] || []).map((m) => (
+                              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                            ))}
+                          </SelectContent>
                         </Select>
                       </div>
                     </div>

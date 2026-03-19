@@ -3,17 +3,17 @@ import * as p from '@clack/prompts';
 import fs from 'fs';
 import path from 'path';
 import {
-    TINYCLAW_HOME, SCRIPT_DIR,
+    TINYAGI_HOME, SCRIPT_DIR,
     loadPairingState, savePairingState, approvePairingCode,
     PairingPendingEntry, PairingApprovedEntry,
-} from '@tinyclaw/core';
+} from '@tinyagi/core';
 
 function getPairingFilePath(): string {
-    const localSettings = path.join(SCRIPT_DIR, '.tinyclaw', 'settings.json');
+    const localSettings = path.join(SCRIPT_DIR, '.tinyagi', 'settings.json');
     if (fs.existsSync(localSettings)) {
-        return path.join(SCRIPT_DIR, '.tinyclaw', 'pairing.json');
+        return path.join(SCRIPT_DIR, '.tinyagi', 'pairing.json');
     }
-    return path.join(TINYCLAW_HOME, 'pairing.json');
+    return path.join(TINYAGI_HOME, 'pairing.json');
 }
 
 function ensurePairingFile(): string {

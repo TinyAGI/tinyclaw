@@ -2,9 +2,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { Hono } from 'hono';
-import { Settings } from '@tinyclaw/core';
-import { SETTINGS_FILE, TINYCLAW_HOME, getSettings, ensureAgentDirectory, copyDirSync, SCRIPT_DIR } from '@tinyclaw/core';
-import { log } from '@tinyclaw/core';
+import { Settings } from '@tinyagi/core';
+import { SETTINGS_FILE, TINYAGI_HOME, getSettings, ensureAgentDirectory, copyDirSync, SCRIPT_DIR } from '@tinyagi/core';
+import { log } from '@tinyagi/core';
 
 /** Read, mutate, and persist settings.json atomically. */
 export function mutateSettings(fn: (settings: Settings) => void): Settings {
@@ -62,15 +62,15 @@ app.post('/api/setup', async (c) => {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2) + '\n');
     log('INFO', '[API] Setup: settings.json written');
 
-    // Create TINYCLAW_HOME directories
-    fs.mkdirSync(path.join(TINYCLAW_HOME, 'logs'), { recursive: true });
-    fs.mkdirSync(path.join(TINYCLAW_HOME, 'files'), { recursive: true });
+    // Create TINYAGI_HOME directories
+    fs.mkdirSync(path.join(TINYAGI_HOME, 'logs'), { recursive: true });
+    fs.mkdirSync(path.join(TINYAGI_HOME, 'files'), { recursive: true });
 
-    // Copy template files into TINYCLAW_HOME
+    // Copy template files into TINYAGI_HOME
     const templateItems = ['.claude', 'heartbeat.md', 'AGENTS.md'];
     for (const item of templateItems) {
         const srcPath = path.join(SCRIPT_DIR, item);
-        const destPath = path.join(TINYCLAW_HOME, item);
+        const destPath = path.join(TINYAGI_HOME, item);
         if (fs.existsSync(srcPath)) {
             if (fs.statSync(srcPath).isDirectory()) {
                 copyDirSync(srcPath, destPath);

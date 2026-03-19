@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common issues and solutions for TinyClaw.
+Common issues and solutions for TinyAGI.
 
 ## Installation Issues
 
@@ -22,7 +22,7 @@ brew install bash
 export PATH="/opt/homebrew/bin:$PATH"
 
 # Or run directly with the new bash
-tinyclaw start
+tinyagi start
 ```
 
 ### Node.js dependencies not installing
@@ -40,11 +40,11 @@ PUPPETEER_SKIP_DOWNLOAD=true npm install
 
 ```bash
 # Check logs
-tinyclaw logs whatsapp
+tinyagi logs whatsapp
 
 # Reset WhatsApp authentication
-tinyclaw channels reset whatsapp
-tinyclaw restart
+tinyagi channels reset whatsapp
+tinyagi restart
 ```
 
 **Common causes:**
@@ -55,18 +55,18 @@ tinyclaw restart
 
 **Solution:**
 
-1. Delete session: `rm -rf .tinyclaw/whatsapp-session/`
-2. Restart: `tinyclaw restart`
+1. Delete session: `rm -rf .tinyagi/whatsapp-session/`
+2. Restart: `tinyagi restart`
 3. Scan new QR code immediately
 
 ### Discord bot not responding
 
 ```bash
 # Check logs
-tinyclaw logs discord
+tinyagi logs discord
 
 # Update Discord bot token
-tinyclaw setup
+tinyagi setup
 ```
 
 **Checklist:**
@@ -80,10 +80,10 @@ tinyclaw setup
 
 ```bash
 # Check logs
-tinyclaw logs telegram
+tinyagi logs telegram
 
 # Update Telegram bot token
-tinyclaw setup
+tinyagi setup
 ```
 
 **Common issues:**
@@ -96,14 +96,14 @@ tinyclaw setup
 
 ```bash
 # Attach to tmux to see the QR code
-tmux attach -t tinyclaw
+tmux attach -t tinyagi
 ```
 
 The QR code appears in the WhatsApp pane. If it's not visible:
 
-1. Check if WhatsApp is enabled: `cat .tinyclaw/settings.json | jq '.channels.enabled'`
+1. Check if WhatsApp is enabled: `cat .tinyagi/settings.json | jq '.channels.enabled'`
 2. Check WhatsApp process: `pgrep -f whatsapp-client.ts`
-3. View logs: `tail -f .tinyclaw/logs/whatsapp.log`
+3. View logs: `tail -f .tinyagi/logs/whatsapp.log`
 
 ## Queue Issues
 
@@ -111,13 +111,13 @@ The QR code appears in the WhatsApp pane. If it's not visible:
 
 ```bash
 # Check queue processor status
-tinyclaw status
+tinyagi status
 
 # Check queue status via API
 curl http://localhost:3777/api/queue/status | jq
 
 # View queue logs
-tinyclaw logs queue
+tinyagi logs queue
 ```
 
 **Checklist:**
@@ -132,8 +132,8 @@ Messages stuck in `processing` state are automatically recovered after 10
 minutes. To force recovery:
 
 ```bash
-# Restart TinyClaw (triggers stale message recovery on startup)
-tinyclaw restart
+# Restart TinyAGI (triggers stale message recovery on startup)
+tinyagi restart
 ```
 
 ### Responses not being sent
@@ -143,45 +143,45 @@ tinyclaw restart
 curl http://localhost:3777/api/responses | jq
 
 # Check channel client logs
-tinyclaw logs discord
-tinyclaw logs telegram
-tinyclaw logs whatsapp
+tinyagi logs discord
+tinyagi logs telegram
+tinyagi logs whatsapp
 ```
 
 ## Model / Provider Issues
 
 ### Model or provider change has no effect
 
-If `tinyclaw model` or `tinyclaw provider` doesn't seem to change the model your agents use:
+If `tinyagi model` or `tinyagi provider` doesn't seem to change the model your agents use:
 
 1. **Check what agents actually run with:**
 
    ```bash
-   tinyclaw model
+   tinyagi model
    # or
-   tinyclaw provider
+   tinyagi provider
    ```
 
    Both show the global default **and** per-agent breakdown. If an agent still shows the old model, the change didn't propagate.
 
 2. **Agents override the global default.** When agents exist in `settings.json`, each agent's own `provider`/`model` fields are used — the global `models` section is only a fallback when no agents are configured.
 
-3. **Use `--model` with provider switches.** `tinyclaw provider <name>` (without `--model`) only changes the global default and does **not** update agents. Add `--model` to propagate:
+3. **Use `--model` with provider switches.** `tinyagi provider <name>` (without `--model`) only changes the global default and does **not** update agents. Add `--model` to propagate:
 
    ```bash
-   tinyclaw provider openai --model gpt-5.3-codex
+   tinyagi provider openai --model gpt-5.3-codex
    ```
 
-4. **Override a single agent:** Use `tinyclaw agent provider` for per-agent control:
+4. **Override a single agent:** Use `tinyagi agent provider` for per-agent control:
 
    ```bash
-   tinyclaw agent provider coder anthropic --model opus
+   tinyagi agent provider coder anthropic --model opus
    ```
 
 5. **Verify settings file is valid JSON:**
 
    ```bash
-   jq . .tinyclaw/settings.json
+   jq . .tinyagi/settings.json
    ```
 
 ## Agent Issues
@@ -193,19 +193,19 @@ If you see "Agent 'xyz' not found":
 1. Check agent exists:
 
    ```bash
-   tinyclaw agent list
+   tinyagi agent list
    ```
 
 2. Verify agent ID is lowercase and matches exactly:
 
    ```bash
-   cat .tinyclaw/settings.json | jq '.agents'
+   cat .tinyagi/settings.json | jq '.agents'
    ```
 
 3. Check settings file is valid JSON:
 
    ```bash
-   cat .tinyclaw/settings.json | jq
+   cat .tinyagi/settings.json | jq
    ```
 
 ### Wrong agent responding
@@ -220,13 +220,13 @@ If messages go to the wrong agent:
 2. **Verify agent exists:**
 
    ```bash
-   tinyclaw agent show coder
+   tinyagi agent show coder
    ```
 
 3. **Check logs:**
 
    ```bash
-   tail -f .tinyclaw/logs/queue.log | grep "Routing"
+   tail -f .tinyagi/logs/queue.log | grep "Routing"
    ```
 
 ### Conversation not resetting
@@ -236,7 +236,7 @@ If `@agent /reset` doesn't work:
 1. Check reset flag exists:
 
    ```bash
-   ls ~/tinyclaw-workspace/{agent_id}/reset_flag
+   ls ~/tinyagi-workspace/{agent_id}/reset_flag
    ```
 
 2. Send a new message to trigger reset (flag is checked before each message)
@@ -276,25 +276,25 @@ If agents aren't being created:
 1. Check workspace path:
 
    ```bash
-   cat .tinyclaw/settings.json | jq '.workspace.path'
+   cat .tinyagi/settings.json | jq '.workspace.path'
    ```
 
 2. Verify workspace exists:
 
    ```bash
-   ls ~/tinyclaw-workspace/
+   ls ~/tinyagi-workspace/
    ```
 
 3. Check permissions:
 
    ```bash
-   ls -la ~/tinyclaw-workspace/
+   ls -la ~/tinyagi-workspace/
    ```
 
 4. Manually create if needed:
 
    ```bash
-   mkdir -p ~/tinyclaw-workspace
+   mkdir -p ~/tinyagi-workspace
    ```
 
 ### Templates not copying
@@ -304,21 +304,21 @@ If new agents don't have `.claude/`, `heartbeat.md`, or `AGENTS.md`:
 1. Check templates exist:
 
    ```bash
-   ls -la ~/.tinyclaw/{.claude,heartbeat.md,AGENTS.md}
+   ls -la ~/.tinyagi/{.claude,heartbeat.md,AGENTS.md}
    ```
 
 2. Run setup to create templates:
 
    ```bash
-   tinyclaw setup
+   tinyagi setup
    ```
 
 3. Manually copy if needed:
 
    ```bash
-   cp -r .claude ~/.tinyclaw/
-   cp heartbeat.md ~/.tinyclaw/
-   cp AGENTS.md ~/.tinyclaw/
+   cp -r .claude ~/.tinyagi/
+   cp heartbeat.md ~/.tinyagi/
+   cp AGENTS.md ~/.tinyagi/
    ```
 
 ## Update Issues
@@ -342,8 +342,8 @@ If you see "Could not fetch latest version":
 3. **Disable update checks:**
 
    ```bash
-   export TINYCLAW_SKIP_UPDATE_CHECK=1
-   tinyclaw start
+   export TINYAGI_SKIP_UPDATE_CHECK=1
+   tinyagi start
    ```
 
 ### Update download failing
@@ -351,40 +351,40 @@ If you see "Could not fetch latest version":
 If bundle download fails during update:
 
 1. **Check release exists:**
-   - Visit: <https://github.com/TinyAGI/tinyclaw/releases>
+   - Visit: <https://github.com/TinyAGI/tinyagi/releases>
    - Verify bundle file is attached
 
 2. **Manual update:**
 
    ```bash
    # Download bundle manually
-   wget https://github.com/TinyAGI/tinyclaw/releases/latest/download/tinyclaw-bundle.tar.gz
+   wget https://github.com/TinyAGI/tinyagi/releases/latest/download/tinyagi-bundle.tar.gz
 
    # Extract to temp directory
    mkdir temp-update
-   tar -xzf tinyclaw-bundle.tar.gz -C temp-update
+   tar -xzf tinyagi-bundle.tar.gz -C temp-update
 
    # Backup current installation
-   cp -r ~/tinyclaw ~/.tinyclaw/backups/manual-backup-$(date +%Y%m%d)
+   cp -r ~/tinyagi ~/.tinyagi/backups/manual-backup-$(date +%Y%m%d)
 
    # Replace files
-   cp -r temp-update/tinyclaw/* ~/tinyclaw/
+   cp -r temp-update/tinyagi/* ~/tinyagi/
    ```
 
 ### Rollback after failed update
 
-If update breaks TinyClaw:
+If update breaks TinyAGI:
 
 ```bash
 # Find your backup
-ls ~/.tinyclaw/backups/
+ls ~/.tinyagi/backups/
 
 # Restore from backup
-BACKUP_DIR=$(ls -t ~/.tinyclaw/backups/ | head -1)
-cp -r ~/.tinyclaw/backups/$BACKUP_DIR/* $HOME/tinyclaw/
+BACKUP_DIR=$(ls -t ~/.tinyagi/backups/ | head -1)
+cp -r ~/.tinyagi/backups/$BACKUP_DIR/* $HOME/tinyagi/
 
 # Restart
-tinyclaw restart
+tinyagi restart
 ```
 
 ## Performance Issues
@@ -405,7 +405,7 @@ top -o cpu | grep -E 'claude|codex|node'
 **Solutions:**
 
 - Wait for current task to complete
-- Restart: `tinyclaw restart`
+- Restart: `tinyagi restart`
 - Reduce heartbeat frequency in settings
 
 ### High memory usage
@@ -417,9 +417,9 @@ ps aux | grep -E 'claude|codex|node' | awk '{print $4, $11}'
 
 **Solutions:**
 
-- Restart TinyClaw: `tinyclaw restart`
-- Reset conversations: `tinyclaw reset`
-- Clear old sessions: `rm -rf .tinyclaw/whatsapp-session/.wwebjs_*`
+- Restart TinyAGI: `tinyagi restart`
+- Reset conversations: `tinyagi reset`
+- Clear old sessions: `rm -rf .tinyagi/whatsapp-session/.wwebjs_*`
 
 ### Slow message responses
 
@@ -432,7 +432,7 @@ ps aux | grep -E 'claude|codex|node' | awk '{print $4, $11}'
 2. **Monitor AI response time:**
 
    ```bash
-   tail -f .tinyclaw/logs/queue.log | grep "Response ready"
+   tail -f .tinyagi/logs/queue.log | grep "Response ready"
    ```
 
 ## Log Analysis
@@ -441,10 +441,10 @@ ps aux | grep -E 'claude|codex|node' | awk '{print $4, $11}'
 
 ```bash
 # Set log level (in queue-processor.ts or channel clients)
-export DEBUG=tinyclaw:*
+export DEBUG=tinyagi:*
 
 # Restart with debug logs
-tinyclaw restart
+tinyagi restart
 ```
 
 ### Useful log patterns
@@ -452,25 +452,25 @@ tinyclaw restart
 **Find errors:**
 
 ```bash
-grep -i error .tinyclaw/logs/*.log
+grep -i error .tinyagi/logs/*.log
 ```
 
 **Track message routing:**
 
 ```bash
-grep "Routing" .tinyclaw/logs/queue.log
+grep "Routing" .tinyagi/logs/queue.log
 ```
 
 **Monitor agent activity:**
 
 ```bash
-tail -f .tinyclaw/logs/queue.log | grep "agent:"
+tail -f .tinyagi/logs/queue.log | grep "agent:"
 ```
 
 **Check heartbeat timing:**
 
 ```bash
-grep "Heartbeat" .tinyclaw/logs/heartbeat.log
+grep "Heartbeat" .tinyagi/logs/heartbeat.log
 ```
 
 ## Still Having Issues?
@@ -478,25 +478,25 @@ grep "Heartbeat" .tinyclaw/logs/heartbeat.log
 1. **Check status:**
 
    ```bash
-   tinyclaw status
+   tinyagi status
    ```
 
 2. **View all logs:**
 
    ```bash
-   tinyclaw logs all
+   tinyagi logs all
    ```
 
 3. **Restart from scratch:**
 
    ```bash
-   tinyclaw stop
-   rm -f .tinyclaw/tinyclaw.db
-   tinyclaw start
+   tinyagi stop
+   rm -f .tinyagi/tinyagi.db
+   tinyagi start
    ```
 
 4. **Report issue:**
-   - GitHub Issues: <https://github.com/TinyAGI/tinyclaw/issues>
+   - GitHub Issues: <https://github.com/TinyAGI/tinyagi/issues>
    - Include logs and error messages
    - Describe steps to reproduce
 
@@ -506,20 +506,20 @@ Quick reference for common recovery scenarios:
 
 ```bash
 # Full reset (preserves settings)
-tinyclaw stop
-rm -f .tinyclaw/tinyclaw.db
-rm -rf .tinyclaw/channels/*
-rm -rf .tinyclaw/whatsapp-session/*
-tinyclaw start
+tinyagi stop
+rm -f .tinyagi/tinyagi.db
+rm -rf .tinyagi/channels/*
+rm -rf .tinyagi/whatsapp-session/*
+tinyagi start
 
 # Complete reinstall
-cd ~/tinyclaw
+cd ~/tinyagi
 ./scripts/uninstall.sh
 cd ..
-rm -rf tinyclaw
-curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
+rm -rf tinyagi
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyagi/main/scripts/remote-install.sh | bash
 
 # Reset single agent
-tinyclaw agent reset coder
-tinyclaw restart
+tinyagi agent reset coder
+tinyagi restart
 ```

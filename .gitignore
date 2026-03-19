@@ -6,8 +6,8 @@ package-lock.json
 dist/
 *.tsbuildinfo
 
-# TinyClaw runtime files
-.tinyclaw
+# TinyAGI runtime files
+.tinyagi
 
 .wwebjs_cache
 *.log
