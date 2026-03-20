@@ -190,9 +190,16 @@ function installCli() {
     }
 }
 
-// ── Run (first-time onboarding) ──────────────────────────────────────────────
+// ── Run (smart default: onboard if first time, otherwise just start) ────────
 
 async function run() {
+    // If settings already exist, just delegate to `tinyagi start`
+    if (isInstalled() && fs.existsSync(path.join(os.homedir(), '.tinyagi', 'settings.json'))) {
+        delegateToBash(['start'], { sync: true });
+        return;
+    }
+
+    // First-time onboarding
     console.log('');
     log(BLUE, '╔════════════════════════════════════════╗');
     log(BLUE, '║          TinyAGI Quick Start           ║');
@@ -210,20 +217,17 @@ async function run() {
         console.log('');
     }
 
-    // 3. Write default settings if needed
-    const wrote = writeDefaults();
-    if (wrote) {
-        log(GREEN, '✓ Default settings written');
-        console.log(`  Workspace: ~/tinyagi-workspace`);
-        console.log(`  Agent: tinyagi (anthropic/opus)`);
-        console.log('');
-    }
+    // 3. Write default settings
+    writeDefaults();
+    log(GREEN, '✓ Default settings written');
+    console.log(`  Workspace: ~/tinyagi-workspace`);
+    console.log(`  Agent: tinyagi (anthropic/opus)`);
+    console.log('');
 
-    // 4. Start daemon (auto-creates defaults if needed)
+    // 4. Start daemon
     try {
         delegateToBash(['start'], { sync: true });
     } catch {
-        // May already be running
         log(YELLOW, 'TinyAGI may already be running (use tinyagi status to check)');
     }
 }
@@ -276,14 +280,13 @@ switch (command) {
         console.log('  install                  Install TinyAGI only');
         console.log('');
         console.log('Daemon:');
-        console.log('  start [--skip-setup]     Start TinyAGI (--skip-setup: API only, setup via browser)');
+        console.log('  start                    Start TinyAGI');
         console.log('  stop                     Stop all processes');
         console.log('  restart                  Restart TinyAGI');
         console.log('  status                   Show current status');
         console.log('  attach                   Attach to tmux session');
         console.log('');
-        console.log('Setup & Config:');
-        console.log('  setup                    Run setup wizard');
+        console.log('Config:');
         console.log('  office                   Start TinyOffice web portal (http://localhost:3000)');
         console.log('');
         console.log('Messaging:');
