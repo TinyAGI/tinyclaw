@@ -50,10 +50,9 @@ export function useSSE(maxEvents = 100): {
   connected: boolean;
 } {
   const [events, setEvents] = useState<EventData[]>([]);
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(true);
 
   useEffect(() => {
-    setConnected(true);
     const unsubscribe = subscribeToEvents(
       (event) => {
         setEvents((prev) => {

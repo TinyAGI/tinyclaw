@@ -315,7 +315,7 @@ export default function SettingsPage() {
   );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+
 
 function OverviewCard({ icon, title, value }: { icon: React.ReactNode; title: string; value: string }) {
   return (

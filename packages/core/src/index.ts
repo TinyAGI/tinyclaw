@@ -10,6 +10,7 @@ export * from './config';
 export * from './logging';
 export * from './router';
 export * from './invoke';
+export * from './adapters';
 export * from './plugins';
 export * from './pairing';
 export * from './response';

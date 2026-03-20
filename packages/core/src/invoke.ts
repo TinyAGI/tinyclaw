@@ -5,6 +5,7 @@ import { AgentConfig, CustomProvider, TeamConfig } from './types';
 import { SCRIPT_DIR, resolveModel, getSettings } from './config';
 import { log } from './logging';
 import { ensureAgentDirectory, buildSystemPrompt } from './agent';
+import { getAdapter } from './adapters';
 
 export async function runCommand(command: string, args: string[], cwd?: string, envOverrides?: Record<string, string>): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -110,49 +111,8 @@ export async function runCommandStreaming(
 }
 
 /**
- * Extract displayable text from a Claude stream-json event.
- * Returns text content from assistant messages and tool use summaries.
- * Skips 'result' events — those duplicate the final assistant message
- * which is already delivered through the normal response pipeline.
- */
-function extractClaudeEventText(json: any): string | null {
-    if (json.type === 'assistant' && json.message?.content) {
-        const parts: string[] = [];
-        for (const block of json.message.content) {
-            if (block.type === 'text' && block.text) {
-                parts.push(block.text);
-            } else if (block.type === 'tool_use' && block.name) {
-                parts.push(`[tool: ${block.name}]`);
-            }
-        }
-        return parts.length > 0 ? parts.join('\n') : null;
-    }
-    return null;
-}
-
-/**
- * Extract displayable text from a Codex JSONL event.
- */
-function extractCodexEventText(json: any): string | null {
-    if (json.type === 'item.completed' && json.item?.type === 'agent_message') {
-        return json.item.text || null;
-    }
-    return null;
-}
-
-/**
- * Extract displayable text from an OpenCode JSONL event.
- */
-function extractOpenCodeEventText(json: any): string | null {
-    if (json.type === 'text' && json.part?.text) {
-        return json.part.text;
-    }
-    return null;
-}
-
-/**
- * Invoke a single agent with a message. Contains all Claude/Codex invocation logic.
- * Returns the raw response text.
+ * Invoke a single agent with a message. Resolves the provider,
+ * delegates to the matching adapter, and returns the raw response text.
  *
  * When `onEvent` is provided, streams intermediate text events as they arrive
  * from the CLI subprocess (verbose/streaming mode).
@@ -201,7 +161,7 @@ export async function invokeAgent(
         if (!customProvider) {
             throw new Error(`Custom provider '${customId}' not found in settings.custom_providers`);
         }
-        // Map harness back to built-in provider for CLI selection
+        // Map harness back to built-in provider for adapter selection
         provider = customProvider.harness === 'codex' ? 'openai' : 'anthropic';
 
         // Build env overrides based on harness
@@ -225,183 +185,26 @@ export async function invokeAgent(
         }
     }
 
-    // Use model from custom provider if agent doesn't specify one
+    // Resolve model — custom providers use their own model, otherwise resolve via aliases
     const effectiveModel = agent.model || customProvider?.model || '';
+    const model = customProvider
+        ? effectiveModel
+        : resolveModel(effectiveModel, provider as 'anthropic' | 'openai' | 'opencode');
 
-    if (provider === 'openai') {
-        log('DEBUG', `Using Codex CLI (agent: ${agentId})`);
-
-        const shouldResume = !shouldReset;
-
-        if (shouldReset) {
-            log('INFO', `Resetting Codex conversation for agent: ${agentId}`);
-        }
-
-        const modelId = customProvider ? effectiveModel : resolveModel(effectiveModel, 'openai');
-        const codexArgs = ['exec'];
-        if (shouldResume) {
-            codexArgs.push('resume', '--last');
-        }
-        if (modelId) {
-            codexArgs.push('--model', modelId);
-        }
-        if (systemPrompt) {
-            codexArgs.push('-c', `developer_instructions=${systemPrompt}`);
-        }
-        codexArgs.push('--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json', message);
-
-        let response = '';
-
-        if (onEvent) {
-            await runCommandStreaming('codex', codexArgs, (line) => {
-                try {
-                    const json = JSON.parse(line);
-                    const text = extractCodexEventText(json);
-                    if (text) {
-                        response = text;
-                        onEvent(text);
-                    }
-                } catch (e) {
-                    // Ignore lines that aren't valid JSON
-                }
-            }, workingDir, envOverrides);
-        } else {
-            const codexOutput = await runCommand('codex', codexArgs, workingDir, envOverrides);
-            const lines = codexOutput.trim().split('\n');
-            for (const line of lines) {
-                try {
-                    const json = JSON.parse(line);
-                    if (json.type === 'item.completed' && json.item?.type === 'agent_message') {
-                        response = json.item.text;
-                    }
-                } catch (e) {
-                    // Ignore lines that aren't valid JSON
-                }
-            }
-        }
-
-        return response || 'Sorry, I could not generate a response from Codex.';
-    } else if (provider === 'opencode') {
-        // OpenCode CLI — non-interactive mode via `opencode run`.
-        // Outputs JSONL with --format json; extract "text" type events for the response.
-        // Model passed via --model in provider/model format (e.g. opencode/claude-sonnet-4-6).
-        // Supports -c flag for conversation continuation (resumes last session).
-        const modelId = resolveModel(effectiveModel, 'opencode');
-        log('DEBUG', `Using OpenCode CLI (agent: ${agentId}, model: ${modelId})`);
-
-        const continueConversation = !shouldReset;
-
-        if (shouldReset) {
-            log('INFO', `Resetting OpenCode conversation for agent: ${agentId}`);
-        }
-
-        // Pass system prompt via OPENCODE_CONFIG_CONTENT env var using a custom agent
-        if (systemPrompt) {
-            const configContent = JSON.stringify({
-                agent: {
-                    [agentId]: {
-                        prompt: systemPrompt
-                    }
-                }
-            });
-            envOverrides.OPENCODE_CONFIG_CONTENT = configContent;
-        }
-
-        const opencodeArgs = ['run', '--format', 'json'];
-        if (modelId) {
-            opencodeArgs.push('--model', modelId);
-        }
-        if (systemPrompt) {
-            opencodeArgs.push('--agent', agentId);
-        }
-        if (continueConversation) {
-            opencodeArgs.push('-c');
-        }
-        opencodeArgs.push(message);
-
-        let response = '';
-
-        if (onEvent) {
-            await runCommandStreaming('opencode', opencodeArgs, (line) => {
-                try {
-                    const json = JSON.parse(line);
-                    const text = extractOpenCodeEventText(json);
-                    if (text) {
-                        response = text;
-                        onEvent(text);
-                    }
-                } catch (e) {
-                    // Ignore lines that aren't valid JSON
-                }
-            }, workingDir, envOverrides);
-        } else {
-            const opencodeOutput = await runCommand('opencode', opencodeArgs, workingDir, envOverrides);
-            const lines = opencodeOutput.trim().split('\n');
-            for (const line of lines) {
-                try {
-                    const json = JSON.parse(line);
-                    if (json.type === 'text' && json.part?.text) {
-                        response = json.part.text;
-                    }
-                } catch (e) {
-                    // Ignore lines that aren't valid JSON
-                }
-            }
-        }
-
-        return response || 'Sorry, I could not generate a response from OpenCode.';
-    } else {
-        // Default to Claude (Anthropic)
-        log('DEBUG', `Using Claude provider (agent: ${agentId})`);
-
-        const continueConversation = !shouldReset;
-
-        if (shouldReset) {
-            log('INFO', `Resetting conversation for agent: ${agentId}`);
-        }
-
-        const modelId = customProvider ? effectiveModel : resolveModel(effectiveModel, 'anthropic');
-        const claudeArgs = ['--dangerously-skip-permissions'];
-        if (modelId) {
-            claudeArgs.push('--model', modelId);
-        }
-        if (systemPrompt) {
-            claudeArgs.push('--system-prompt', systemPrompt);
-        }
-        if (continueConversation) {
-            claudeArgs.push('-c');
-        }
-
-        if (onEvent) {
-            claudeArgs.push('--output-format', 'stream-json', '--verbose');
-            claudeArgs.push('-p', message);
-
-            let response = '';
-            await runCommandStreaming('claude', claudeArgs, (line) => {
-                try {
-                    const json = JSON.parse(line);
-                    // Use result event for the return value (not emitted as progress)
-                    if (json.type === 'result') {
-                        if (json.result) response = json.result;
-                        // Log raw usage stats from the result event
-                        if (json.usage) log('INFO', `Claude usage (${agentId}): ${JSON.stringify(json.usage)}`);
-                        if (json.modelUsage) log('INFO', `Claude model usage (${agentId}): ${JSON.stringify(json.modelUsage)}`);
-                        return;
-                    }
-                    const text = extractClaudeEventText(json);
-                    if (text) {
-                        response = text;
-                        onEvent(text);
-                    }
-                } catch (e) {
-                    // Ignore lines that aren't valid JSON
-                }
-            }, workingDir, envOverrides);
-
-            return response || 'Sorry, I could not generate a response from Claude.';
-        }
-
-        claudeArgs.push('-p', message);
-        return await runCommand('claude', claudeArgs, workingDir, envOverrides);
+    // Look up the adapter
+    const adapter = getAdapter(provider);
+    if (!adapter) {
+        throw new Error(`No adapter registered for provider '${provider}'`);
     }
+
+    return adapter.invoke({
+        agentId,
+        message,
+        workingDir,
+        systemPrompt,
+        model,
+        shouldReset,
+        envOverrides,
+        onEvent,
+    });
 }
