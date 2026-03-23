@@ -15,6 +15,7 @@ export function createQueueRoutes() {
         const status = getQueueStatus();
         return c.json({
             incoming: status.pending,
+            queued: status.queued,
             processing: status.processing,
             completed: status.completed,
             dead: status.dead,

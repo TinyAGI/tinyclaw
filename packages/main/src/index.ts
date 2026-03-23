@@ -13,11 +13,11 @@ import {
     getSettings, getAgents, getTeams, LOG_FILE, FILES_DIR,
     log, emitEvent,
     parseAgentRouting, getAgentResetFlag,
-    invokeAgent,
+    invokeAgent, killAgentProcess,
     loadPlugins, runIncomingHooks,
     streamResponse,
     initQueueDb, getPendingAgents, claimAllPendingMessages,
-    completeMessage, failMessage,
+    markProcessing, completeMessage, failMessage,
     recoverStaleMessages, pruneAckedResponses, pruneCompletedMessages,
     closeQueueDb, queueEvents,
     insertAgentMessage,
@@ -170,6 +170,7 @@ async function processQueue(): Promise<void> {
                 const msg = groupedMessages[i];
                 const ids = messageIds[i];
                 try {
+                    for (const id of ids) markProcessing(id);
                     await processMessage(msg);
                     for (const id of ids) {
                         completeMessage(id);

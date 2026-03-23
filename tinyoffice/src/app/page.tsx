@@ -20,6 +20,7 @@ import {
   Send,
   MessageSquare,
   Activity,
+  Clock,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -42,7 +43,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           icon={<Bot className="h-4 w-4" />}
           label="Agents"
@@ -57,10 +58,17 @@ export default function DashboardPage() {
         />
         <StatCard
           icon={<Inbox className="h-4 w-4" />}
-          label="Queue Incoming"
+          label="Incoming"
           value={queue?.incoming ?? 0}
           sub="messages waiting"
           accent={queue != null && queue.incoming > 0}
+        />
+        <StatCard
+          icon={<Clock className="h-4 w-4" />}
+          label="Queued"
+          value={queue?.queued ?? 0}
+          sub="waiting for turn"
+          accent={queue != null && queue.queued > 0}
         />
         <StatCard
           icon={<Cpu className="h-4 w-4" />}

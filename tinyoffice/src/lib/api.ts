@@ -87,6 +87,7 @@ export interface Settings {
 
 export interface QueueStatus {
   incoming: number;
+  queued: number;
   processing: number;
   outgoing: number;
   activeConversations: number;
