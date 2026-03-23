@@ -7,19 +7,36 @@ import { log } from './logging';
 import { ensureAgentDirectory, buildSystemPrompt } from './agent';
 import { getAdapter } from './adapters';
 
-export async function runCommand(command: string, args: string[], cwd?: string, envOverrides?: Record<string, string>): Promise<string> {
+export async function runCommand(command: string, args: string[], cwd?: string, envOverrides?: Record<string, string>, timeoutMs = 5 * 60 * 1000): Promise<string> {
     return new Promise((resolve, reject) => {
         const env = { ...process.env, ...envOverrides };
         delete env.CLAUDECODE;
 
+        // detached: true puts the child in its own process group so that
+        // killing -pid on timeout takes out the entire tree (git, compilers,
+        // sub-shells, etc.) spawned by the agent CLI — not just the top process.
         const child = spawn(command, args, {
             cwd: cwd || SCRIPT_DIR,
             stdio: ['ignore', 'pipe', 'pipe'],
             env,
+            detached: true,
         });
 
         let stdout = '';
         let stderr = '';
+        let timedOut = false;
+
+        const timer = setTimeout(() => {
+            timedOut = true;
+            try {
+                // Kill the entire process group (negative PID = process group leader)
+                process.kill(-(child.pid!), 'SIGKILL');
+            } catch {
+                // Process may have already exited; fall back to direct kill
+                child.kill('SIGKILL');
+            }
+            reject(new Error(`Agent process timed out after ${timeoutMs / 1000}s`));
+        }, timeoutMs);
 
         child.stdout.setEncoding('utf8');
         child.stderr.setEncoding('utf8');
@@ -33,10 +50,13 @@ export async function runCommand(command: string, args: string[], cwd?: string, 
         });
 
         child.on('error', (error) => {
+            clearTimeout(timer);
             reject(error);
         });
 
         child.on('close', (code) => {
+            clearTimeout(timer);
+            if (timedOut) return; // already rejected
             if (code === 0) {
                 resolve(stdout);
                 return;
