@@ -11,7 +11,12 @@ const FAIL_THRESHOLD = 3; // consecutive failures before redirecting
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const hideSidebar = pathname === "/setup";
+  // Hide sidebar for routes served by the (office) layout group
+  const officeRoutes = ["/", "/tasks", "/projects", "/org-chart", "/monitor"];
+  const hideSidebar =
+    pathname === "/setup" ||
+    pathname.startsWith("/office") ||
+    officeRoutes.some((r) => r === "/" ? pathname === "/" : pathname === r || pathname.startsWith(r + "/"));
   const failCount = useRef(0);
 
   const { data: connected, loading } = usePolling(checkConnection, 5000);
