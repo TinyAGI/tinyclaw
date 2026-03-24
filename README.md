@@ -250,7 +250,7 @@ POST /api/chatroom/:teamId          # Post a message (body: { "message": "..." }
 | --------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------ |
 | `provider [name]`                             | Show or switch global AI provider                        | `tinyagi provider anthropic`                    |
 | `provider <name> --model <model>`             | Switch provider and model; propagates to matching agents | `tinyagi provider openai --model gpt-5.3-codex` |
-| `provider <name> --auth-token <key>`          | Store API key for a built-in provider                    | `tinyagi provider anthropic --auth-token sk-...` |
+| `provider <name> --oauth-token <token>`        | Store OAuth token for a built-in provider                | `tinyagi provider anthropic --oauth-token sk-ant-oat01-...` |
 | `provider list`                               | List all custom providers                                | `tinyagi provider list`                         |
 | `provider add`                                | Add a new custom provider (interactive)                  | `tinyagi provider add`                          |
 | `provider remove <id>`                        | Remove a custom provider                                 | `tinyagi provider remove proxy`                 |
@@ -292,14 +292,14 @@ tinyagi agent provider coder custom:my-proxy
 tinyagi agent provider coder custom:my-proxy --model gpt-4o
 ```
 
-**Auth token storage** — store API keys for built-in providers so you don't need separate CLI auth:
+**Auth token storage** — store tokens for built-in providers so you don't need separate CLI auth:
 
 ```bash
-tinyagi provider anthropic --auth-token sk-ant-...
-tinyagi provider openai --auth-token sk-...
+tinyagi provider anthropic --oauth-token sk-ant-oat01-...
+tinyagi provider openai --oauth-token sk-...
 ```
 
-Tokens are saved in `settings.json` under `models.<provider>.auth_token` and automatically exported as `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` when invoking CLIs.
+Anthropic tokens are saved as `models.anthropic.oauth_token` and exported as `CLAUDE_CODE_OAUTH_TOKEN` (with `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` cleared). OpenAI tokens are saved as `models.openai.auth_token` and exported as `OPENAI_API_KEY`.
 
 **API endpoints:**
 
@@ -534,7 +534,7 @@ Located at `.tinyagi/settings.json`:
     }
   },
   "models": {
-    "anthropic": { "auth_token": "sk-ant-..." },
+    "anthropic": { "oauth_token": "sk-ant-oat01-..." },
     "openai": { "auth_token": "sk-..." }
   },
   "monitoring": {

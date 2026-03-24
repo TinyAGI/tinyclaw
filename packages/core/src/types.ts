@@ -41,7 +41,7 @@ export interface Settings {
         provider?: string; // 'anthropic', 'openai', or 'opencode'
         anthropic?: {
             model?: string;
-            auth_token?: string;
+            oauth_token?: string;
         };
         openai?: {
             model?: string;
