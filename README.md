@@ -292,14 +292,15 @@ tinyagi agent provider coder custom:my-proxy
 tinyagi agent provider coder custom:my-proxy --model gpt-4o
 ```
 
-**Auth token storage** — store tokens for built-in providers so you don't need separate CLI auth:
+**Auth token storage** — store credentials for built-in providers so you don't need separate CLI auth:
 
 ```bash
 tinyagi provider anthropic --oauth-token sk-ant-oat01-...
-tinyagi provider openai --oauth-token sk-...
+tinyagi provider anthropic --api-key sk-ant-...
+tinyagi provider openai --api-key sk-...
 ```
 
-Anthropic tokens are saved as `models.anthropic.oauth_token` and exported as `CLAUDE_CODE_OAUTH_TOKEN` (with `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` cleared). OpenAI tokens are saved as `models.openai.auth_token` and exported as `OPENAI_API_KEY`.
+Anthropic supports both `oauth_token` (exported as `CLAUDE_CODE_OAUTH_TOKEN`) and `api_key` (exported as `ANTHROPIC_API_KEY`). OAuth takes priority if both are set. OpenAI keys are saved as `models.openai.api_key` and exported as `OPENAI_API_KEY`. If nothing is configured, the process inherits environment variables directly.
 
 **API endpoints:**
 
@@ -534,8 +535,8 @@ Located at `.tinyagi/settings.json`:
     }
   },
   "models": {
-    "anthropic": { "oauth_token": "sk-ant-oat01-..." },
-    "openai": { "auth_token": "sk-..." }
+    "anthropic": { "api_key": "sk-ant-...", "oauth_token": "sk-ant-oat01-..." },
+    "openai": { "api_key": "sk-..." }
   },
   "monitoring": {
     "heartbeat_interval": 3600

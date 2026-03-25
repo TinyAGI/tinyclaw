@@ -236,14 +236,16 @@ export async function invokeAgent(
 
         log('INFO', `Using custom provider '${customId}' (harness: ${customProvider.harness}, base_url: ${customProvider.base_url})`);
     } else {
-        // For built-in providers, check if auth_token is configured in settings
+        // For built-in providers, check if credentials are configured in settings
         const settings = getSettings();
         if (provider === 'anthropic' && settings.models?.anthropic?.oauth_token) {
             envOverrides.CLAUDE_CODE_OAUTH_TOKEN = settings.models.anthropic.oauth_token;
             envOverrides.ANTHROPIC_AUTH_TOKEN = '';
             envOverrides.ANTHROPIC_API_KEY = '';
-        } else if (provider === 'openai' && settings.models?.openai?.auth_token) {
-            envOverrides.OPENAI_API_KEY = settings.models.openai.auth_token;
+        } else if (provider === 'anthropic' && settings.models?.anthropic?.api_key) {
+            envOverrides.ANTHROPIC_API_KEY = settings.models.anthropic.api_key;
+        } else if (provider === 'openai' && settings.models?.openai?.api_key) {
+            envOverrides.OPENAI_API_KEY = settings.models.openai.api_key;
         }
     }
 
