@@ -76,7 +76,7 @@ cp -r bin/ "$BUNDLE_DIR/"
 cp -r packages/ "$BUNDLE_DIR/"
 cp -r node_modules/ "$BUNDLE_DIR/"
 cp -r scripts "$BUNDLE_DIR/"
-cp -r lib "$BUNDLE_DIR/"
+# lib/ removed — heartbeat & channels are now in packages/main/
 cp -r docs "$BUNDLE_DIR/" 2>/dev/null || true
 cp -r .agents "$BUNDLE_DIR/" 2>/dev/null || true
 cp -r tinyoffice/ "$BUNDLE_DIR/"
@@ -99,9 +99,6 @@ chmod +x "$BUNDLE_DIR/bin/tinyagi"
 chmod +x "$BUNDLE_DIR/bin/tinyclaw"
 chmod +x "$BUNDLE_DIR/scripts/install.sh"
 chmod +x "$BUNDLE_DIR/scripts/bundle.sh"
-chmod +x "$BUNDLE_DIR/lib/tinyagi.sh"
-chmod +x "$BUNDLE_DIR/lib/heartbeat-cron.sh"
-chmod +x "$BUNDLE_DIR/lib/update.sh"
 
 echo -e "${GREEN}✓ Files copied${NC}"
 echo ""

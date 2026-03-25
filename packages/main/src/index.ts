@@ -24,6 +24,8 @@ import {
     startScheduler, stopScheduler,
 } from '@tinyagi/core';
 import { startApiServer } from '@tinyagi/server';
+import { startChannels, stopChannels } from './channels';
+import { startHeartbeat, stopHeartbeat } from './heartbeat';
 import {
     handleTeamResponse,
     groupChatroomMessages,
@@ -238,6 +240,10 @@ const maintenanceInterval = setInterval(() => {
 // Start in-process cron scheduler
 startScheduler();
 
+// Start channels and heartbeat
+startChannels();
+startHeartbeat();
+
 log('INFO', 'Queue processor started (SQLite)');
 logAgentConfig();
 log('INFO', `Agents: ${Object.keys(getAgents(getSettings())).join(', ')}, Teams: ${Object.keys(getTeams(getSettings())).join(', ')}`);
@@ -245,6 +251,8 @@ log('INFO', `Agents: ${Object.keys(getAgents(getSettings())).join(', ')}, Teams:
 // Graceful shutdown
 function shutdown(): void {
     log('INFO', 'Shutting down queue processor...');
+    stopHeartbeat();
+    stopChannels();
     stopScheduler();
     clearInterval(pollInterval);
     clearInterval(maintenanceInterval);
