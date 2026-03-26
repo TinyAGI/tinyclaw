@@ -10,7 +10,7 @@ import {
 } from "@/lib/api";
 import Image from "next/image";
 import {
-  Plus, Hash, ScrollText,
+  Plus, Hash,
   Settings, SlidersHorizontal, ClipboardList, Building2,
   FolderKanban, Sun, Moon, SlidersVertical,
 } from "lucide-react";
@@ -63,7 +63,6 @@ export function Sidebar() {
           { href: "/office", label: "Office", icon: Building2 },
           { href: "/tasks", label: "Tasks", icon: ClipboardList },
           { href: "/projects", label: "Projects", icon: FolderKanban },
-          { href: "/logs", label: "Logs", icon: ScrollText },
         ].map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (

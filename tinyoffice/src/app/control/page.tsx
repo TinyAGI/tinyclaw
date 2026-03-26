@@ -53,9 +53,11 @@ import {
   ChevronRight,
   ScrollText,
   WifiOff,
+  Wifi,
+  Pencil,
 } from "lucide-react";
 
-const TABS = ["Overview", "Services", "Providers", "Logs"] as const;
+const TABS = ["Overview", "Services", "Logs"] as const;
 type Tab = (typeof TABS)[number];
 
 // ── Page ──────────────────────────────────────────────────────────────────
@@ -101,7 +103,6 @@ export default function ControlPlanePage() {
 
       {tab === "Overview" && <OverviewTab />}
       {tab === "Services" && <ServicesTab />}
-      {tab === "Providers" && <ProvidersTab />}
       {tab === "Logs" && <LogsTab />}
     </div>
   );
@@ -343,16 +344,87 @@ function MiniStat({ label, value, accent }: { label: string; value: number; acce
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SERVICES TAB (Daemon + Channels + Pairing)
+// SERVICES TAB (API + Daemon + Channels + Providers + Pairing)
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ServicesTab() {
   return (
     <div className="space-y-6 max-w-2xl">
+      <ApiConnectionSection />
       <DaemonSection />
       <ChannelsSection />
+      <BuiltinProviders />
+      <CustomProviders />
       <PairingSection />
     </div>
+  );
+}
+
+// ── API Connection ────────────────────────────────────────────────────────
+
+function ApiConnectionSection() {
+  const [editingUrl, setEditingUrl] = useState(false);
+  const [apiUrl, setApiUrl] = useState(getApiBase());
+  const [checking, setChecking] = useState(false);
+
+  const handleSave = async () => {
+    setChecking(true);
+    const ok = await checkConnection(apiUrl);
+    if (ok) {
+      setApiBase(apiUrl);
+      setEditingUrl(false);
+    }
+    setChecking(false);
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Wifi className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+            <p className="text-sm font-semibold">API Connection</p>
+            {!editingUrl && (
+              <p className="text-xs text-muted-foreground">{getApiBase()}</p>
+            )}
+          </div>
+          {!editingUrl ? (
+            <button
+              onClick={() => { setApiUrl(getApiBase()); setEditingUrl(true); }}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors rounded"
+              title="Change server address"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          ) : (
+            <button
+              onClick={() => setEditingUrl(false)}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors rounded"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        {editingUrl && (
+          <div className="flex gap-2 mt-3">
+            <input
+              value={apiUrl}
+              onChange={(e) => setApiUrl(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSave()}
+              placeholder="http://localhost:3777"
+              className="flex-1 px-2.5 py-1.5 text-sm border bg-background rounded"
+            />
+            <button
+              onClick={handleSave}
+              disabled={checking || !apiUrl}
+              className="px-3 py-1.5 text-xs bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50 rounded"
+            >
+              {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+            </button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -540,109 +612,7 @@ function ChannelsSection() {
   );
 }
 
-// ── Pairing ───────────────────────────────────────────────────────────────
-
-function PairingSection() {
-  const { data: pairings, refresh } = usePolling(getPairings, 5000);
-  const [approving, setApproving] = useState<string | null>(null);
-
-  const pending = pairings?.pending ?? [];
-  const approved = pairings?.approved ?? [];
-
-  return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <p className="text-sm font-semibold">Sender Pairing</p>
-          {pending.length > 0 && (
-            <Badge variant="outline" className="text-[10px] text-yellow-600 border-yellow-300">
-              {pending.length} pending
-            </Badge>
-          )}
-        </div>
-
-        {/* Pending */}
-        {pending.map((p) => (
-          <div key={p.code} className="group flex items-center justify-between px-4 py-2.5 border-b bg-yellow-50/50 dark:bg-yellow-950/20">
-            <div>
-              <p className="text-sm">
-                <span className="font-medium">{p.sender}</span>
-                <span className="text-muted-foreground"> via {p.channel}</span>
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                Code: <span className="font-mono font-bold">{p.code}</span>
-                {" \u00b7 "}{timeAgo(p.createdAt)}
-              </p>
-            </div>
-            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              <IconBtn
-                icon={<Check className="h-3 w-3" />}
-                title="Approve"
-                variant="success"
-                disabled={approving === p.code}
-                onClick={async () => {
-                  setApproving(p.code);
-                  await approvePairing(p.code);
-                  refresh();
-                  setApproving(null);
-                }}
-              />
-              <IconBtn
-                icon={<X className="h-3 w-3" />}
-                title="Dismiss"
-                variant="danger"
-                onClick={async () => { await dismissPending(p.code); refresh(); }}
-              />
-            </div>
-          </div>
-        ))}
-
-        {/* Approved */}
-        {approved.length === 0 && pending.length === 0 && (
-          <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-            No senders yet. They appear here when someone messages your bot.
-          </div>
-        )}
-        {approved.map((a) => (
-          <div
-            key={`${a.channel}::${a.senderId}`}
-            className="group flex items-center justify-between px-4 py-2.5 border-b last:border-0"
-          >
-            <div>
-              <p className="text-sm">
-                <span className="font-medium">{a.sender}</span>
-                <span className="text-muted-foreground"> via {a.channel}</span>
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                Approved {timeAgo(a.approvedAt)}
-              </p>
-            </div>
-            <IconBtn
-              icon={<Trash2 className="h-3 w-3" />}
-              title="Revoke"
-              variant="danger"
-              className="opacity-0 group-hover:opacity-100"
-              onClick={async () => { await revokePairing(a.channel, a.senderId); refresh(); }}
-            />
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PROVIDERS TAB
-// ═══════════════════════════════════════════════════════════════════════════
-
-function ProvidersTab() {
-  return (
-    <div className="space-y-6 max-w-2xl">
-      <BuiltinProviders />
-      <CustomProviders />
-    </div>
-  );
-}
+// ── Built-in Providers ────────────────────────────────────────────────────
 
 function BuiltinProviders() {
   const { data: settings, refresh } = usePolling(getSettings, 0);
@@ -757,6 +727,8 @@ function BuiltinProviders() {
   );
 }
 
+// ── Custom Providers ──────────────────────────────────────────────────────
+
 function CustomProviders() {
   const { data: providers, refresh } = usePolling(getCustomProviders, 0);
   const [adding, setAdding] = useState(false);
@@ -867,8 +839,99 @@ function CustomProviders() {
   );
 }
 
+// ── Pairing ───────────────────────────────────────────────────────────────
+
+function PairingSection() {
+  const { data: pairings, refresh } = usePolling(getPairings, 5000);
+  const [approving, setApproving] = useState<string | null>(null);
+
+  const pending = pairings?.pending ?? [];
+  const approved = pairings?.approved ?? [];
+
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <p className="text-sm font-semibold">Sender Pairing</p>
+          {pending.length > 0 && (
+            <Badge variant="outline" className="text-[10px] text-yellow-600 border-yellow-300">
+              {pending.length} pending
+            </Badge>
+          )}
+        </div>
+
+        {/* Pending */}
+        {pending.map((p) => (
+          <div key={p.code} className="group flex items-center justify-between px-4 py-2.5 border-b bg-yellow-50/50 dark:bg-yellow-950/20">
+            <div>
+              <p className="text-sm">
+                <span className="font-medium">{p.sender}</span>
+                <span className="text-muted-foreground"> via {p.channel}</span>
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Code: <span className="font-mono font-bold">{p.code}</span>
+                {" \u00b7 "}{timeAgo(p.createdAt)}
+              </p>
+            </div>
+            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <IconBtn
+                icon={<Check className="h-3 w-3" />}
+                title="Approve"
+                variant="success"
+                disabled={approving === p.code}
+                onClick={async () => {
+                  setApproving(p.code);
+                  await approvePairing(p.code);
+                  refresh();
+                  setApproving(null);
+                }}
+              />
+              <IconBtn
+                icon={<X className="h-3 w-3" />}
+                title="Dismiss"
+                variant="danger"
+                onClick={async () => { await dismissPending(p.code); refresh(); }}
+              />
+            </div>
+          </div>
+        ))}
+
+        {/* Approved */}
+        {approved.length === 0 && pending.length === 0 && (
+          <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+            No senders yet. They appear here when someone messages your bot.
+          </div>
+        )}
+        {approved.map((a) => (
+          <div
+            key={`${a.channel}::${a.senderId}`}
+            className="group flex items-center justify-between px-4 py-2.5 border-b last:border-0"
+          >
+            <div>
+              <p className="text-sm">
+                <span className="font-medium">{a.sender}</span>
+                <span className="text-muted-foreground"> via {a.channel}</span>
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Approved {timeAgo(a.approvedAt)}
+              </p>
+            </div>
+            <IconBtn
+              icon={<Trash2 className="h-3 w-3" />}
+              title="Revoke"
+              variant="danger"
+              className="opacity-0 group-hover:opacity-100"
+              onClick={async () => { await revokePairing(a.channel, a.senderId); refresh(); }}
+            />
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
-// LOGS TAB (merged from logs page)
+// LOGS TAB
 // ═══════════════════════════════════════════════════════════════════════════
 
 function LogsTab() {
