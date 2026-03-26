@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import {
     MessageJobData,
-    getSettings, getAgents, getTeams, LOG_FILE, FILES_DIR,
+    getSettings, getAgents, getTeams, LOG_FILE, FILES_DIR, TINYAGI_HOME,
     log, emitEvent,
     parseAgentRouting, getAgentResetFlag,
     invokeAgent, killAgentProcess,
@@ -219,6 +219,9 @@ function logAgentConfig(): void {
 
 initQueueDb();
 
+// Write PID file so the CLI can find this process
+fs.writeFileSync(path.join(TINYAGI_HOME, 'tinyagi.pid'), String(process.pid));
+
 // Recover any messages left in 'processing' from a previous run — they're
 // guaranteed stale because the process just restarted.
 const startupRecovered = recoverStaleMessages(0);
@@ -232,6 +235,10 @@ const apiServer = startApiServer({
     restartChannel,
     getChannelStatus,
     getHeartbeatStatus,
+    restart() {
+        log('INFO', 'Restart requested via API');
+        shutdown(75);
+    },
 });
 
 // Event-driven: process queue when a new message arrives
@@ -268,9 +275,9 @@ log('INFO', 'Queue processor started (SQLite)');
 logAgentConfig();
 log('INFO', `Agents: ${Object.keys(getAgents(getSettings())).join(', ')}, Teams: ${Object.keys(getTeams(getSettings())).join(', ')}`);
 
-// Graceful shutdown
-function shutdown(): void {
-    log('INFO', 'Shutting down queue processor...');
+// Graceful shutdown. Exit code 75 signals "restart" to the Docker entrypoint loop.
+function shutdown(exitCode = 0): void {
+    log('INFO', exitCode === 75 ? 'Restarting queue processor...' : 'Shutting down queue processor...');
     stopHeartbeat();
     stopChannels();
     stopScheduler();
@@ -278,7 +285,11 @@ function shutdown(): void {
     clearInterval(maintenanceInterval);
     apiServer.close();
     closeQueueDb();
-    process.exit(0);
+    // Clean up PID file on normal shutdown (not restart)
+    if (exitCode !== 75) {
+        try { fs.unlinkSync(path.join(TINYAGI_HOME, 'tinyagi.pid')); } catch {}
+    }
+    process.exit(exitCode);
 }
 
 process.on('SIGINT', () => { shutdown(); });

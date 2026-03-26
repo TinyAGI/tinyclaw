@@ -26,6 +26,7 @@ import chatsRoutes from './routes/chats';
 import chatroomRoutes from './routes/chatroom';
 import agentMessagesRoutes from './routes/agent-messages';
 import { createServicesRoutes, type ServiceHandlers } from './routes/services';
+import pairingRoutes from './routes/pairing';
 export type { ServiceHandlers } from './routes/services';
 import schedulesRoutes from './routes/schedules';
 
@@ -58,6 +59,7 @@ export function startApiServer(services?: ServiceHandlers): http.Server {
     app.route('/', chatroomRoutes);
     app.route('/', agentMessagesRoutes);
     app.route('/', createServicesRoutes(services));
+    app.route('/', pairingRoutes);
     app.route('/', schedulesRoutes);
 
     // GET /api/status — overall system status

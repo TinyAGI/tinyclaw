@@ -138,6 +138,10 @@ export function stopDaemon(): void {
     }
 
     const pid = parseInt(fs.readFileSync(PID_FILE, 'utf8').trim(), 10);
+    if (pid === 1) {
+        log(RED, 'TinyAGI is running as PID 1 (container mode). Use "tinyagi restart" or "docker restart" instead.');
+        return;
+    }
     try {
         process.kill(pid, 'SIGTERM');
         log(GREEN, `TinyAGI stopped (PID: ${pid})`);
@@ -206,6 +210,33 @@ export async function statusDaemon(): Promise<void> {
     }
 }
 
+export async function restartDaemon(): Promise<void> {
+    // Try API-based restart first (works in container mode and normal mode)
+    try {
+        const res = await fetch(`${API_URL}/api/services/restart`, { method: 'POST' });
+        const data = await res.json() as any;
+        if (data.ok) {
+            log(GREEN, 'TinyAGI restarting...');
+            // Wait for the process to come back up
+            await new Promise(r => setTimeout(r, 2000));
+            const status = await waitForServer();
+            if (status) {
+                log(GREEN, 'TinyAGI restarted successfully');
+            } else {
+                log(YELLOW, 'TinyAGI is restarting (may take a moment)');
+            }
+            return;
+        }
+    } catch {
+        // API not available, fall back to kill+respawn
+    }
+
+    // Fallback: stop and start (non-container mode)
+    stopDaemon();
+    await new Promise(r => setTimeout(r, 1000));
+    await startDaemon();
+}
+
 export async function openOffice(): Promise<void> {
     const PORTAL_URL = 'https://office.tinyagicompany.com';
     console.log('');
@@ -232,9 +263,7 @@ switch (command) {
         stopDaemon();
         break;
     case 'restart':
-        stopDaemon();
-        await new Promise(r => setTimeout(r, 1000));
-        await startDaemon();
+        await restartDaemon();
         break;
     case 'status':
         await statusDaemon();

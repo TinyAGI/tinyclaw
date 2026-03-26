@@ -57,7 +57,13 @@ ln -sf /app/packages/cli/bin/tinyagi.mjs /usr/local/bin/tinyagi
 # Ensure log directory exists
 mkdir -p "$TINYAGI_HOME/logs"
 
-# Write PID file so `tinyagi status` sees the running process
-echo $$ > "$TINYAGI_HOME/tinyagi.pid"
-
-exec node packages/main/dist/index.js
+# Run with restart support.
+# Exit code 75 = restart requested; any other code = stop container.
+# The node process writes its own PID file on startup.
+while true; do
+    node /app/packages/main/dist/index.js
+    code=$?
+    [ "$code" -ne 75 ] && exit $code
+    echo "[tinyagi] Restarting..."
+    sleep 1
+done
