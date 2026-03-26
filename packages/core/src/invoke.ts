@@ -183,7 +183,7 @@ export async function invokeAgent(
     agentId: string,
     message: string,
     workspacePath: string,
-    shouldReset: boolean,
+    _shouldReset: boolean,
     agents: Record<string, AgentConfig> = {},
     teams: Record<string, TeamConfig> = {},
     onEvent?: (text: string) => void,
@@ -192,8 +192,10 @@ export async function invokeAgent(
     const agentDir = path.join(workspacePath, agentId);
     const isNewAgent = !fs.existsSync(agentDir);
     ensureAgentDirectory(agentDir);
+    let shouldReset = _shouldReset;
     if (isNewAgent) {
         log('INFO', `Initialized agent directory with config files: ${agentDir}`);
+        shouldReset = true;
     }
 
     // Build system prompt in-memory (built-in instructions + teammates + memory + user customization)

@@ -42,7 +42,6 @@ FROM node:20-slim
 RUN apt-get update && apt-get install -y \
     git \
     chromium \
-    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Point Puppeteer (whatsapp-web.js) at system Chromium
@@ -64,9 +63,9 @@ COPY --from=builder /app/tsconfig.base.json ./
 COPY --from=builder /app/.agents ./.agents
 COPY --from=builder /app/AGENTS.md /app/heartbeat.md /app/SOUL.md ./
 
-# Persistent data directory (mount a volume at /home/tinyagi)
-RUN mkdir -p /home/tinyagi/.tinyagi /home/tinyagi/workspace
-ENV TINYAGI_HOME=/home/tinyagi/.tinyagi
+# Persistent data directory
+RUN mkdir -p /root/.tinyagi /root/workspace
+ENV TINYAGI_HOME=/root/.tinyagi
 ENV NODE_ENV=production
 ENV TINYAGI_API_PORT=3777
 

@@ -1,14 +1,9 @@
 #!/bin/sh
 set -e
 
-TINYAGI_HOME="${TINYAGI_HOME:-/home/tinyagi/.tinyagi}"
-WORKSPACE="/home/tinyagi/workspace"
+TINYAGI_HOME="${TINYAGI_HOME:-/root/.tinyagi}"
+WORKSPACE="/root/workspace"
 SETTINGS_FILE="$TINYAGI_HOME/settings.json"
-
-# Create non-root user if it doesn't exist
-if ! id tinyagi >/dev/null 2>&1; then
-    useradd -u 1001 -d /home/tinyagi -m -s /bin/sh tinyagi
-fi
 
 # Ensure data directories exist
 mkdir -p "$TINYAGI_HOME" "$WORKSPACE"
@@ -18,7 +13,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
     cat > "$SETTINGS_FILE" <<'SETTINGS'
 {
   "workspace": {
-    "path": "/home/tinyagi/workspace",
+    "path": "/root/workspace",
     "name": "tinyagi-workspace"
   },
   "channels": {
@@ -29,7 +24,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
       "name": "TinyAGI Agent",
       "provider": "anthropic",
       "model": "opus",
-      "working_directory": "/home/tinyagi/workspace/tinyagi"
+      "working_directory": "/root/workspace/tinyagi"
     }
   },
   "models": {
@@ -52,6 +47,8 @@ if [ ! -d "$AGENT_DIR" ]; then
     [ -f /app/heartbeat.md ] && cp /app/heartbeat.md "$AGENT_DIR/"
     [ -f /app/SOUL.md ] && cp /app/SOUL.md "$AGENT_DIR/.tinyagi/"
     touch "$AGENT_DIR/AGENTS.md"
+    # Signal first invocation should not try to resume a non-existent session
+    touch "$AGENT_DIR/reset_flag"
 fi
 
 # Make tinyagi CLI available
@@ -60,13 +57,7 @@ ln -sf /app/packages/cli/bin/tinyagi.mjs /usr/local/bin/tinyagi
 # Ensure log directory exists
 mkdir -p "$TINYAGI_HOME/logs"
 
-# Own home directory
-chown -R tinyagi:tinyagi /home/tinyagi
-
 # Write PID file so `tinyagi status` sees the running process
-# $$ is the shell PID; exec below replaces it with node, keeping the same PID
 echo $$ > "$TINYAGI_HOME/tinyagi.pid"
-chown tinyagi:tinyagi "$TINYAGI_HOME/tinyagi.pid"
 
-# Run as non-root user (exec replaces this process, keeping PID 1)
-exec gosu tinyagi node packages/main/dist/index.js
+exec node packages/main/dist/index.js
