@@ -32,5 +32,8 @@
   },
   "dependencies": {
     "croner": "^10.0.1"
+  },
+  "puppeteer": {
+    "skipDownload": true
   }
 }
