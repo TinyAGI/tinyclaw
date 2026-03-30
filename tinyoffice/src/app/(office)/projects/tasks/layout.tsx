@@ -152,7 +152,7 @@ function TasksLayoutInner({
                     isActive={!activeProject}
                     tooltip="All Tasks"
                   >
-                    <Link href="/projects">
+                    <Link href="/projects/tasks">
                       <ClipboardList className="h-4 w-4" />
                       <span>All Tasks</span>
                     </Link>
@@ -203,7 +203,7 @@ function TasksLayoutInner({
                           isActive={activeProject === project.id}
                           tooltip={project.name}
                         >
-                          <Link href={`/projects?project=${project.id}`}>
+                          <Link href={`/projects/tasks?project=${project.id}`}>
                             <div
                               className="h-3.5 w-3.5 rounded shrink-0"
                               style={{ backgroundColor: project.color }}
@@ -276,7 +276,7 @@ function TasksLayoutInner({
                           tooltip={project.name}
                           className="opacity-60"
                         >
-                          <Link href={`/projects?project=${project.id}`}>
+                          <Link href={`/projects/tasks?project=${project.id}`}>
                             <div
                               className="h-3.5 w-3.5 rounded shrink-0 opacity-50"
                               style={{ backgroundColor: project.color }}

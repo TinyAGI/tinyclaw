@@ -6,7 +6,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-import { TINYAGI_HOME } from '@tinyagi/core';
+import { TINYAGI_HOME, genId } from '@tinyagi/core';
 import { log } from '@tinyagi/core';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -65,9 +65,6 @@ function getDb(): Database.Database {
     return db;
 }
 
-function genId(prefix: string): string {
-    return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-}
 
 // ── Row mappers ──────────────────────────────────────────────────────────────
 

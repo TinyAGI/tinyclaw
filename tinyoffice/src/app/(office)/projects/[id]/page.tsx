@@ -9,5 +9,5 @@ export default function ProjectDetailRedirect({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  redirect(`/projects?project=${id}`);
+  redirect(`/projects/tasks?project=${id}`);
 }
